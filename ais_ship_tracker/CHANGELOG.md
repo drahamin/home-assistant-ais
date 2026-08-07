@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0
+
+* Replaced AISStream with the reciprocal AISHub contributor network.
+* Added local raw NMEA UDP input on port 10110 and forwarding to the dedicated AISHub feed destination.
+* Added AIS hardware identification, source-change notices, message counts, forwarding confirmation, errors, and one-minute health summaries to app logs.
+* Added AISHub and receiver-feed details to the Home Assistant connection entity and AIS sidebar.
+* Removed the AISStream WebSocket dependency and anonymous uptime telemetry.
+
 ## 2.0.0
 * Rebranded the app as Baiamonte AIS with an **AIS** Home Assistant sidebar entry.
 * Added a responsive ingress dashboard matching Baiamonte LTE and Vineyard Overview styling.

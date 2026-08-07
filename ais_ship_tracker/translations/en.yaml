@@ -1,7 +1,16 @@
 configuration:
-  api_key:
-    name: API Key
-    description: Generate this at aisstream.io.
+  aishub_username:
+    name: AISHub Username
+    description: Supplied by AISHub after your contributor station is approved.
+  aishub_feed_host:
+    name: AISHub Feed Host
+    description: Destination host supplied by AISHub for sharing raw NMEA data.
+  aishub_feed_port:
+    name: AISHub Feed Port
+    description: Dedicated UDP port supplied by AISHub.
+  receiver_name:
+    name: AIS Receiver Name
+    description: Friendly hardware name shown in logs and status details.
   longitude_west:
     name: Bounding Box - Bottom-Left Longitude (West)
     description: Left edge of your tracking zone.
@@ -29,6 +38,3 @@ configuration:
   map_timeout_minutes:
     name: Ship Entity Timeout (Minutes)
     description: How long before a ship with no new tracking data is removed from the map.
-  enable_api_monitoring:
-    name: API Monitoring
-    description: Enable entity to monitor API connection status.

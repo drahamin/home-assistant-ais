@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.0.0"
+version: "2.1.0"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -16,13 +16,18 @@ ingress: true
 ingress_port: 8099
 ports:
   8099/tcp: null
+  10110/udp: 10110
 ports_description:
   8099/tcp: "Optional direct web access port (Home Assistant ingress does not require it)"
+  10110/udp: "Local AIS receiver NMEA input"
 panel_icon: "mdi:radar"
 panel_title: "AIS"
 panel_admin: true
 options:
-  api_key: ""
+  aishub_username: ""
+  aishub_feed_host: ""
+  aishub_feed_port: 0
+  receiver_name: "Baiamonte AIS receiver"
   longitude_west: 1.20
   latitude_south: 50.90
   longitude_east: 1.80
@@ -32,9 +37,11 @@ options:
   vessel_watchlist: ""
   clear_map_on_startup: false
   map_timeout_minutes: 30
-  enable_api_monitoring: true
 schema:
-  api_key: "password"
+  aishub_username: "str"
+  aishub_feed_host: "str?"
+  aishub_feed_port: "int?"
+  receiver_name: "str?"
   longitude_west: "float"
   latitude_south: "float"
   longitude_east: "float"
@@ -44,4 +51,43 @@ schema:
   vessel_watchlist: "str?"
   clear_map_on_startup: "bool?"
   map_timeout_minutes: "int?"
-  enable_api_monitoring: "bool?"
+configuration:
+  aishub_username:
+    name: AISHub Username
+    description: Username supplied by AISHub after your contributor feed is approved.
+  aishub_feed_host:
+    name: AISHub Feed Host
+    description: Destination host supplied by AISHub for your raw NMEA contribution.
+  aishub_feed_port:
+    name: AISHub Feed Port
+    description: Dedicated UDP destination port supplied by AISHub.
+  receiver_name:
+    name: AIS Receiver Name
+    description: Friendly hardware name shown in logs and connection status.
+  longitude_west:
+    name: Bounding Box - Bottom-Left Longitude (West)
+    description: Left edge of your tracking zone.
+  latitude_south:
+    name: Bounding Box - Bottom-Left Latitude (South)
+    description: Bottom edge of your tracking zone.
+  longitude_east:
+    name: Bounding Box - Top-Right Longitude (East)
+    description: Right edge of your tracking zone.
+  latitude_north:
+    name: Bounding Box - Top-Right Latitude (North)
+    description: Top edge of your tracking zone.
+  enable_map_entities:
+    name: Multi-Ship Tracking
+    description: Creates an individual sensor for every tracked ship.
+  include_class_b:
+    name: Include Class B Vessels
+    description: Retained for compatibility; AISHub returns the available vessels in your selected area.
+  vessel_watchlist:
+    name: MMSI Filter
+    description: Only track vessels with these MMSI numbers. Separate MMSIs with commas.
+  clear_map_on_startup:
+    name: Clear Ship Entities on Startup
+    description: Clears all ship entities from the map when the app starts.
+  map_timeout_minutes:
+    name: Ship Entity Timeout (Minutes)
+    description: How long before a ship with no updated data is removed from the map.
