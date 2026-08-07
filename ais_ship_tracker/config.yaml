@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.2.0"
+version: "2.2.1"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -30,10 +30,11 @@ options:
   receiver_name: "Baiamonte AIS receiver"
   tv_weather_overlay: false
   tv_weather_opacity: 65
-  longitude_west: 1.20
-  latitude_south: 50.90
-  longitude_east: 1.80
-  latitude_north: 51.20
+  map_style: "standard"
+  longitude_west: 12.93
+  latitude_south: 35.85
+  longitude_east: 16.93
+  latitude_north: 39.85
   enable_map_entities: false
   include_class_b: true
   vessel_watchlist: ""
@@ -46,6 +47,7 @@ schema:
   receiver_name: "str?"
   tv_weather_overlay: "bool?"
   tv_weather_opacity: "int?"
+  map_style: "list(standard|humanitarian|topographic|dark|satellite)?"
   longitude_west: "float"
   latitude_south: "float"
   longitude_east: "float"
@@ -74,6 +76,9 @@ configuration:
   tv_weather_opacity:
     name: TV Weather Opacity
     description: Weather radar visibility from 10 to 100 percent. Recommended value is 65.
+  map_style:
+    name: Base Map Style
+    description: Choose Standard, Humanitarian, Topographic, Dark, or Satellite tiles for the dashboard and TV maps.
   longitude_west:
     name: Bounding Box - Bottom-Left Longitude (West)
     description: Left edge of your tracking zone.

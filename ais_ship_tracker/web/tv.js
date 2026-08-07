@@ -49,7 +49,7 @@ function fitView(bounds,width,height){
   return {zoom,originX:center.x-width/2,originY:center.y-height/2};
 }
 
-function renderTiles(view,width,height){
+function renderTiles(view,width,height,style){
   tiles.replaceChildren();
   const count=2**view.zoom;
   const firstX=Math.floor(view.originX/TILE);
@@ -62,7 +62,7 @@ function renderTiles(view,width,height){
       tile.className='tile';
       tile.alt='';
       tile.decoding='async';
-      tile.src=`https://tile.openstreetmap.org/${view.zoom}/${((x%count)+count)%count}/${y}.png`;
+      tile.src=`api/map-tile/${style}/${view.zoom}/${((x%count)+count)%count}/${y}.png`;
       tile.style.left=`${x*TILE-view.originX}px`;
       tile.style.top=`${y*TILE-view.originY}px`;
       tiles.appendChild(tile);
@@ -72,7 +72,7 @@ function renderTiles(view,width,height){
 
 async function getWeatherFrame(){
   if(weatherMetadata&&Date.now()-weatherMetadataFetched<300000)return weatherMetadata;
-  const response=await fetch('https://api.rainviewer.com/public/weather-maps.json');
+  const response=await fetch('api/weather-maps',{cache:'no-store'});
   if(!response.ok)throw new Error(`RainViewer metadata ${response.status}`);
   const metadata=await response.json();
   const frames=metadata?.radar?.past||[];
@@ -103,7 +103,7 @@ async function renderWeather(view,width,height,config){
         tile.className='weather-tile';
         tile.alt='';
         tile.decoding='async';
-        tile.src=`${metadata.host}${metadata.frame.path}/256/${overlayZoom}/${((x%count)+count)%count}/${y}/2/1_1.png`;
+        tile.src=`api/weather-tile${metadata.frame.path}/256/${overlayZoom}/${((x%count)+count)%count}/${y}/2/1_1.png`;
         tile.style.left=`${x*renderedTile-view.originX}px`;
         tile.style.top=`${y*renderedTile-view.originY}px`;
         tile.style.width=`${renderedTile}px`;
@@ -147,7 +147,7 @@ function render(data){
   const cfg=data.config;
   const bounds=cfg.bounds;
   const view=fitView(bounds,width,height);
-  renderTiles(view,width,height);
+  renderTiles(view,width,height,cfg.map_style||'standard');
   renderWeather(view,width,height,cfg);
   boats.replaceChildren();
   const visible=(data.vessels||[]).filter(v=>Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude))&&Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);

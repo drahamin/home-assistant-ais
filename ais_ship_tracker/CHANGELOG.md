@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.1
+
+* Treats AISHub's metadata-only zero-vessel response as a healthy empty result.
+* Accepts documented and common proxied AISHub JSON response shapes while preserving useful provider errors.
+* Replaces the inherited UK example watch area with a Baiamonte-centred Sicily and surrounding-seas area.
+* Automatically migrates installations that still use the exact legacy example bounds.
+* Proxies and caches OpenStreetMap tiles through the app so TV and kiosk browsers can render the basemap without direct cross-origin tile access.
+* Proxies RainViewer metadata and precipitation tiles through the same local app for reliable TV weather overlays.
+* Adds a settings selector for Standard, Humanitarian, Topographic, Dark, and Satellite base maps.
+
 ## 2.2.0
 
 * Includes the live RainViewer precipitation-radar overlay, timestamp and source attribution from version 2.1.2.
