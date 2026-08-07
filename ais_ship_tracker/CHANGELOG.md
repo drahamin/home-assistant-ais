@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0
+* Rebranded the app as Baiamonte AIS with an **AIS** Home Assistant sidebar entry.
+* Added a responsive ingress dashboard matching Baiamonte LTE and Vineyard Overview styling.
+* Added a live bounding-box vessel plot, fleet registry, receiver health, watch-area view, and operations journal.
+* Added new Baiamonte maritime app-store and dashboard icon artwork.
+* Namespaced Home Assistant entities under `sensor.baiamonte_ais_*`.
+
 ## 1.4.6
 * [Fix] Enhanced reconnection logic after a couple of recent AISStream outages. The app should now gracefully reconnect when the service comes back up. 
 * [Fix] Fixed accuracy of outage status for sensor.ais_connection_status entity

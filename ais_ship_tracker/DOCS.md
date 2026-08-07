@@ -1,8 +1,8 @@
-# 🚢 AIS Ship Tracker for Home Assistant
+# Baiamonte AIS
 
-This Home Assistant add-on allows you to draw an invisible box over any body of water in the world where you wish to track shipping traffic. Whenever a ship sails into that box, the add-on will intercept its radio broadcast and instantly push the ship's telemetry directly into a Home Assistant entity.
+This Home Assistant app monitors AIS vessel traffic in a configured area and provides an estate-branded operations dashboard. Open **AIS** in the Home Assistant sidebar to see the live receiver state, vessel plot, recent contacts, watch area, and integration status.
 
-It creates a sensor entity (`sensor.last_passing_ship`) that you can use to trigger notifications, plot on a map, sound a horn, or just keep a log of maritime traffic outside your window.
+The app publishes `sensor.baiamonte_ais_last_passing_ship`, `sensor.baiamonte_ais_connection_status`, and—when multi-ship tracking is enabled—`sensor.baiamonte_ais_ship_<mmsi>`.
 
 You can also track multiple vessels and show them on a map. The [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) custom card from HACS is required for dynamically displaying these vessels. 
 
@@ -50,7 +50,7 @@ You can track multiple ships simultaneously for viewing on a map. The [auto-enti
 [Card-mod](https://github.com/thomasloven/lovelace-card-mod) is also recommended to make the ship icons smaller using CSS.
 
 When the *"Multi-Ship Tracking"* configuration is enabled:
-* Every ship that enters your bounding box will automatically generate a dedicated entity formatted as `sensor.ais_ship_{mmsi}`.
+* Every ship that enters your bounding box will automatically generate a dedicated entity formatted as `sensor.baiamonte_ais_ship_{mmsi}`.
 * These entities dynamically update their GPS co-ordinates and include an icon indicating their current navigational status.
 * Ship Timeout: To keep your map clean, ships that stop broadcasting will have their co-ordinates cleared after a specified period of inactivity (default is 30 minutes, configurable via "Ship Timeout").
 * Clear Ships on Startup: You can configure the add-on to automatically purge all existing ship entities from the map whenever the add-on is restarted.
@@ -73,7 +73,7 @@ card:
         }
 filter:
   include:
-    - entity_id: sensor.ais_ship_*
+    - entity_id: sensor.baiamonte_ais_ship_*
       options:
         label_mode: icon
 ```
@@ -102,7 +102,7 @@ ___
 
 ## 📊 Entity Attributes & Telemetry
 
-The add-on creates and updates a single entity by default: `sensor.last_passing_ship`. The main state of this sensor will always be the name of the most recently spotted ship. 
+The app creates and updates `sensor.baiamonte_ais_last_passing_ship` by default. Its state is the name of the most recently spotted ship.
 
 Attached to this entity is a set of attributes extracted directly from the vessel's radio transponder. Where you enable `Multi-ship Tracking`, all ship entities are created with the attributes below. 
 
@@ -168,7 +168,7 @@ attributes:
 * **`Bounding Box - Top-Right Longitude (East)`**: Right edge of the bounding box and the third number from bboxfinder co-ordinates.
 * **`Bounding Box - Top-Right Latitude (North)`**: Top edge of the bounding box and the fourth number from bboxfinder co-ordinates.
 * **`Include Class B Vessels`**: Class B vessels (typically leisure craft) will be shown
-* **`Multi-Ship Tracking`**: Creates new entities for all ships that enter the bounding box in the format `sensor.ais_ship_{mmsi}`
+* **`Multi-Ship Tracking`**: Creates new entities for all ships that enter the bounding box in the format `sensor.baiamonte_ais_ship_{mmsi}`
 * **`MMSI Filter`**: Only shows ships with the MMSI(s) you specify. Separate each MMSI with a comma.
 * **`Ship Entity Timeout (Minutes)`**: How long before ships are cleared from the map after receiving no updates.
 * **`Clear Ship Entities on Startup`**: Clears all ship entities from the map when add-on starts.
@@ -186,7 +186,7 @@ Please keep in mind that AISStream is a **free, community-supported service**.
 * **Ghost Ships:** You may sometimes see `Unknown Ship Name`. This usually happens because a smaller boat (like a yacht or fishing vessel) has not programmed its name into its radio transponder, or because the API simply hasn't caught the broadcasted name yet. This is normal behaviour.
 * **Outages:** Sometimes the add-on appears to be connected in the logs, but no ships are being reported. You can sometimes check for ongoing API service issues here (it isnt a live status page and relies on users reporting issues): [AISStream Issues](https://github.com/aisstream/issues/issues).
 
-The add-on does show connectivity state via entity `sensor.ais_connection_status` and if in doubt, check the logs. 
+The app exposes connectivity through `sensor.baiamonte_ais_connection_status`; if in doubt, check the app logs.
 
 By default, the add-on supports monitoring an uptime API endpoint (e.g. to track the status of the AIS uptime service) and showing its reported status directly on the connection status entity. 
 
@@ -224,7 +224,7 @@ alias: Ship Alerts
 description: Triggers a notification whenever a unique MMSI enters the tracking zone.
 triggers:
   - entity_id:
-      - sensor.last_passing_ship
+      - sensor.baiamonte_ais_last_passing_ship
     trigger: state
     attribute: mmsi # <--- Only fires when the unique MMSI changes
 conditions:
@@ -275,4 +275,4 @@ The `vessel_type` attribute comes from AISStream as a number, which is mapped to
 ---
 ## 🐛 Issues or feedback?
 
-Please raise a Github issue.  
+Please raise a Github issue.

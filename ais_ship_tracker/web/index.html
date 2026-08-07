@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#081426">
+  <title>Baiamonte AIS</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true"><defs>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 18.5 5.5M12 3v2M21 12h-2M12 21v-2M3 12h2"/><circle cx="16.5" cy="8" r="1"/></symbol>
+    <symbol id="i-ship" viewBox="0 0 24 24"><path d="M4 18 2.5 12l4.5-1.5V6h3V3h4v3h3v4.5l4.5 1.5L20 18"/><path d="M3 20c2 1.3 4 .7 5.5-.5 1.8 1.4 5.2 1.4 7 0 1.5 1.2 3.5 1.8 5.5.5"/></symbol>
+    <symbol id="i-zone" viewBox="0 0 24 24"><path d="M4 5h16v14H4Z"/><path d="m4 15 5-5 4 3 3-2 4 3M9 5v5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.2 9A7 7 0 0 0 6.4 6.4L4 9M5.8 15A7 7 0 0 0 17.6 17.6L20 15"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h1"/></symbol>
+  </defs></svg>
+
+  <div class="shell">
+    <aside>
+      <div class="brand"><img src="brand-icon.png" alt=""><span><strong>Baiamonte AIS</strong><small>Estate maritime watch</small></span></div>
+      <nav>
+        <button class="nav active" data-page="overview"><svg><use href="#i-grid"/></svg>Overview</button>
+        <button class="nav" data-page="fleet"><svg><use href="#i-ship"/></svg>Live vessels <em id="nav-count">0</em></button>
+        <button class="nav" data-page="area"><svg><use href="#i-zone"/></svg>Watch area</button>
+      </nav>
+      <div class="estate-note"><i id="side-light"></i><span><b>Estate receiver</b><small id="side-status">Connecting to AISStream</small></span></div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">TENUTA BAIAMONTE · MARITIME OPERATIONS</p><h1 id="page-title">Vessel overview</h1></div>
+        <div class="header-tools"><span id="last-check">Waiting for first check</span><button id="refresh"><svg><use href="#i-refresh"/></svg>Refresh</button></div>
+      </header>
+
+      <section class="page active" id="overview">
+        <div class="hero">
+          <div class="hero-copy"><span>BAIAMONTE COASTAL WATCH · LIVE AIS</span><h2>A calm view of every vessel in range.</h2><p>Live radio positions, route context, and estate alerts brought together in one maritime operations view.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Connecting to the maritime feed…</b></div></div>
+          <div class="hero-emblem"><img src="brand-icon.png" alt="Baiamonte AIS vessel emblem"></div>
+        </div>
+
+        <div class="summary-strip">
+          <div><small>RECEIVER STATUS</small><b id="receiver-status">Connecting</b></div>
+          <div><small>VESSELS IN VIEW</small><b id="vessel-count">0 active</b></div>
+          <div><small>WATCH MODE</small><b id="watch-mode">All vessels</b></div>
+          <div><small>MAP ENTITIES</small><b id="map-mode">Checking</b></div>
+        </div>
+
+        <div class="overview-grid">
+          <article class="panel map-panel">
+            <div class="panel-head"><div><p>LIVE WATCH AREA</p><h3>Vessel positions</h3></div><span class="live-pill"><i></i>LIVE</span></div>
+            <div class="sea-map" id="sea-map"><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div></div>
+            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Positions update automatically</span></div>
+          </article>
+
+          <div class="status-column">
+            <article class="metric-card cyan"><span><svg><use href="#i-radar"/></svg></span><div><small>AISSTREAM LINK</small><h3 id="link-card">Connecting</h3><p id="link-detail">Opening the receiver feed</p></div></article>
+            <article class="metric-card violet"><span><svg><use href="#i-ship"/></svg></span><div><small>LATEST CONTACT</small><h3 id="latest-name">No contacts yet</h3><p id="latest-detail">The watch area is clear</p></div></article>
+            <article class="metric-card amber"><span><svg><use href="#i-route"/></svg></span><div><small>WATCHLIST</small><h3 id="watchlist-count">Open watch</h3><p>Priority MMSI filtering</p></div></article>
+          </div>
+        </div>
+
+        <div class="lower-grid">
+          <article class="panel"><div class="panel-head"><div><p>ACTIVE CONTACTS</p><h3>Most recent vessels</h3></div><button class="text-button" data-go="fleet">View fleet →</button></div><div id="recent-vessels" class="recent-list"></div></article>
+          <article class="panel"><div class="panel-head"><div><p>OPERATIONS JOURNAL</p><h3>Recent AIS activity</h3></div><span class="route-icon"><svg><use href="#i-route"/></svg></span></div><div id="events" class="event-list"></div></article>
+        </div>
+      </section>
+
+      <section class="page" id="fleet">
+        <div class="section-head"><div><p>LIVE VESSEL REGISTRY</p><h2>Vessels in the watch area</h2><span>Position, speed, destination, and navigation status from the latest broadcasts.</span></div><span class="badge" id="fleet-badge">0 active</span></div>
+        <div id="fleet-grid" class="fleet-grid"></div>
+      </section>
+
+      <section class="page" id="area">
+        <div class="section-head"><div><p>ESTATE MARITIME PERIMETER</p><h2>AIS watch area</h2><span>The configured AISStream bounding box and tracking behavior.</span></div><span class="badge neutral">Configuration</span></div>
+        <div class="area-grid">
+          <article class="panel coordinate-card"><p>BOUNDING BOX</p><h3>Monitored waters</h3><div class="coordinate-grid"><div><small>NORTH</small><b id="north">—</b></div><div><small>WEST</small><b id="west">—</b></div><div><small>EAST</small><b id="east">—</b></div><div><small>SOUTH</small><b id="south">—</b></div></div></article>
+          <article class="panel settings-card"><p>TRACKING PROFILE</p><h3>Receiver behavior</h3><div class="setting-row"><span>Commercial Class A</span><b>Included</b></div><div class="setting-row"><span>Leisure Class B</span><b id="class-b">—</b></div><div class="setting-row"><span>Vessel entity timeout</span><b id="timeout">—</b></div><div class="setting-row"><span>Dedicated map entities</span><b id="entities">—</b></div></article>
+        </div>
+        <article class="panel integration-card"><div class="panel-head"><div><p>HOME ASSISTANT INTEGRATION</p><h3>Baiamonte entities</h3></div><span class="route-icon"><svg><use href="#i-route"/></svg></span></div><div class="entity-route"><span><small>CONNECTION</small><code>sensor.baiamonte_ais_connection_status</code></span><i>→</i><span><small>LATEST CONTACT</small><code>sensor.baiamonte_ais_last_passing_ship</code></span><i>→</i><span><small>LIVE FLEET</small><code>sensor.baiamonte_ais_ship_*</code></span></div></article>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

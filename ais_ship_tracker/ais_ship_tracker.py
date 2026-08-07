@@ -3,6 +3,10 @@ import time
 import websocket
 import random
 import os
+import mimetypes
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 # Set default socket timeout for websocket-client handshake to prevent hanging connections
 websocket.setdefaulttimeout(15)
@@ -13,8 +17,8 @@ import sys
 import threading
 from datetime import datetime, timedelta
 
-print("🚀 Starting AIS Ship Tracker...", flush=True)
-VERSION = "1.4.6"
+print("🚀 Starting Baiamonte AIS...", flush=True)
+VERSION = "2.0.0"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -28,7 +32,8 @@ watchlist_mmsis = []
 
 try:
     # --- Load Configuration from Home Assistant UI ---
-    with open('/data/options.json') as f:
+    options_path = os.environ.get("BAIAMONTE_AIS_OPTIONS", "/data/options.json")
+    with open(options_path) as f:
         config = json.load(f)
 
     def get_safe_int(key, default):
@@ -123,7 +128,8 @@ except Exception as e:
 
 # Home Assistant API Configuration
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
-API_URL = "http://supervisor/core/api/states/sensor.last_passing_ship_dev" if DEV_MODE else "http://supervisor/core/api/states/sensor.last_passing_ship"
+ENTITY_PREFIX = "baiamonte_ais"
+API_URL = f"http://supervisor/core/api/states/sensor.{ENTITY_PREFIX}_last_passing_ship_dev" if DEV_MODE else f"http://supervisor/core/api/states/sensor.{ENTITY_PREFIX}_last_passing_ship"
 
 # Dictionaries to track ships and rate limits
 seen_ships = {}
@@ -133,6 +139,101 @@ last_purge_time = datetime.now()
 last_known_error = ""
 current_conn_status = "Disconnected"
 shutdown_in_progress = False
+
+# Read-only state used by the Home Assistant ingress dashboard.
+dashboard_vessels = {}
+dashboard_events = deque(maxlen=40)
+dashboard_lock = threading.RLock()
+DASHBOARD_ROOT = Path(__file__).resolve().parent / "web"
+
+def remember_dashboard_vessel(ship_data):
+    """Keep the latest safe telemetry for the ingress overview."""
+    mmsi = str(ship_data.get("mmsi", ""))
+    if not mmsi:
+        return
+    with dashboard_lock:
+        previous = dashboard_vessels.get(mmsi, {})
+        merged = {**previous, **ship_data, **static_ship_data.get(ship_data.get("mmsi"), {})}
+        merged["mmsi"] = mmsi
+        merged["last_seen"] = datetime.now().isoformat(timespec="seconds")
+        dashboard_vessels[mmsi] = merged
+        if not previous:
+            dashboard_events.appendleft({
+                "kind": "arrival",
+                "message": f"{merged.get('name', 'Unknown vessel')} entered the estate watch area",
+                "time": merged["last_seen"],
+            })
+
+def dashboard_snapshot():
+    with dashboard_lock:
+        vessels = sorted(
+            (dict(vessel) for vessel in dashboard_vessels.values()),
+            key=lambda vessel: vessel.get("last_seen", ""),
+            reverse=True,
+        )
+        return {
+            "brand": "Baiamonte AIS",
+            "version": VERSION,
+            "connection": current_conn_status,
+            "service_status": api_monitor_state.get("state", "Unknown"),
+            "last_error": last_known_error,
+            "vessels": vessels,
+            "events": list(dashboard_events),
+            "config": {
+                "bounds": {
+                    "south": lat_south, "west": lon_west,
+                    "north": lat_north, "east": lon_east,
+                },
+                "map_entities": ENABLE_MAP_ENTITIES,
+                "include_class_b": INCLUDE_CLASS_B,
+                "timeout_minutes": MAP_TIMEOUT_MINUTES,
+                "watchlist_count": len(watchlist_mmsis),
+            },
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        request_path = self.path.split("?", 1)[0]
+        if request_path.rstrip("/") == "/api/status":
+            payload = json.dumps(dashboard_snapshot()).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        relative = request_path.lstrip("/") or "index.html"
+        target = (DASHBOARD_ROOT / relative).resolve()
+        if DASHBOARD_ROOT not in target.parents and target != DASHBOARD_ROOT:
+            self.send_error(403)
+            return
+        if not target.is_file():
+            target = DASHBOARD_ROOT / "index.html"
+        try:
+            payload = target.read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format, *args):
+        return
+
+def start_dashboard():
+    dashboard_host = os.environ.get("BAIAMONTE_AIS_HOST", "0.0.0.0")
+    dashboard_port = int(os.environ.get("BAIAMONTE_AIS_PORT", "8099"))
+    server = ThreadingHTTPServer((dashboard_host, dashboard_port), DashboardHandler)
+    threading.Thread(target=server.serve_forever, name="baiamonte-ais-dashboard", daemon=True).start()
+    log(f"🌊 Baiamonte AIS ingress dashboard ready on port {dashboard_port}")
 
 # Backoff variables to prevent AISStream API concurrency lockouts
 RECONNECT_DELAY = 10
@@ -205,7 +306,7 @@ def sync_state_on_startup():
             is_dev_entity = entity_id.endswith("_dev")
             
             # 1. Purge mismatched static entities
-            if entity_id.startswith("sensor.last_passing_ship") or entity_id.startswith("sensor.ais_connection_status"):
+            if entity_id.startswith(f"sensor.{ENTITY_PREFIX}_last_passing_ship") or entity_id.startswith(f"sensor.{ENTITY_PREFIX}_connection_status"):
                 if is_dev_entity != DEV_MODE:
                     purge_url = f"http://supervisor/core/api/states/{entity_id}"
                     payload = {"state": "unavailable", "attributes": {}}
@@ -218,10 +319,10 @@ def sync_state_on_startup():
                 continue
                 
             # Target dynamic map entities, but rigorously protect last_passing_ship
-            if entity_id.startswith("sensor.ais_ship_") and "last_passing_ship" not in entity_id:
+            if entity_id.startswith(f"sensor.{ENTITY_PREFIX}_ship_") and "last_passing_ship" not in entity_id:
                 attrs = state.get("attributes", {})
                 vessel_class = attrs.get("vessel_class", "Unknown")
-                mmsi = str(attrs.get("mmsi")) if attrs.get("mmsi") else entity_id.replace("sensor.ais_ship_", "").replace("_dev", "")
+                mmsi = str(attrs.get("mmsi")) if attrs.get("mmsi") else entity_id.replace(f"sensor.{ENTITY_PREFIX}_ship_", "").replace("_dev", "")
                 spotted_time = attrs.get("spotted_time")
                 
                 if not spotted_time:
@@ -282,7 +383,7 @@ def update_map_entity(ship_data, remove=False):
     if not mmsi:
         return
 
-    entity_id = f"sensor.ais_ship_{mmsi}_dev" if DEV_MODE else f"sensor.ais_ship_{mmsi}"
+    entity_id = f"sensor.{ENTITY_PREFIX}_ship_{mmsi}_dev" if DEV_MODE else f"sensor.{ENTITY_PREFIX}_ship_{mmsi}"
     api_url = f"http://supervisor/core/api/states/{entity_id}"
     
     headers = {
@@ -355,6 +456,8 @@ def purge_old_ships():
             del last_map_update[mmsi]
         if mmsi in static_ship_data:
             del static_ship_data[mmsi]
+        with dashboard_lock:
+            dashboard_vessels.pop(str(mmsi), None)
             
         # Strip entity from the map
         update_map_entity({"mmsi": mmsi}, remove=True)
@@ -375,7 +478,7 @@ def update_ha_entity(ship_data):
     payload = {
         "state": ship_data["name"],
         "attributes": {
-            "friendly_name": "Dev - Last Passing Ship" if DEV_MODE else "Last Passing Ship",
+            "friendly_name": "Baiamonte AIS · Last Passing Ship (Dev)" if DEV_MODE else "Baiamonte AIS · Last Passing Ship",
             "ship_name": ship_data["name"],
             "mmsi": str(ship_data["mmsi"]), 
             "spotted_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -394,7 +497,7 @@ def update_ha_entity(ship_data):
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(API_URL, data=data, headers=headers, method='POST')
         with urllib.request.urlopen(req, timeout=10) as response:
-            entity_id = "sensor.last_passing_ship_dev" if DEV_MODE else "sensor.last_passing_ship"
+            entity_id = f"sensor.{ENTITY_PREFIX}_last_passing_ship_dev" if DEV_MODE else f"sensor.{ENTITY_PREFIX}_last_passing_ship"
             log(f"   ↳ HA API: Updated last passing ship entity {entity_id} (State: {payload['state']})")
             
     except urllib.error.URLError as e:
@@ -417,7 +520,7 @@ def update_conn_status(status, new_error=None):
     if not SUPERVISOR_TOKEN:
         return
 
-    entity_id = "sensor.ais_connection_status_dev" if DEV_MODE else "sensor.ais_connection_status"
+    entity_id = f"sensor.{ENTITY_PREFIX}_connection_status_dev" if DEV_MODE else f"sensor.{ENTITY_PREFIX}_connection_status"
     api_url = f"http://supervisor/core/api/states/{entity_id}"
     
     headers = {
@@ -450,7 +553,7 @@ def update_conn_status(status, new_error=None):
             icon = "mdi:cloud-off-outline"
             
         attributes = {
-            "friendly_name": "AIS Ship Tracker Connection Status (Dev)" if DEV_MODE else "AIS Ship Tracker Connection Status",
+            "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
             "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "websocket_status": status,
             "websocket_error": sanitised_error,
@@ -470,7 +573,7 @@ def update_conn_status(status, new_error=None):
             icon = "mdi:cloud-off-outline"
             
         attributes = {
-            "friendly_name": "AIS Ship Tracker Connection Status (Dev)" if DEV_MODE else "AIS Ship Tracker Connection Status",
+            "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
             "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "error_message": sanitised_error,
             "icon": icon
@@ -688,6 +791,10 @@ def on_message(ws, message_json):
                 
                 if static_data:
                     static_ship_data[mmsi] = static_data
+                    with dashboard_lock:
+                        vessel = dashboard_vessels.get(str(mmsi))
+                        if vessel:
+                            vessel.update(static_data)
                     
             return
             
@@ -725,6 +832,7 @@ def on_message(ws, message_json):
                 "vessel_class": vessel_class,
                 "icon": ICON_MAP.get(nav_status_int, "mdi:ferry")
             }
+            remember_dashboard_vessel(ship_data)
             
             # 1. Logic for 'Last Passing Ship' (Triggers only on newly spotted ships)
             if mmsi not in seen_ships:
@@ -856,6 +964,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
 
+    start_dashboard()
     sync_state_on_startup()
         
     try:

@@ -1,17 +1,27 @@
-name: "AIS Ship Tracker"
-version: "1.4.6"
-slug: "ais_ship_tracker"
-description: "Tracks passing ships via AISStream"
-url: "https://github.com/buttermilkgreen/ais_ship_tracker" 
+name: "Baiamonte AIS"
+version: "2.0.0"
+slug: "baiamonte_ais"
+description: "Estate maritime watch and live AIS vessel operations"
+url: "https://github.com/drahamin/home-assistant-ais"
 arch:
   - "aarch64"
   - "amd64"
   - "armv7"
-startup: "services"
+image: "ghcr.io/drahamin/home-assistant-ais"
+startup: "application"
 boot: "auto"
 icon: "icon.png"
 init: false
 homeassistant_api: true
+ingress: true
+ingress_port: 8099
+ports:
+  8099/tcp: null
+ports_description:
+  8099/tcp: "Optional direct web access port (Home Assistant ingress does not require it)"
+panel_icon: "mdi:radar"
+panel_title: "AIS"
+panel_admin: true
 options:
   api_key: ""
   longitude_west: 1.20
