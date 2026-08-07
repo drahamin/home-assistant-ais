@@ -25,6 +25,10 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 
 Start the app and open **AIS** in the Home Assistant sidebar. A green AISHub state confirms downloads. The reciprocal feed card confirms receiver traffic and sharing.
 
+## TV map
+
+For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8099/tv`. This Baiamonte-styled view includes the live map plus a side list with boat flags and operating details, and refreshes automatically. It can also be used as the URL for a Home Assistant webpage dashboard card.
+
 ## Troubleshooting
 
 - **Setup required:** add the AISHub username.

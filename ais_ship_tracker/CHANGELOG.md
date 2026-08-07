@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+* Added a full-screen TV feed at `/tv` with a large geographic map and Baiamonte-styled live vessel list.
+* Exposed the dashboard on host port 8099 for TV and kiosk access.
+* Added automatic map fitting, vessel headings, vessel labels, maritime flags, vessel details, and ten-second display refreshes.
+
 ## 2.1.0
 
 * Replaced AISStream with the reciprocal AISHub contributor network.
