@@ -27,7 +27,7 @@ Start the app and open **AIS** in the Home Assistant sidebar. A green AISHub sta
 
 ## TV map
 
-For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8099/tv`. This Baiamonte-styled view includes the live map plus a side list with boat flags and operating details, and refreshes automatically. It can also be used as the URL for a Home Assistant webpage dashboard card.
+For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8999/tv`. This Baiamonte-styled view includes the live map plus a distance-ranked side list of the 10 closest positioned boats, and refreshes automatically. Internal port `8099` remains dedicated to Home Assistant ingress.
 
 Turn on **TV Live Weather Radar** to add current precipitation radar from RainViewer. Adjust **TV Weather Opacity** between 10 and 100 if the radar is too faint or covers too much of the base map. Radar availability is best-effort; boats and the base map continue working if the weather service is temporarily unavailable.
 
