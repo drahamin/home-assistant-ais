@@ -1,24 +1,21 @@
 import json
 import time
-import websocket
-import random
 import os
 import mimetypes
+import socket
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-
-# Set default socket timeout for websocket-client handshake to prevent hanging connections
-websocket.setdefaulttimeout(15)
 import urllib.request
 import urllib.error
+import urllib.parse
 import signal
 import sys
 import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -42,7 +39,15 @@ try:
         try: return int(val)
         except: return default
 
-    AIS_API_KEY = config.get('api_key', '')
+    # AISHub is reciprocal: contributors send raw NMEA data and receive access
+    # to the aggregated vessel API.
+    AISHUB_USERNAME = str(config.get('aishub_username', '')).strip()
+    AISHUB_API_URL = str(config.get('aishub_api_url', 'https://data.aishub.net/ws.php')).strip()
+    AISHUB_POLL_INTERVAL = max(60, get_safe_int('aishub_poll_interval', 60))
+    AISHUB_FEED_HOST = str(config.get('aishub_feed_host', '')).strip()
+    AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
+    RECEIVER_UDP_PORT = 10110
+    RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
     lat_south = float(config.get('latitude_south', 50.90))
     lon_west = float(config.get('longitude_west', 1.20))
     lat_north = float(config.get('latitude_north', 51.20))
@@ -64,22 +69,6 @@ try:
     class_b_val = config.get('include_class_b', True)
     INCLUDE_CLASS_B = str(class_b_val).lower() in ['true', '1', 't', 'y', 'yes'] if class_b_val is not None else True
 
-    # Version 1.5.0 Additions - API Uptime Monitoring
-    api_monitor_val = config.get('enable_api_monitoring', True)
-    ENABLE_API_MONITORING = str(api_monitor_val).lower() in ['true', '1', 't', 'y', 'yes'] if api_monitor_val is not None else True
-    default_monitor_url = 'http://192.168.4.138/api/v1/status?simple=true' if DEV_MODE else 'https://aisuptime.buttermilkgreen.fyi/api/v1/status?simple=true'
-    API_MONITORING_URL = config.get('api_monitoring_url', default_monitor_url)
-    API_MONITORING_INTERVAL = get_safe_int('api_monitoring_interval', 60)
-    # Clamp interval to minimum 10 seconds to avoid spamming the endpoint
-    if API_MONITORING_INTERVAL < 10:
-        API_MONITORING_INTERVAL = 10
-
-    WEBSOCKET_URL = "wss://stream.aisstream.io/v0/stream"
-    if DEV_MODE:
-        custom_ws_url = config.get('websocket_url', '')
-        if custom_ws_url:
-            WEBSOCKET_URL = custom_ws_url
-
     vessel_watchlist_raw = config.get('vessel_watchlist', '')
     if vessel_watchlist_raw:
         for item in vessel_watchlist_raw.split(','):
@@ -100,32 +89,6 @@ except Exception as e:
     import sys
     sys.exit(1)
 
-import uuid
-# --- Load or Generate Persistent UUID ---
-UUID_FILE_PATH = "/data/tracker_uuid.txt"
-LOCAL_UUID_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker_uuid.txt")
-try:
-    env_uuid = os.environ.get("TRACKER_UUID")
-    if env_uuid and env_uuid.strip():
-        TRACKER_UUID = env_uuid.strip()
-    elif os.path.exists(LOCAL_UUID_FILE_PATH):
-        with open(LOCAL_UUID_FILE_PATH, "r", encoding="utf-8") as f:
-            TRACKER_UUID = f.read().strip()
-        if not TRACKER_UUID:
-            raise ValueError("Local UUID file is empty")
-    elif os.path.exists(UUID_FILE_PATH):
-        with open(UUID_FILE_PATH, "r", encoding="utf-8") as f:
-            TRACKER_UUID = f.read().strip()
-    else:
-        TRACKER_UUID = str(uuid.uuid4())
-        with open(UUID_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(TRACKER_UUID)
-    log(f"Tracker UUID initialized: {TRACKER_UUID[:8]}...")
-except Exception as e:
-    # Fallback to a temporary UUID if file system fails or if local file was empty
-    TRACKER_UUID = str(uuid.uuid4())
-    log(f"⚠️ Failed to manage persistent UUID file (using ephemeral ID): {e}")
-
 # Home Assistant API Configuration
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 ENTITY_PREFIX = "baiamonte_ais"
@@ -145,6 +108,25 @@ dashboard_vessels = {}
 dashboard_events = deque(maxlen=40)
 dashboard_lock = threading.RLock()
 DASHBOARD_ROOT = Path(__file__).resolve().parent / "web"
+aishub_state = {
+    "state": "Starting",
+    "last_checked": None,
+    "last_success": None,
+    "records": 0,
+    "error": None,
+}
+feed_state = {
+    "state": "Waiting for receiver",
+    "received": 0,
+    "forwarded": 0,
+    "last_received": None,
+    "last_forwarded": None,
+    "receiver_name": RECEIVER_NAME,
+    "receiver_address": None,
+    "datagrams": 0,
+    "ignored_lines": 0,
+    "error": None,
+}
 
 def remember_dashboard_vessel(ship_data):
     """Keep the latest safe telemetry for the ingress overview."""
@@ -175,7 +157,7 @@ def dashboard_snapshot():
             "brand": "Baiamonte AIS",
             "version": VERSION,
             "connection": current_conn_status,
-            "service_status": api_monitor_state.get("state", "Unknown"),
+            "service_status": aishub_state.get("state", "Unknown"),
             "last_error": last_known_error,
             "vessels": vessels,
             "events": list(dashboard_events),
@@ -188,7 +170,12 @@ def dashboard_snapshot():
                 "include_class_b": INCLUDE_CLASS_B,
                 "timeout_minutes": MAP_TIMEOUT_MINUTES,
                 "watchlist_count": len(watchlist_mmsis),
+                "source": "AISHub",
+                "poll_interval": AISHUB_POLL_INTERVAL,
+                "receiver_port": RECEIVER_UDP_PORT,
+                "sharing_configured": bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT),
             },
+            "feed": dict(feed_state),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
         }
 
@@ -234,11 +221,6 @@ def start_dashboard():
     server = ThreadingHTTPServer((dashboard_host, dashboard_port), DashboardHandler)
     threading.Thread(target=server.serve_forever, name="baiamonte-ais-dashboard", daemon=True).start()
     log(f"🌊 Baiamonte AIS ingress dashboard ready on port {dashboard_port}")
-
-# Backoff variables to prevent AISStream API concurrency lockouts
-RECONNECT_DELAY = 10
-MAX_RECONNECT_DELAY = 125
-reconnect_attempts = 0
 
 # Map of AIS Navigational Status integers to human-readable strings
 NAV_STATUS_MAP = {
@@ -503,14 +485,6 @@ def update_ha_entity(ship_data):
     except urllib.error.URLError as e:
         log(f"Failed to update Home Assistant API: {e}")
 
-# Background Monitoring State
-api_monitor_state = {
-    "state": "Unknown",
-    "lastChecked": None,
-    "lastMessageReceived": None,
-    "error": None
-}
-
 def update_conn_status(status, new_error=None):
     global last_known_error
     global current_conn_status
@@ -533,51 +507,32 @@ def update_conn_status(status, new_error=None):
 
     sanitised_error = ""
     if last_known_error:
-        # Only attempt to redact if the API key actually has characters in it
-        if AIS_API_KEY:
-            sanitised_error = str(last_known_error).replace(AIS_API_KEY, "[REDACTED]")
+        if AISHUB_USERNAME:
+            sanitised_error = str(last_known_error).replace(AISHUB_USERNAME, "[REDACTED]")
         else:
             sanitised_error = str(last_known_error)
 
-    if ENABLE_API_MONITORING:
-        # Set state to what was fetched from the API
-        state_value = api_monitor_state["state"]
-        
-        # Use appropriate icon depending on the API state
-        state_lower = str(state_value).lower()
-        if "up" in state_lower:
-            icon = "mdi:api"
-        elif "down" in state_lower or "silent" in state_lower or "auth" in state_lower or "error" in state_lower or "unavailable" in state_lower:
-            icon = "mdi:api-off"
-        else:
-            icon = "mdi:cloud-off-outline"
-            
-        attributes = {
-            "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
-            "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "websocket_status": status,
-            "websocket_error": sanitised_error,
-            "monitored_url": API_MONITORING_URL,
-            "lastChecked": api_monitor_state["lastChecked"],
-            "lastMessageReceived": api_monitor_state["lastMessageReceived"],
-            "api_error": api_monitor_state["error"],
-            "icon": icon
-        }
+    state_value = status
+    if status == "Connected":
+        icon = "mdi:api"
+    elif status in ["Connecting", "Polling"]:
+        icon = "mdi:sync"
     else:
-        state_value = status
-        if status == "Connected":
-            icon = "mdi:api"
-        elif status in ["Connecting", "Reconnecting"]:
-            icon = "mdi:api-off"
-        else:
-            icon = "mdi:cloud-off-outline"
-            
-        attributes = {
-            "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
-            "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "error_message": sanitised_error,
-            "icon": icon
-        }
+        icon = "mdi:cloud-off-outline"
+
+    attributes = {
+        "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
+        "provider": "AISHub",
+        "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "last_api_success": aishub_state["last_success"],
+        "vessels_received": aishub_state["records"],
+        "receiver_feed_status": feed_state["state"],
+        "receiver_messages_received": feed_state["received"],
+        "messages_shared": feed_state["forwarded"],
+        "last_receiver_message": feed_state["last_received"],
+        "error_message": sanitised_error,
+        "icon": icon,
+    }
 
     payload = {
         "state": state_value,
@@ -596,361 +551,254 @@ def update_conn_status(status, new_error=None):
 
     threading.Thread(target=send_status_update, daemon=True).start()
 
-# Periodic background thread for checking the external API
-def api_monitor_worker():
-    import threading
-    
-    def check_api():
-        while True:
-            if not ENABLE_API_MONITORING:
-                time.sleep(10)
-                continue
-                
-            # Build the anonymous telemetry payload
-            telemetry_payload = {
-                "uuid": TRACKER_UUID,
-                "version": VERSION,
-                "enable_map_entities": ENABLE_MAP_ENTITIES,
-                "include_class_b": INCLUDE_CLASS_B,
-                "clear_map_on_startup": CLEAR_MAP_ON_STARTUP,
-                "map_timeout_minutes": MAP_TIMEOUT_MINUTES,
-                "enable_api_monitoring": ENABLE_API_MONITORING,
-                "watchlist_count": len(watchlist_mmsis)
-            }
-            
-            try:
-                # 1. Attempt POST with Telemetry
-                data = json.dumps(telemetry_payload).encode('utf-8')
-                req = urllib.request.Request(
-                    API_MONITORING_URL, 
-                    data=data,
-                    headers={
-                        "User-Agent": "AIS-Ship-Tracker-Addon",
-                        "Content-Type": "application/json"
-                    },
-                    method="POST"
-                )
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    res_data = json.loads(response.read().decode('utf-8'))
-            except urllib.error.HTTPError as http_err:
-                # Helper to update HA sensor state on failure
-                api_monitor_state["state"] = "Status Unavailable"
-                api_monitor_state["error"] = str(http_err)
-                update_conn_status(current_conn_status)
-
-                # Fallback: If 405 Method Not Allowed or 400 Bad Request, retry as standard GET
-                if http_err.code in [400, 405]:
-                    log(f"Uptime URL does not support POST (Status {http_err.code}). Falling back to GET.")
-                    try:
-                        req = urllib.request.Request(API_MONITORING_URL, headers={"User-Agent": "AIS-Ship-Tracker-Addon"})
-                        with urllib.request.urlopen(req, timeout=10) as response:
-                            res_data = json.loads(response.read().decode('utf-8'))
-                    except Exception as fallback_err:
-                        log(f"Failed fallback GET check: {fallback_err}")
-                        api_monitor_state["error"] = str(fallback_err)
-                        update_conn_status(current_conn_status)
-                        time.sleep(API_MONITORING_INTERVAL)
-                        continue
-                else:
-                    log(f"API monitoring HTTP error: {http_err}")
-                    time.sleep(API_MONITORING_INTERVAL)
-                    continue
-            except Exception as e:
-                log(f"API monitoring connection error: {e}")
-                api_monitor_state["state"] = "Status Unavailable"
-                api_monitor_state["error"] = str(e)
-                update_conn_status(current_conn_status)
-                time.sleep(API_MONITORING_INTERVAL)
-                continue
-
-            # Dynamically use whatever "state" key returns without hardcoding values
-            api_state = res_data.get("state", "Unknown")
-            last_checked_str = res_data.get("lastChecked")
-            last_msg_str = res_data.get("lastMessageReceived")
-            
-            # Verify age of timestamps
-            stale = False
-            for ts_str in [last_checked_str, last_msg_str]:
-                if ts_str:
-                    try:
-                        # Clean up ISO formats ending with Z or offset
-                        clean_ts = ts_str.replace("Z", "+00:00")
-                        # Try parsing with datetime.fromisoformat
-                        ts_dt = datetime.fromisoformat(clean_ts)
-                        # Get current UTC time
-                        utc_now = datetime.now(tz=ts_dt.tzinfo)
-                        age_seconds = (utc_now - ts_dt).total_seconds()
-                        if age_seconds > (API_MONITORING_INTERVAL * 5):
-                            stale = True
-                    except Exception as parse_err:
-                        # Fallback if parsing fails - don't mark stale
-                        pass
-                        
-            if api_state.lower() == "down":
-                new_state = "AISStream Service Down"
-            elif stale:
-                new_state = "No Vessel Data"
-            else:
-                new_state = api_state
-                
-            if new_state != api_monitor_state["state"]:
-                log(f"API status changed from {api_monitor_state['state']} to {new_state}")
-            
-            api_monitor_state["state"] = new_state
-            api_monitor_state["lastChecked"] = last_checked_str
-            api_monitor_state["lastMessageReceived"] = last_msg_str
-            api_monitor_state["error"] = None
-            
-            # Trigger Home Assistant entity update with the latest statuses
-            update_conn_status(current_conn_status)
-            
-            time.sleep(API_MONITORING_INTERVAL)
-
-    t = threading.Thread(target=check_api, daemon=True)
-    t.start()
-
-# Start the background monitor thread on startup
-if ENABLE_API_MONITORING:
-    api_monitor_worker()
-
-
-def on_message(ws, message_json):
-    global last_known_error
+def clean_number(value, unavailable=None):
     try:
-        message = json.loads(message_json)
-        
-        # Intercept and handle AISStream API Logic Errors gracefully
-        if message.get("Type") == "Error":
-            extracted_message = message.get("Message", "Unknown Error")
-            log(f"⚠️ AISStream API Error: {extracted_message}")
-            update_conn_status("Reconnecting", new_error=extracted_message)
-            return
-            
-        msg_type = message.get("MessageType")
-        
-        if msg_type == "ShipStaticData":
-            mmsi = message.get("MetaData", {}).get("MMSI")
-            if mmsi:
-                static_msg = message.get("Message", {}).get("ShipStaticData", {})
-                dest = static_msg.get("Destination")
-                raw_eta = static_msg.get("Eta")
-                
-                eta = None
-                if isinstance(raw_eta, dict):
-                    month = raw_eta.get("Month", 0)
-                    day = raw_eta.get("Day", 0)
-                    hour = raw_eta.get("Hour", 0)
-                    minute = raw_eta.get("Minute", 0)
-                    if month > 0 and day > 0:
-                        eta = f"{day:02d}/{month:02d} {hour:02d}:{minute:02d} UTC"
+        number = float(value)
+        if unavailable is not None and number == unavailable:
+            return None
+        return number
+    except (TypeError, ValueError):
+        return None
 
-                dim = static_msg.get("Dimension", {})
-                
-                ship_length = None
-                if dim:
-                    to_bow = dim.get("A")
-                    to_stern = dim.get("B")
-                    if to_bow is not None and to_stern is not None:
-                        ship_length = to_bow + to_stern
-                
-                if dest:
-                    dest = dest.strip()
-                    
-                raw_imo = static_msg.get("ImoNumber")
-                imo_number = str(raw_imo) if isinstance(raw_imo, int) and raw_imo > 0 else None
-                
-                raw_call_sign = static_msg.get("CallSign")
-                call_sign = None
-                if isinstance(raw_call_sign, str):
-                    stripped_cs = raw_call_sign.strip()
-                    if stripped_cs and stripped_cs.isalnum():
-                        call_sign = stripped_cs
-                        
-                raw_type = static_msg.get("Type")
-                vessel_type = get_vessel_type_string(raw_type)
-                
-                is_new = mmsi not in static_ship_data
-                
-                static_data = {}
-                if dest:
-                    static_data["destination"] = dest
-                if eta:
-                    static_data["eta"] = eta
-                if ship_length is not None:
-                    static_data["ship_length"] = ship_length
-                if imo_number is not None:
-                    static_data["imo_number"] = imo_number
-                if call_sign is not None:
-                    static_data["call_sign"] = call_sign
-                if vessel_type is not None:
-                    static_data["vessel_type"] = vessel_type
-                    
-                if is_new and static_data:
-                    ship_len_str = f"{ship_length}m" if ship_length is not None else "Unknown"
-                    log(f"📋 Added new static data for MMSI {mmsi} (Dest: {dest}, ETA: {eta}, Length: {ship_len_str}, Type: {vessel_type})")
-                
-                if static_data:
-                    static_ship_data[mmsi] = static_data
-                    with dashboard_lock:
-                        vessel = dashboard_vessels.get(str(mmsi))
-                        if vessel:
-                            vessel.update(static_data)
-                    
-            return
-            
-        # Determine vessel class based on message type
-        if msg_type == "PositionReport":
-            vessel_class = "Class A"
-        elif msg_type in ["StandardClassBPositionReport", "ExtendedClassBPositionReport"]:
-            vessel_class = "Class B"
-        else:
-            vessel_class = "Unknown"
-        
-        if msg_type in ["PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport"]:
-            # Clear the sticky error upon receiving valid data
-            if last_known_error != "":
-                last_known_error = ""
-                update_conn_status("Connected")
 
-            mmsi = message["MetaData"]["MMSI"]
-            name = message["MetaData"]["ShipName"].strip() or "Unknown Ship Name"
-            
-            # Extract additional telemetry data dynamically based on the specific message type
-            pos_report = message.get("Message", {}).get(msg_type, {})
-            nav_status_int = pos_report.get("NavigationalStatus")
-            
-            # Build comprehensive ship data dictionary with unified defaults
-            ship_data = {
-                "name": name,
-                "mmsi": mmsi,
-                "latitude": pos_report.get("Latitude"),
-                "longitude": pos_report.get("Longitude"),
-                "sog": pos_report.get("Sog"),
-                "cog": pos_report.get("Cog"),
-                "heading": pos_report.get("TrueHeading"),
-                "nav_status_string": NAV_STATUS_MAP.get(nav_status_int, "Not defined"),
-                "vessel_class": vessel_class,
-                "icon": ICON_MAP.get(nav_status_int, "mdi:ferry")
-            }
-            remember_dashboard_vessel(ship_data)
-            
-            # 1. Logic for 'Last Passing Ship' (Triggers only on newly spotted ships)
-            if mmsi not in seen_ships:
-                log(f"🚢 NEW SHIP: {name} ({vessel_class} | MMSI: {mmsi})")
-                log(f"   ↳ Telemetry -> Lat: {ship_data['latitude']}, Lon: {ship_data['longitude']}, "
-                    f"Speed: {ship_data['sog']}kn, Course: {ship_data['cog']}°, "
-                    f"Heading: {ship_data['heading']}°, Status: {ship_data['nav_status_string']}")
-                update_ha_entity(ship_data)
-            
-            # Update last seen timestamp for memory persistence
-            now = datetime.now()
-            seen_ships[mmsi] = now
-            
-            # 2. Logic for Dynamic Map Entities (Updates live as ship moves, with anti-spam rate limiting)
-            last_updated = last_map_update.get(mmsi)
-            if last_updated is None or (now - last_updated).total_seconds() >= 60:
-                update_map_entity(ship_data)
-                last_map_update[mmsi] = now
-                
-                # If it's not a brand new ship, log the 60-second update so we can verify it's working
-                if last_updated is not None:
-                    log(f"🗺️ Ship Updated: {name} ({vessel_class} | MMSI: {mmsi}) | Lat: {ship_data.get('latitude')}, Lon: {ship_data.get('longitude')}")
-                
-    except json.JSONDecodeError as e:
-        log(f"JSON Decode Error: Received malformed data from AISStream - {e}")
-    except KeyError as e:
-        log(f"Key Error: Missing expected data key in payload - {e}")
-    except Exception as e:
-        log(f"Unexpected error parsing data: {e}")
-
-def on_error(ws, error):
-    log(f"WebSocket Error: {error}")
-    update_conn_status("Disconnected", new_error=str(error))
-
-def on_close(ws, close_status_code, close_msg):
-    if shutdown_in_progress:
-        log("❌ Connection closed (Shutdown in progress).")
+def process_aishub_record(record):
+    """Convert one human-readable AISHub vessel record into HA telemetry."""
+    mmsi = str(record.get("MMSI", "")).strip()
+    if len(mmsi) != 9 or not mmsi.isdigit():
+        return
+    if watchlist_mmsis and mmsi not in watchlist_mmsis:
         return
 
-    log("❌ Connection closed by server. Will attempt to reconnect...")
-    
-    # Add a helpful hint if the server drops us instantly without a word (usually an API key issue)
-    if close_status_code is None and close_msg is None:
-        error_reason = "Closed by server silently (Code: None). Check your API Key or go to https://aisuptime.buttermilkgreen.fyi/ for service status."
-    else:
-        safe_msg = close_msg if close_msg is not None else "No message provided"
-        error_reason = f"Closed by server. Code: {close_status_code} - Msg: {safe_msg}"
-        
-    log(f"⚠️ Disconnect Reason: {error_reason}")
-    update_conn_status("Disconnected", new_error=error_reason)
+    nav_status = record.get("NAVSTAT")
+    try:
+        nav_status = int(nav_status)
+    except (TypeError, ValueError):
+        nav_status = 15
 
-def on_pong(ws, message):
-    global last_purge_time
-    now = datetime.now()
-    if (now - last_purge_time).total_seconds() >= 60:
-        purge_old_ships()
-        update_conn_status(current_conn_status)
-        last_purge_time = now
+    name = str(record.get("NAME") or "Unknown Ship Name").strip()
+    vessel_type_number = record.get("TYPE")
+    try:
+        vessel_type_number = int(vessel_type_number)
+    except (TypeError, ValueError):
+        vessel_type_number = 0
 
-def on_open(ws):
-    global reconnect_attempts
-    reconnect_attempts = 0
-    log("🟢 Connected! Monitoring the water...")
-    update_conn_status("Connected")
-    
-    filter_types = ["PositionReport", "ShipStaticData"]
-    if INCLUDE_CLASS_B:
-        filter_types.extend(["StandardClassBPositionReport", "ExtendedClassBPositionReport"])
-        
-    subscription_message = {
-        "APIKey": AIS_API_KEY,
-        "BoundingBoxes": BOUNDING_BOX,
-        "FilterMessageTypes": filter_types
+    ship_data = {
+        "name": name,
+        "mmsi": mmsi,
+        "latitude": clean_number(record.get("LATITUDE")),
+        "longitude": clean_number(record.get("LONGITUDE")),
+        "sog": clean_number(record.get("SOG"), 102.4),
+        "cog": clean_number(record.get("COG"), 360.0),
+        "heading": clean_number(record.get("HEADING"), 511),
+        "nav_status_string": NAV_STATUS_MAP.get(nav_status, "Not defined"),
+        "vessel_class": "AISHub network",
+        "icon": ICON_MAP.get(nav_status, "mdi:ferry"),
     }
-    
+
+    dimensions = []
+    for key in ("A", "B"):
+        value = clean_number(record.get(key))
+        if value is not None:
+            dimensions.append(value)
+    static_data = {
+        "destination": str(record.get("DEST") or "").strip() or None,
+        "eta": str(record.get("ETA") or "").strip() or None,
+        "ship_length": sum(dimensions) if dimensions else None,
+        "imo_number": str(record.get("IMO")) if record.get("IMO") not in (None, "", 0, "0") else None,
+        "call_sign": str(record.get("CALLSIGN") or "").strip() or None,
+        "vessel_type": get_vessel_type_string(vessel_type_number),
+    }
+    static_ship_data[mmsi] = {key: value for key, value in static_data.items() if value is not None}
+    remember_dashboard_vessel(ship_data)
+
+    now = datetime.now()
+    is_new = mmsi not in seen_ships
+    if is_new:
+        log(f"🚢 NEW SHIP: {name} (AISHub | MMSI: {mmsi})")
+        update_ha_entity(ship_data)
+    seen_ships[mmsi] = now
+
+    last_updated = last_map_update.get(mmsi)
+    if last_updated is None or (now - last_updated).total_seconds() >= 60:
+        update_map_entity(ship_data)
+        last_map_update[mmsi] = now
+
+
+def parse_aishub_payload(payload):
+    if not isinstance(payload, list) or len(payload) < 2:
+        raise ValueError("Unexpected AISHub response format")
+    metadata, records = payload[0], payload[1]
+    if isinstance(metadata, dict) and metadata.get("ERROR") not in (False, "false", 0, "0", None):
+        raise ValueError(str(metadata.get("ERROR")))
+    if not isinstance(records, list):
+        raise ValueError("AISHub response did not include a vessel list")
+    return records
+
+
+def build_aishub_url():
+    params = {
+        "username": AISHUB_USERNAME,
+        "format": 1,
+        "output": "json",
+        "compress": 0,
+        "latmin": lat_south,
+        "latmax": lat_north,
+        "lonmin": lon_west,
+        "lonmax": lon_east,
+        "interval": MAP_TIMEOUT_MINUTES,
+    }
     if watchlist_mmsis:
-        subscription_message["FiltersShipMMSI"] = watchlist_mmsis
-        
-    ws.send(json.dumps(subscription_message))
+        params["mmsi"] = ",".join(watchlist_mmsis)
+    return f"{AISHUB_API_URL}?{urllib.parse.urlencode(params)}"
+
+
+def receiver_feed_worker():
+    """Receive raw local NMEA over UDP and forward it to the assigned AISHub port."""
+    receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    receiver.bind(("0.0.0.0", RECEIVER_UDP_PORT))
+    receiver.settimeout(2)
+    forwarder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    configured = bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT)
+    feed_state["state"] = "Waiting for receiver" if configured else "Receiver ready · AISHub destination needed"
+    log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' on UDP {RECEIVER_UDP_PORT}")
+    if configured:
+        log(f"🤝 AISHub sharing enabled to {AISHUB_FEED_HOST}:{AISHUB_FEED_PORT}")
+    else:
+        log("ℹ️ Add the AISHub feed host and assigned UDP port to begin sharing.")
+
+    last_source = None
+    last_summary = time.monotonic()
+    summary_received = 0
+    summary_forwarded = 0
+    summary_ignored = 0
+    last_hardware_message = None
+    offline_logged = False
+    while not shutdown_in_progress:
+        try:
+            payload, source = receiver.recvfrom(65535)
+        except socket.timeout:
+            if last_hardware_message is not None and time.monotonic() - last_hardware_message >= 120:
+                feed_state["state"] = "Receiver offline"
+                if not offline_logged:
+                    log(f"🔴 AIS hardware offline: '{RECEIVER_NAME}' has sent no NMEA data for 120 seconds")
+                    offline_logged = True
+            continue
+        except OSError as exc:
+            feed_state["state"] = "Receiver error"
+            feed_state["error"] = str(exc)
+            log(f"Local receiver UDP error: {exc}")
+            time.sleep(5)
+            continue
+
+        feed_state["datagrams"] += 1
+        last_hardware_message = time.monotonic()
+        if offline_logged:
+            log(f"🟢 AIS hardware restored: '{RECEIVER_NAME}' is sending NMEA data again")
+            offline_logged = False
+        source_label = f"{source[0]}:{source[1]}"
+        feed_state["receiver_address"] = source_label
+        if source_label != last_source:
+            if last_source is None:
+                log(f"🟢 AIS hardware online: '{RECEIVER_NAME}' detected at {source_label}")
+            else:
+                log(f"🔄 AIS hardware source changed from {last_source} to {source_label}")
+            last_source = source_label
+
+        valid_lines = []
+        ignored_lines = 0
+        for raw_line in payload.decode("ascii", errors="ignore").splitlines():
+            line = raw_line.strip()
+            if line.startswith(("!AIVDM", "!AIVDO", "!BSVDM", "!ABVDM")):
+                valid_lines.append(line)
+            elif line:
+                ignored_lines += 1
+        feed_state["ignored_lines"] += ignored_lines
+        summary_ignored += ignored_lines
+        if not valid_lines:
+            if time.monotonic() - last_summary >= 60:
+                log(f"📊 AIS hardware health · {source_label} · no valid AIS messages · {summary_ignored} ignored lines")
+                last_summary = time.monotonic()
+                summary_ignored = 0
+            continue
+
+        now = datetime.now().isoformat(timespec="seconds")
+        feed_state["received"] += len(valid_lines)
+        summary_received += len(valid_lines)
+        feed_state["last_received"] = now
+        if not configured:
+            feed_state["state"] = "Receiving · AISHub destination needed"
+        if configured:
+            try:
+                outgoing = ("\r\n".join(valid_lines) + "\r\n").encode("ascii")
+                forwarder.sendto(outgoing, (AISHUB_FEED_HOST, AISHUB_FEED_PORT))
+                feed_state["forwarded"] += len(valid_lines)
+                summary_forwarded += len(valid_lines)
+                feed_state["last_forwarded"] = now
+                feed_state["state"] = "Sharing"
+                feed_state["error"] = None
+            except OSError as exc:
+                feed_state["state"] = "Sharing error"
+                feed_state["error"] = str(exc)
+                log(f"AISHub feed forwarding error: {exc}")
+
+        if time.monotonic() - last_summary >= 60:
+            sharing = f"{summary_forwarded} forwarded to AISHub" if configured else "AISHub destination not configured"
+            log(
+                f"📊 AIS hardware health · {RECEIVER_NAME} at {source_label} · "
+                f"{summary_received} valid NMEA messages · {summary_ignored} ignored · {sharing}"
+            )
+            last_summary = time.monotonic()
+            summary_received = 0
+            summary_forwarded = 0
+            summary_ignored = 0
+
+
+def start_receiver_feed():
+    threading.Thread(target=receiver_feed_worker, name="aishub-nmea-forwarder", daemon=True).start()
+
 
 def start_tracker():
-    # Bounding Box Sanity Check
-    lat_diff = abs(lat_north - lat_south)
-    lon_diff = abs(lon_east - lon_west)
-    if lat_diff > 3.0 or lon_diff > 3.0:
-        log("⚠️ WARNING: Bounding box is extremely large. This may cause high API load and memory usage.")
+    global last_purge_time, last_known_error
+    if not AISHUB_USERNAME:
+        message = "Enter the AISHub username supplied after your contributor station is approved."
+        aishub_state.update({"state": "Setup required", "error": message})
+        update_conn_status("Setup required", new_error=message)
+        log(f"⚠️ {message}")
+        time.sleep(AISHUB_POLL_INTERVAL)
+        return
 
-    mode_str = "All Vessels (Class A & B)" if INCLUDE_CLASS_B else "Commercial Only (Class A)"
-    log(f"🚢 Tracker Mode: {mode_str}")
-
-    if watchlist_mmsis:
-        log(f"🎯 Filtering active for {len(watchlist_mmsis)} MMSI(s).")
-    else:
-        log("🌐 Monitoring all vessels within the bounding box (no filters active).")
-
-    if ENABLE_MAP_ENTITIES:
-        log("🗺️ Multi-Ship Map Entities: ENABLED (individual vessel tracking entities will be created).")
-    else:
-        log("ℹ️ Multi-Ship Map Entities: DISABLED (only the 'last passing ship' and connection status entities will be updated).")
-
-    env_str = "DEV" if DEV_MODE else "PROD"
-    if DEV_MODE and WEBSOCKET_URL != "wss://stream.aisstream.io/v0/stream":
-        log(f"[{env_str}] [{VERSION}] Connecting to custom websocket destination: {WEBSOCKET_URL}...")
-    else:
-        log(f"[{env_str}] [{VERSION}] Connecting to AISStream...")
-        
+    log(f"🌐 Baiamonte AIS {VERSION} polling the AISHub vessel network every {AISHUB_POLL_INTERVAL} seconds")
     update_conn_status("Connecting")
-    
-    ws = websocket.WebSocketApp(
-        WEBSOCKET_URL,
-        on_open=on_open,
-        on_message=on_message,
-        on_error=on_error,
-        on_close=on_close,
-        on_pong=on_pong
-    )
-    
-    ws.run_forever(ping_interval=60, ping_timeout=10)
+    try:
+        aishub_state["last_checked"] = datetime.now().isoformat(timespec="seconds")
+        request = urllib.request.Request(build_aishub_url(), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        records = parse_aishub_payload(payload)
+        for record in records:
+            process_aishub_record(record)
+
+        last_known_error = ""
+        now = datetime.now().isoformat(timespec="seconds")
+        aishub_state.update({
+            "state": "Connected",
+            "last_success": now,
+            "records": len(records),
+            "error": None,
+        })
+        update_conn_status("Connected")
+        log(f"✅ AISHub update complete: {len(records)} vessels in the watch area")
+    except Exception as exc:
+        message = f"AISHub request failed: {exc}"
+        aishub_state.update({"state": "Connection error", "error": str(exc)})
+        update_conn_status("Connection error", new_error=message)
+        log(f"⚠️ {message}")
+
+    if (datetime.now() - last_purge_time).total_seconds() >= 60:
+        purge_old_ships()
+        last_purge_time = datetime.now()
+    time.sleep(AISHUB_POLL_INTERVAL)
 
 def graceful_shutdown(signum, frame):
     global shutdown_in_progress
@@ -966,25 +814,11 @@ if __name__ == "__main__":
 
     start_dashboard()
     sync_state_on_startup()
+    start_receiver_feed()
         
     try:
         while True:
             start_tracker()
-            update_conn_status("Reconnecting")
-            
-            reconnect_attempts += 1
-            # Cap the exponent term at 4 since 2**4 = 16 (160s) already exceeds MAX_RECONNECT_DELAY (125s)
-            exponent = min(reconnect_attempts - 1, 4)
-            calculated_delay = RECONNECT_DELAY * (2 ** max(0, exponent))
-            capped_delay = min(calculated_delay, MAX_RECONNECT_DELAY)
-            # Apply randomized jitter
-            jitter = random.uniform(0.85, 1.15)
-            jittered_delay = capped_delay * jitter
-            # Ensure the final delay is at least RECONNECT_DELAY seconds
-            final_delay = max(RECONNECT_DELAY, jittered_delay)
-            
-            log(f"Reconnecting in {int(final_delay)} seconds (Attempt {reconnect_attempts})...")
-            time.sleep(final_delay)
     except KeyboardInterrupt:
         log("🛑 Tracker stopped by user.")
         update_conn_status("Disconnected")
