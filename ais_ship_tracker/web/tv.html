@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1719">
+  <title>Baiamonte AIS · TV Map</title>
+  <link rel="stylesheet" href="tv.css">
+</head>
+<body>
+  <main id="tv-shell">
+    <section id="map" aria-label="Live Baiamonte AIS vessel map">
+      <div id="tiles" aria-hidden="true"></div>
+      <div id="shade" aria-hidden="true"></div>
+      <div id="boats"></div>
+      <div id="empty">Waiting for vessels</div>
+      <a id="attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
+    </section>
+    <aside id="fleet" aria-label="Live vessel list">
+      <header class="fleet-head">
+        <img src="brand-icon.png" alt="">
+        <div><span>TENUTA BAIAMONTE</span><h1>Live vessels</h1></div>
+        <b id="fleet-count">0</b>
+      </header>
+      <div id="vessel-list"></div>
+      <footer><i id="feed-light"></i><span id="feed-status">Connecting to AISHub</span></footer>
+    </aside>
+  </main>
+  <script src="tv.js"></script>
+</body>
+</html>

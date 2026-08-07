@@ -15,7 +15,7 @@ import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -192,7 +192,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
-        relative = request_path.lstrip("/") or "index.html"
+        if request_path.rstrip("/").endswith("/tv"):
+            relative = "tv.html"
+        else:
+            relative = request_path.lstrip("/") or "index.html"
         target = (DASHBOARD_ROOT / relative).resolve()
         if DASHBOARD_ROOT not in target.parents and target != DASHBOARD_ROOT:
             self.send_error(403)

@@ -4,6 +4,10 @@ Baiamonte AIS is a Home Assistant app for reciprocal vessel tracking through [AI
 
 The app includes a Tenuta Baiamonte-styled Home Assistant sidebar dashboard, live vessel entities, receiver health logging, and automatic container updates through GitHub.
 
+## TV map
+
+Open `http://HOME_ASSISTANT_IP:8099/tv` on a television, kiosk browser, or dashboard iframe for a full-screen Baiamonte view with a large live map and a side list of boats, flags, speeds, headings, MMSIs, status, and destinations. The map automatically fits the configured watch area and refreshes every ten seconds. Port 8099 is exposed by default in the app's Network settings.
+
 ## How the exchange works
 
 1. Apply to [join AISHub](https://www.aishub.net/join-us) with an operational AIS receiver.
