@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.2
+
+* Added an optional live RainViewer precipitation-radar overlay to the TV vessel map.
+* Added Home Assistant settings to enable the overlay and select its opacity.
+* Added visible radar timestamp/source attribution and graceful fallback when radar data is unavailable.
+* Added drag, zoom, reset, and vertical resizing controls to the Overview vessel map, with saved map height.
+
 ## 2.1.1
 
 * Added a full-screen TV feed at `/tv` with a large geographic map and Baiamonte-styled live vessel list.

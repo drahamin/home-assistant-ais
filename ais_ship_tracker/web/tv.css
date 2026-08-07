@@ -3,9 +3,11 @@
 html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
 #tv-shell{display:grid;grid-template-columns:minmax(0,1fr) clamp(340px,27vw,470px);background:var(--ink)}
 #map{position:relative;min-width:0;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 35%,#1a3639 0,#102427 48%,#081315 100%)}
-#tiles,#shade,#boats{position:absolute;inset:0}
+#tiles,#weather,#shade,#boats{position:absolute;inset:0}
 #tiles{overflow:hidden;background:#17383b}
 .tile{position:absolute;width:256px;height:256px;display:block;user-select:none;-webkit-user-drag:none}
+#weather{overflow:hidden;pointer-events:none}
+.weather-tile{position:absolute;display:block;user-select:none;-webkit-user-drag:none}
 #shade{pointer-events:none;background:linear-gradient(180deg,rgba(4,12,13,.03),rgba(4,12,13,.16)),radial-gradient(circle at center,transparent 35%,rgba(1,8,9,.24) 100%);box-shadow:inset 0 0 90px rgba(0,0,0,.24)}
 #boats{pointer-events:none}
 .boat{position:absolute;width:0;height:0;filter:drop-shadow(0 4px 7px rgba(0,0,0,.65));transform-origin:center;z-index:2}
@@ -15,6 +17,10 @@ html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
 #empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:14px 20px;border:1px solid rgba(212,175,55,.45);background:rgba(8,19,21,.76);color:var(--ivory);font-size:16px;letter-spacing:.12em;text-transform:uppercase;opacity:0;transition:opacity .3s}
 #empty.show{opacity:1}
 #attribution{position:absolute;right:5px;bottom:4px;padding:2px 5px;background:rgba(250,246,240,.78);color:#222;font:10px/1.2 system-ui,sans-serif;text-decoration:none;z-index:5}
+#weather-credit{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(212,175,55,.55);border-radius:4px;background:rgba(8,19,21,.86);box-shadow:0 4px 15px rgba(0,0,0,.28);color:rgba(250,246,240,.78);font-size:10px;letter-spacing:.08em;text-transform:uppercase;z-index:6}
+#weather-credit[hidden]{display:none}
+#weather-credit i{width:7px;height:7px;border-radius:50%;background:#65aee6;box-shadow:0 0 0 4px rgba(101,174,230,.12),0 0 10px rgba(101,174,230,.48)}
+#weather-credit a{padding-left:7px;border-left:1px solid rgba(250,246,240,.18);color:var(--gold);text-decoration:none}
 #fleet{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;border-left:1px solid rgba(212,175,55,.45);background:linear-gradient(155deg,#252525 0,#151718 52%,#0c1112 100%);box-shadow:-18px 0 55px rgba(0,0,0,.38);z-index:10}
 #fleet:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(139,69,19,.13),transparent 14%),radial-gradient(circle at 100% 0,rgba(212,175,55,.08),transparent 32%)}
 .fleet-head{position:relative;display:grid;grid-template-columns:52px minmax(0,1fr) 48px;align-items:center;gap:14px;padding:24px 22px 20px;border-bottom:1px solid rgba(212,175,55,.3)}

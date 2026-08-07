@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.1.1"
+version: "2.1.2"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -28,6 +28,8 @@ options:
   aishub_feed_host: ""
   aishub_feed_port: 0
   receiver_name: "Baiamonte AIS receiver"
+  tv_weather_overlay: false
+  tv_weather_opacity: 65
   longitude_west: 1.20
   latitude_south: 50.90
   longitude_east: 1.80
@@ -42,6 +44,8 @@ schema:
   aishub_feed_host: "str?"
   aishub_feed_port: "int?"
   receiver_name: "str?"
+  tv_weather_overlay: "bool?"
+  tv_weather_opacity: "int?"
   longitude_west: "float"
   latitude_south: "float"
   longitude_east: "float"
@@ -64,6 +68,12 @@ configuration:
   receiver_name:
     name: AIS Receiver Name
     description: Friendly hardware name shown in logs and connection status.
+  tv_weather_overlay:
+    name: TV Live Weather Radar
+    description: Show the current RainViewer precipitation radar over the TV vessel map.
+  tv_weather_opacity:
+    name: TV Weather Opacity
+    description: Weather radar visibility from 10 to 100 percent. Recommended value is 65.
   longitude_west:
     name: Bounding Box - Bottom-Left Longitude (West)
     description: Left edge of your tracking zone.

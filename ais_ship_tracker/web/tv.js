@@ -1,13 +1,18 @@
 const map=document.querySelector('#map');
 const tiles=document.querySelector('#tiles');
+const weather=document.querySelector('#weather');
 const boats=document.querySelector('#boats');
 const empty=document.querySelector('#empty');
 const vesselList=document.querySelector('#vessel-list');
 const fleetCount=document.querySelector('#fleet-count');
 const feedStatus=document.querySelector('#feed-status');
 const feedLight=document.querySelector('#feed-light');
+const weatherCredit=document.querySelector('#weather-credit');
+const weatherTime=document.querySelector('#weather-time');
 const TILE=256;
 let latest=null;
+let weatherMetadata=null;
+let weatherMetadataFetched=0;
 
 const apiPath=location.pathname.replace(/\/tv\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
@@ -65,6 +70,57 @@ function renderTiles(view,width,height){
   }
 }
 
+async function getWeatherFrame(){
+  if(weatherMetadata&&Date.now()-weatherMetadataFetched<300000)return weatherMetadata;
+  const response=await fetch('https://api.rainviewer.com/public/weather-maps.json');
+  if(!response.ok)throw new Error(`RainViewer metadata ${response.status}`);
+  const metadata=await response.json();
+  const frames=metadata?.radar?.past||[];
+  if(!metadata.host||!frames.length)throw new Error('RainViewer has no current radar frame');
+  weatherMetadata={host:metadata.host,frame:frames[frames.length-1]};
+  weatherMetadataFetched=Date.now();
+  return weatherMetadata;
+}
+
+async function renderWeather(view,width,height,config){
+  weather.replaceChildren();
+  weatherCredit.hidden=true;
+  if(!config.tv_weather_overlay)return;
+  try{
+    const metadata=await getWeatherFrame();
+    const overlayZoom=Math.min(view.zoom,7);
+    const scale=2**(view.zoom-overlayZoom);
+    const renderedTile=TILE*scale;
+    const count=2**overlayZoom;
+    const firstX=Math.floor(view.originX/renderedTile);
+    const lastX=Math.floor((view.originX+width)/renderedTile);
+    const firstY=Math.max(0,Math.floor(view.originY/renderedTile));
+    const lastY=Math.min(count-1,Math.floor((view.originY+height)/renderedTile));
+    const opacity=clamp(Number(config.tv_weather_opacity||65),10,100)/100;
+    for(let y=firstY;y<=lastY;y++){
+      for(let x=firstX;x<=lastX;x++){
+        const tile=document.createElement('img');
+        tile.className='weather-tile';
+        tile.alt='';
+        tile.decoding='async';
+        tile.src=`${metadata.host}${metadata.frame.path}/256/${overlayZoom}/${((x%count)+count)%count}/${y}/2/1_1.png`;
+        tile.style.left=`${x*renderedTile-view.originX}px`;
+        tile.style.top=`${y*renderedTile-view.originY}px`;
+        tile.style.width=`${renderedTile}px`;
+        tile.style.height=`${renderedTile}px`;
+        tile.style.opacity=opacity;
+        weather.appendChild(tile);
+      }
+    }
+    weatherTime.textContent=`Radar ${new Date(metadata.frame.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+    weatherCredit.hidden=false;
+  }catch(error){
+    weatherTime.textContent='Radar temporarily unavailable';
+    weatherCredit.hidden=false;
+    console.warn(error);
+  }
+}
+
 function boatNode(vessel,view){
   const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
   const node=document.createElement('div');
@@ -87,9 +143,11 @@ function vesselRow(vessel){
 function render(data){
   latest=data;
   const width=map.clientWidth,height=map.clientHeight;
-  const bounds=data.config.bounds;
+  const cfg=data.config;
+  const bounds=cfg.bounds;
   const view=fitView(bounds,width,height);
   renderTiles(view,width,height);
+  renderWeather(view,width,height,cfg);
   boats.replaceChildren();
   const visible=(data.vessels||[]).filter(v=>Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude))&&Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));

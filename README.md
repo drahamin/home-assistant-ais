@@ -8,6 +8,10 @@ The app includes a Tenuta Baiamonte-styled Home Assistant sidebar dashboard, liv
 
 Open `http://HOME_ASSISTANT_IP:8099/tv` on a television, kiosk browser, or dashboard iframe for a full-screen Baiamonte view with a large live map and a side list of boats, flags, speeds, headings, MMSIs, status, and destinations. The map automatically fits the configured watch area and refreshes every ten seconds. Port 8099 is exposed by default in the app's Network settings.
 
+Enable **TV Live Weather Radar** in the app configuration to place current RainViewer precipitation radar over the vessel map. **TV Weather Opacity** accepts values from 10 to 100 and defaults to 65. The radar source and observation time appear on the map whenever the layer is enabled.
+
+The Overview vessel map can be dragged to reposition the watch area, zoomed with the mouse wheel or gold controls, reset to its original view, and resized with the height buttons or its lower-right corner. The chosen height is saved in that browser.
+
 ## How the exchange works
 
 1. Apply to [join AISHub](https://www.aishub.net/join-us) with an operational AIS receiver.

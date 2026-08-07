@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#081426">
   <title>Baiamonte AIS</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="overview-map.css">
 </head>
 <body>
   <svg class="sprite" aria-hidden="true"><defs>
@@ -50,8 +51,8 @@
         <div class="overview-grid">
           <article class="panel map-panel">
             <div class="panel-head"><div><p>LIVE WATCH AREA</p><h3>Vessel positions</h3></div><span class="live-pill"><i></i>LIVE</span></div>
-            <div class="sea-map" id="sea-map"><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div></div>
-            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Positions update automatically</span></div>
+            <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><span class="resize-corner" aria-hidden="true"></span></div>
+            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Drag to move · wheel or buttons to zoom · corner to resize</span></div>
           </article>
 
           <div class="status-column">

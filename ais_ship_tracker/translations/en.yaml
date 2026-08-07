@@ -11,6 +11,12 @@ configuration:
   receiver_name:
     name: AIS Receiver Name
     description: Friendly hardware name shown in logs and status details.
+  tv_weather_overlay:
+    name: TV Live Weather Radar
+    description: Show the current RainViewer precipitation radar over the TV vessel map.
+  tv_weather_opacity:
+    name: TV Weather Opacity
+    description: Weather radar visibility from 10 to 100 percent. Recommended value is 65.
   longitude_west:
     name: Bounding Box - Bottom-Left Longitude (West)
     description: Left edge of your tracking zone.

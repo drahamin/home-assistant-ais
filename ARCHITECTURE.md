@@ -7,6 +7,7 @@ flowchart LR
     R[Local AIS receiver] -->|Raw NMEA UDP 10110| B[Baiamonte AIS]
     B -->|Raw NMEA UDP| F[AISHub contributor feed]
     A[AISHub vessel API] -->|Area JSON every 60 seconds| B
+    W[RainViewer weather radar] -->|Optional live radar tiles| D
     B -->|State API| H[Home Assistant sensors]
     B -->|Ingress HTTP 8099| D[AIS sidebar dashboard]
 ```
@@ -18,6 +19,7 @@ flowchart LR
 - An HTTPS polling client retrieves human-readable JSON vessel records for the configured bounding box. The polling interval is never shorter than AISHub's required 60 seconds.
 - The tracking layer normalizes vessel position and static fields, retains active contacts, and removes stale entities.
 - A threaded HTTP server exposes the Tenuta Baiamonte-styled ingress dashboard and its read-only status endpoint.
+- The optional TV weather layer fetches RainViewer metadata at most once every five minutes and draws the newest precipitation-radar frame over the Sicily map. The vessel display continues without it when radar is disabled or unavailable.
 - Home Assistant State API calls publish the connection, last-passing-ship, and optional per-vessel entities.
 
 ## Hardware observability
