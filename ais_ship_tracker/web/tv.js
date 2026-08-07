@@ -62,7 +62,7 @@ function renderTiles(view,width,height){
       tile.className='tile';
       tile.alt='';
       tile.decoding='async';
-      tile.src=`https://tile.openstreetmap.org/${view.zoom}/${((x%count)+count)%count}/${y}.png`;
+      tile.src=`api/map-tile/${view.zoom}/${((x%count)+count)%count}/${y}.png`;
       tile.style.left=`${x*TILE-view.originX}px`;
       tile.style.top=`${y*TILE-view.originY}px`;
       tiles.appendChild(tile);

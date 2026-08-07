@@ -4,6 +4,7 @@ import time
 import os
 import mimetypes
 import socket
+from functools import lru_cache
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -241,6 +242,24 @@ def dashboard_snapshot():
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         request_path = self.path.split("?", 1)[0]
+        if request_path.startswith("/api/map-tile/"):
+            try:
+                _, _, _, zoom_text, x_text, y_file = request_path.split("/")
+                zoom, x, y = int(zoom_text), int(x_text), int(y_file.removesuffix(".png"))
+                limit = 2 ** zoom
+                if not (0 <= zoom <= 19 and 0 <= x < limit and 0 <= y < limit):
+                    raise ValueError("tile outside supported range")
+                payload = fetch_map_tile(zoom, x, y)
+            except (ValueError, OSError, urllib.error.URLError):
+                self.send_error(502, "Map tile temporarily unavailable")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=21600")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if request_path.rstrip("/") == "/api/status":
             payload = json.dumps(dashboard_snapshot()).encode("utf-8")
             self.send_response(200)
@@ -276,6 +295,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
+
+
+@lru_cache(maxsize=256)
+def fetch_map_tile(zoom, x, y):
+    """Fetch and briefly cache OSM tiles so restrictive TV browsers use one origin."""
+    url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": f"Tenuta-Baiamonte-AIS/{VERSION} (+https://github.com/drahamin/home-assistant-ais)"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = response.read()
+    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("invalid map tile response")
+    return payload
 
 def start_dashboard():
     dashboard_host = os.environ.get("BAIAMONTE_AIS_HOST", "0.0.0.0")

@@ -6,6 +6,7 @@
 * Accepts documented and common proxied AISHub JSON response shapes while preserving useful provider errors.
 * Replaces the inherited UK example watch area with a Baiamonte-centred Sicily and surrounding-seas area.
 * Automatically migrates installations that still use the exact legacy example bounds.
+* Proxies and caches OpenStreetMap tiles through the app so TV and kiosk browsers can render the basemap without direct cross-origin tile access.
 
 ## 2.2.0
 
