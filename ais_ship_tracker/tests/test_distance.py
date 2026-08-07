@@ -75,5 +75,13 @@ class AisHubPayloadTests(unittest.TestCase):
             tracker.parse_aishub_payload([{"ERROR": True, "ERROR_MESSAGE": "Access pending"}])
 
 
+class WeatherTileTests(unittest.TestCase):
+    def test_current_rainviewer_hash_path_is_valid(self):
+        self.assertTrue(tracker.valid_weather_tile_path("v2/radar/25dbbe425e29/256/7/67/48/2/1_1.png"))
+
+    def test_weather_tile_path_rejects_traversal(self):
+        self.assertFalse(tracker.valid_weather_tile_path("v2/radar/../../options.json"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.2
+
+* Accepts RainViewer's current alphanumeric radar-frame identifiers so precipitation tiles render on dashboards and TV displays.
+
 ## 2.2.1
 
 * Treats AISHub's metadata-only zero-vessel response as a healthy empty result.

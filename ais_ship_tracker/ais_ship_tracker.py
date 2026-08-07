@@ -18,7 +18,7 @@ import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 
 BAIAMONTE_BOUNDS = {
     "latitude_south": 35.85,
@@ -32,6 +32,13 @@ LEGACY_TEST_BOUNDS = {
     "latitude_north": 51.20,
     "longitude_east": 1.80,
 }
+WEATHER_TILE_PATTERN = re.compile(
+    r"v2/radar/[A-Za-z0-9_-]+/256/\d+/\d+/\d+/\d+/[\d_]+\.png"
+)
+
+
+def valid_weather_tile_path(path):
+    return WEATHER_TILE_PATTERN.fullmatch(path) is not None
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -262,7 +269,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if request_path.startswith("/api/weather-tile/"):
             suffix = request_path.removeprefix("/api/weather-tile/")
-            if not re.fullmatch(r"v2/radar/\d+/256/\d+/\d+/\d+/\d+/[\d_]+\.png", suffix):
+            if not valid_weather_tile_path(suffix):
                 self.send_error(400, "Invalid weather tile")
                 return
             try:
