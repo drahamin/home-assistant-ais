@@ -6,6 +6,7 @@
 * Added a live bounding-box vessel plot, fleet registry, receiver health, watch-area view, and operations journal.
 * Added new Baiamonte maritime app-store and dashboard icon artwork.
 * Namespaced Home Assistant entities under `sensor.baiamonte_ais_*`.
+* Publishes supported `amd64` and `aarch64` Home Assistant images through GitHub Actions.
 
 ## 1.4.6
 * [Fix] Enhanced reconnection logic after a couple of recent AISStream outages. The app should now gracefully reconnect when the service comes back up. 

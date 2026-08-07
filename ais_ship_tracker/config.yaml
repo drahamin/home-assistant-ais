@@ -6,7 +6,6 @@ url: "https://github.com/drahamin/home-assistant-ais"
 arch:
   - "aarch64"
   - "amd64"
-  - "armv7"
 image: "ghcr.io/drahamin/home-assistant-ais"
 startup: "application"
 boot: "auto"
