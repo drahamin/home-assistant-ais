@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1
+
+* Treats AISHub's metadata-only zero-vessel response as a healthy empty result.
+* Accepts documented and common proxied AISHub JSON response shapes while preserving useful provider errors.
+* Replaces the inherited UK example watch area with a Baiamonte-centred Sicily and surrounding-seas area.
+* Automatically migrates installations that still use the exact legacy example bounds.
+
 ## 2.2.0
 
 * Includes the live RainViewer precipitation-radar overlay, timestamp and source attribution from version 2.1.2.

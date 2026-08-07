@@ -16,7 +16,20 @@ import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.2.0"
+VERSION = "2.2.1"
+
+BAIAMONTE_BOUNDS = {
+    "latitude_south": 35.85,
+    "longitude_west": 12.93,
+    "latitude_north": 39.85,
+    "longitude_east": 16.93,
+}
+LEGACY_TEST_BOUNDS = {
+    "latitude_south": 50.90,
+    "longitude_west": 1.20,
+    "latitude_north": 51.20,
+    "longitude_east": 1.80,
+}
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -52,10 +65,21 @@ try:
     weather_val = config.get('tv_weather_overlay', False)
     TV_WEATHER_OVERLAY = str(weather_val).lower() in ['true', '1', 't', 'y', 'yes'] if weather_val is not None else False
     TV_WEATHER_OPACITY = max(10, min(100, get_safe_int('tv_weather_opacity', 65)))
-    lat_south = float(config.get('latitude_south', 50.90))
-    lon_west = float(config.get('longitude_west', 1.20))
-    lat_north = float(config.get('latitude_north', 51.20))
-    lon_east = float(config.get('longitude_east', 1.80))
+    configured_bounds = {
+        "latitude_south": float(config.get('latitude_south', BAIAMONTE_BOUNDS["latitude_south"])),
+        "longitude_west": float(config.get('longitude_west', BAIAMONTE_BOUNDS["longitude_west"])),
+        "latitude_north": float(config.get('latitude_north', BAIAMONTE_BOUNDS["latitude_north"])),
+        "longitude_east": float(config.get('longitude_east', BAIAMONTE_BOUNDS["longitude_east"])),
+    }
+    # Version 2.2.0 inherited an upstream UK example box. Existing installations
+    # that still have those exact defaults should follow the estate automatically.
+    if configured_bounds == LEGACY_TEST_BOUNDS:
+        configured_bounds = BAIAMONTE_BOUNDS.copy()
+        log("📍 Replaced the legacy test watch area with the Baiamonte/Sicily watch area")
+    lat_south = configured_bounds["latitude_south"]
+    lon_west = configured_bounds["longitude_west"]
+    lat_north = configured_bounds["latitude_north"]
+    lon_east = configured_bounds["longitude_east"]
     BOUNDING_BOX = [[[lat_south, lon_west], [lat_north, lon_east]]]
     
     dev_val = config.get('dev_mode', False)
@@ -663,11 +687,28 @@ def process_aishub_record(record):
 
 
 def parse_aishub_payload(payload):
-    if not isinstance(payload, list) or len(payload) < 2:
-        raise ValueError("Unexpected AISHub response format")
-    metadata, records = payload[0], payload[1]
-    if isinstance(metadata, dict) and metadata.get("ERROR") not in (False, "false", 0, "0", None):
-        raise ValueError(str(metadata.get("ERROR")))
+    if isinstance(payload, dict):
+        metadata = payload
+        records = payload.get("VESSELS", payload.get("vessels", payload.get("records")))
+    elif isinstance(payload, list) and payload:
+        metadata = payload[0] if isinstance(payload[0], dict) else {}
+        records = payload[1] if len(payload) > 1 else None
+        # AISHub may return only its metadata object when the query contains no
+        # current positions. That is a successful empty result, not an outage.
+        if records is None and metadata.get("RECORDS") in (0, "0"):
+            return []
+        # Be tolerant of a direct list of vessel dictionaries from proxies.
+        if not metadata and all(isinstance(item, dict) for item in payload):
+            return payload
+    else:
+        raise ValueError("AISHub returned an empty or unsupported response")
+
+    error_value = metadata.get("ERROR") if isinstance(metadata, dict) else None
+    if error_value not in (False, "false", 0, "0", None, ""):
+        detail = metadata.get("ERROR_MESSAGE") or metadata.get("MESSAGE") or error_value
+        raise ValueError(str(detail))
+    if records is None and isinstance(metadata, dict) and metadata.get("RECORDS") in (0, "0"):
+        return []
     if not isinstance(records, list):
         raise ValueError("AISHub response did not include a vessel list")
     return records

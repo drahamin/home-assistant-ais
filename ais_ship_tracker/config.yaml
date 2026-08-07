@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.2.0"
+version: "2.2.1"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -30,10 +30,10 @@ options:
   receiver_name: "Baiamonte AIS receiver"
   tv_weather_overlay: false
   tv_weather_opacity: 65
-  longitude_west: 1.20
-  latitude_south: 50.90
-  longitude_east: 1.80
-  latitude_north: 51.20
+  longitude_west: 12.93
+  latitude_south: 35.85
+  longitude_east: 16.93
+  latitude_north: 39.85
   enable_map_entities: false
   include_class_b: true
   vessel_watchlist: ""

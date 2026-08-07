@@ -54,5 +54,26 @@ class DistanceTests(unittest.TestCase):
         self.assertIsNone(snapshot["vessels"][-1]["distance_km"])
 
 
+class AisHubPayloadTests(unittest.TestCase):
+    def test_documented_metadata_and_records_shape(self):
+        records = [{"MMSI": 123456789, "NAME": "Test Vessel"}]
+        payload = [{"ERROR": False, "RECORDS": 1}, records]
+        self.assertEqual(tracker.parse_aishub_payload(payload), records)
+
+    def test_zero_record_metadata_is_a_successful_empty_result(self):
+        self.assertEqual(tracker.parse_aishub_payload([{"ERROR": False, "RECORDS": 0}]), [])
+
+    def test_proxy_dictionary_shape_is_supported(self):
+        records = [{"MMSI": 123456789}]
+        self.assertEqual(
+            tracker.parse_aishub_payload({"ERROR": False, "RECORDS": 1, "VESSELS": records}),
+            records,
+        )
+
+    def test_aishub_error_message_is_preserved(self):
+        with self.assertRaisesRegex(ValueError, "Access pending"):
+            tracker.parse_aishub_payload([{"ERROR": True, "ERROR_MESSAGE": "Access pending"}])
+
+
 if __name__ == "__main__":
     unittest.main()
