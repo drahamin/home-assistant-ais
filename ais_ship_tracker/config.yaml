@@ -30,6 +30,7 @@ options:
   receiver_name: "Baiamonte AIS receiver"
   tv_weather_overlay: false
   tv_weather_opacity: 65
+  map_style: "standard"
   longitude_west: 12.93
   latitude_south: 35.85
   longitude_east: 16.93
@@ -46,6 +47,7 @@ schema:
   receiver_name: "str?"
   tv_weather_overlay: "bool?"
   tv_weather_opacity: "int?"
+  map_style: "list(standard|humanitarian|topographic|dark|satellite)?"
   longitude_west: "float"
   latitude_south: "float"
   longitude_east: "float"
@@ -74,6 +76,9 @@ configuration:
   tv_weather_opacity:
     name: TV Weather Opacity
     description: Weather radar visibility from 10 to 100 percent. Recommended value is 65.
+  map_style:
+    name: Base Map Style
+    description: Choose Standard, Humanitarian, Topographic, Dark, or Satellite tiles for the dashboard and TV maps.
   longitude_west:
     name: Bounding Box - Bottom-Left Longitude (West)
     description: Left edge of your tracking zone.

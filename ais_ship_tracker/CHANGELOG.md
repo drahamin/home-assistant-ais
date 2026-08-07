@@ -7,6 +7,8 @@
 * Replaces the inherited UK example watch area with a Baiamonte-centred Sicily and surrounding-seas area.
 * Automatically migrates installations that still use the exact legacy example bounds.
 * Proxies and caches OpenStreetMap tiles through the app so TV and kiosk browsers can render the basemap without direct cross-origin tile access.
+* Proxies RainViewer metadata and precipitation tiles through the same local app for reliable TV weather overlays.
+* Adds a settings selector for Standard, Humanitarian, Topographic, Dark, and Satellite base maps.
 
 ## 2.2.0
 

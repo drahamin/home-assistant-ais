@@ -4,6 +4,7 @@ import time
 import os
 import mimetypes
 import socket
+import re
 from functools import lru_cache
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -66,6 +67,9 @@ try:
     weather_val = config.get('tv_weather_overlay', False)
     TV_WEATHER_OVERLAY = str(weather_val).lower() in ['true', '1', 't', 'y', 'yes'] if weather_val is not None else False
     TV_WEATHER_OPACITY = max(10, min(100, get_safe_int('tv_weather_opacity', 65)))
+    MAP_STYLE = str(config.get('map_style', 'standard')).strip().lower()
+    if MAP_STYLE not in {'standard', 'humanitarian', 'topographic', 'dark', 'satellite'}:
+        MAP_STYLE = 'standard'
     configured_bounds = {
         "latitude_south": float(config.get('latitude_south', BAIAMONTE_BOUNDS["latitude_south"])),
         "longitude_west": float(config.get('longitude_west', BAIAMONTE_BOUNDS["longitude_west"])),
@@ -234,6 +238,7 @@ def dashboard_snapshot():
                 "sharing_configured": bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT),
                 "tv_weather_overlay": TV_WEATHER_OVERLAY,
                 "tv_weather_opacity": TV_WEATHER_OPACITY,
+                "map_style": MAP_STYLE,
             },
             "feed": dict(feed_state),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -242,19 +247,49 @@ def dashboard_snapshot():
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         request_path = self.path.split("?", 1)[0]
+        if request_path.rstrip("/") == "/api/weather-maps":
+            try:
+                payload = fetch_weather_metadata()
+            except (OSError, urllib.error.URLError):
+                self.send_error(502, "Weather radar temporarily unavailable")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "public, max-age=60")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if request_path.startswith("/api/weather-tile/"):
+            suffix = request_path.removeprefix("/api/weather-tile/")
+            if not re.fullmatch(r"v2/radar/\d+/256/\d+/\d+/\d+/\d+/[\d_]+\.png", suffix):
+                self.send_error(400, "Invalid weather tile")
+                return
+            try:
+                payload = fetch_weather_tile(suffix)
+            except (ValueError, OSError, urllib.error.URLError):
+                self.send_error(502, "Weather radar temporarily unavailable")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if request_path.startswith("/api/map-tile/"):
             try:
-                _, _, _, zoom_text, x_text, y_file = request_path.split("/")
+                _, _, _, style, zoom_text, x_text, y_file = request_path.split("/")
                 zoom, x, y = int(zoom_text), int(x_text), int(y_file.removesuffix(".png"))
                 limit = 2 ** zoom
-                if not (0 <= zoom <= 19 and 0 <= x < limit and 0 <= y < limit):
+                if style not in MAP_TILE_PROVIDERS or not (0 <= zoom <= 19 and 0 <= x < limit and 0 <= y < limit):
                     raise ValueError("tile outside supported range")
-                payload = fetch_map_tile(zoom, x, y)
+                payload, content_type = fetch_map_tile(style, zoom, x, y)
             except (ValueError, OSError, urllib.error.URLError):
                 self.send_error(502, "Map tile temporarily unavailable")
                 return
             self.send_response(200)
-            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Type", content_type)
             self.send_header("Cache-Control", "public, max-age=21600")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
@@ -297,18 +332,61 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return
 
 
+MAP_TILE_PROVIDERS = {
+    "standard": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "humanitarian": "https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+    "topographic": "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+    "dark": "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    "satellite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+}
+
+
 @lru_cache(maxsize=256)
-def fetch_map_tile(zoom, x, y):
+def fetch_map_tile(style, zoom, x, y):
     """Fetch and briefly cache OSM tiles so restrictive TV browsers use one origin."""
-    url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
+    url = MAP_TILE_PROVIDERS[style].format(z=zoom, x=x, y=y)
     request = urllib.request.Request(
         url,
         headers={"User-Agent": f"Tenuta-Baiamonte-AIS/{VERSION} (+https://github.com/drahamin/home-assistant-ais)"},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         payload = response.read()
-    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+    if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        content_type = "image/png"
+    elif payload.startswith(b"\xff\xd8\xff"):
+        content_type = "image/jpeg"
+    else:
         raise ValueError("invalid map tile response")
+    return payload, content_type
+
+
+weather_metadata_cache = {"payload": None, "expires": 0}
+
+
+def fetch_weather_metadata():
+    if weather_metadata_cache["payload"] and time.time() < weather_metadata_cache["expires"]:
+        return weather_metadata_cache["payload"]
+    request = urllib.request.Request(
+        "https://api.rainviewer.com/public/weather-maps.json",
+        headers={"User-Agent": f"Tenuta-Baiamonte-AIS/{VERSION}"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = response.read()
+    json.loads(payload.decode("utf-8"))
+    weather_metadata_cache.update({"payload": payload, "expires": time.time() + 300})
+    return payload
+
+
+@lru_cache(maxsize=256)
+def fetch_weather_tile(suffix):
+    request = urllib.request.Request(
+        f"https://tilecache.rainviewer.com/{suffix}",
+        headers={"User-Agent": f"Tenuta-Baiamonte-AIS/{VERSION}"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = response.read()
+    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("invalid weather tile response")
     return payload
 
 def start_dashboard():
