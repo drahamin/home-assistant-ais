@@ -1,11 +1,12 @@
 # Changelog
 
-## 2.1.2
+## 2.2.0
 
-* Added an optional live RainViewer precipitation-radar overlay to the TV vessel map.
-* Added Home Assistant settings to enable the overlay and select its opacity.
-* Added visible radar timestamp/source attribution and graceful fallback when radar data is unavailable.
-* Added drag, zoom, reset, and vertical resizing controls to the Overview vessel map, with saved map height.
+* Includes the live RainViewer precipitation-radar overlay, timestamp and source attribution from version 2.1.2.
+* Includes drag, zoom, reset and saved vertical-resizing controls for the Overview vessel map.
+* Ranks positioned vessels by distance from the configured Baiamonte watch-area centre.
+* Adds a compact `nearest_vessels` top-10 feed for Home Assistant dashboards.
+* Moves the default TV/kiosk host port to 8999 while retaining internal ingress port 8099.
 
 ## 2.1.1
 

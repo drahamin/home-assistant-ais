@@ -137,7 +137,8 @@ function vesselRow(vessel){
   const info=flagInfo(vessel.mmsi);
   const speed=Number.isFinite(Number(vessel.sog))?`${Number(vessel.sog).toFixed(1)} kn`:'—';
   const direction=Number.isFinite(Number(vessel.heading))?`${Math.round(Number(vessel.heading))}°`:Number.isFinite(Number(vessel.cog))?`${Math.round(Number(vessel.cog))}°`:'—';
-  return `<article class="vessel-row"><span class="flag" title="${escapeHtml(info.country)}">${info.flag}</span><div class="vessel-main"><div class="vessel-title"><h2>${escapeHtml(vessel.name||'Unknown vessel')}</h2><strong>${speed}</strong></div><div class="vessel-meta"><span>${escapeHtml(info.country)}</span><span>MMSI ${escapeHtml(vessel.mmsi)}</span><span>${direction}</span></div><div class="vessel-dest"><span>${escapeHtml(vessel.destination||vessel.nav_status_string||'No destination broadcast')}</span><em>${escapeHtml(vessel.vessel_type||vessel.nav_status_string||'AIS contact')}</em></div></div></article>`;
+  const distance=Number.isFinite(Number(vessel.distance_km))?`${Number(vessel.distance_km).toFixed(1)} km`:'Distance unavailable';
+  return `<article class="vessel-row"><span class="flag" title="${escapeHtml(info.country)}">${info.flag}</span><div class="vessel-main"><div class="vessel-title"><h2>${escapeHtml(vessel.name||'Unknown vessel')}</h2><strong>${speed}</strong></div><div class="vessel-meta"><span>${escapeHtml(info.country)}</span><span>${distance}</span><span>${direction}</span></div><div class="vessel-dest"><span>${escapeHtml(vessel.destination||vessel.nav_status_string||'No destination broadcast')}</span><em>${escapeHtml(vessel.vessel_type||vessel.nav_status_string||'AIS contact')}</em></div></div></article>`;
 }
 
 function render(data){
@@ -150,10 +151,11 @@ function render(data){
   renderWeather(view,width,height,cfg);
   boats.replaceChildren();
   const visible=(data.vessels||[]).filter(v=>Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude))&&Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
+  const nearest=(data.nearest_vessels||visible).filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));
   empty.classList.toggle('show',visible.length===0);
   fleetCount.textContent=visible.length;
-  vesselList.innerHTML=visible.length?visible.slice(0,8).map(vesselRow).join(''):'<div class="list-empty">No boats in the watch area</div>';
+  vesselList.innerHTML=nearest.length?nearest.slice(0,10).map(vesselRow).join(''):'<div class="list-empty">No positioned boats in the watch area</div>';
   const connected=data.connection==='Connected';
   feedLight.classList.toggle('online',connected);
   feedStatus.textContent=connected?`AISHub live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`AISHub ${String(data.connection).toLowerCase()}`;

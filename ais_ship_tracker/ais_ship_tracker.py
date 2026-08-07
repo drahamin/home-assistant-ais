@@ -1,4 +1,5 @@
 import json
+import math
 import time
 import os
 import mimetypes
@@ -15,7 +16,7 @@ import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.1.2"
+VERSION = "2.2.0"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -149,13 +150,36 @@ def remember_dashboard_vessel(ship_data):
                 "time": merged["last_seen"],
             })
 
+def distance_km(lat1, lon1, lat2, lon2):
+    """Return the great-circle distance between two WGS84 positions."""
+    radius_km = 6371.0088
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    a = min(1.0, max(0.0, a))
+    return radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
 def dashboard_snapshot():
     with dashboard_lock:
-        vessels = sorted(
-            (dict(vessel) for vessel in dashboard_vessels.values()),
-            key=lambda vessel: vessel.get("last_seen", ""),
-            reverse=True,
-        )
+        reference_lat = (lat_south + lat_north) / 2
+        reference_lon = (lon_west + lon_east) / 2
+        vessels = []
+        for vessel in dashboard_vessels.values():
+            item = dict(vessel)
+            latitude = clean_number(item.get("latitude"))
+            longitude = clean_number(item.get("longitude"))
+            if latitude is not None and longitude is not None:
+                item["distance_km"] = round(distance_km(reference_lat, reference_lon, latitude, longitude), 2)
+            else:
+                item["distance_km"] = None
+            vessels.append(item)
+        vessels.sort(key=lambda vessel: vessel.get("last_seen", ""), reverse=True)
+        vessels.sort(key=lambda vessel: (
+            vessel.get("distance_km") is None,
+            vessel.get("distance_km") if vessel.get("distance_km") is not None else math.inf,
+        ))
+        nearest_vessels = [vessel for vessel in vessels if vessel.get("distance_km") is not None][:10]
         return {
             "brand": "Baiamonte AIS",
             "version": VERSION,
@@ -163,11 +187,17 @@ def dashboard_snapshot():
             "service_status": aishub_state.get("state", "Unknown"),
             "last_error": last_known_error,
             "vessels": vessels,
+            "nearest_vessels": nearest_vessels,
             "events": list(dashboard_events),
             "config": {
                 "bounds": {
                     "south": lat_south, "west": lon_west,
                     "north": lat_north, "east": lon_east,
+                },
+                "reference_location": {
+                    "latitude": reference_lat,
+                    "longitude": reference_lon,
+                    "basis": "configured watch-area centre",
                 },
                 "map_entities": ENABLE_MAP_ENTITIES,
                 "include_class_b": INCLUDE_CLASS_B,
