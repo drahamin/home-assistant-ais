@@ -29,6 +29,10 @@ Start the app and open **AIS** in the Home Assistant sidebar. A green AISHub sta
 
 For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8099/tv`. This Baiamonte-styled view includes the live map plus a side list with boat flags and operating details, and refreshes automatically. It can also be used as the URL for a Home Assistant webpage dashboard card.
 
+Turn on **TV Live Weather Radar** to add current precipitation radar from RainViewer. Adjust **TV Weather Opacity** between 10 and 100 if the radar is too faint or covers too much of the base map. Radar availability is best-effort; boats and the base map continue working if the weather service is temporarily unavailable.
+
+On the Overview page, drag the vessel map to move it, use the mouse wheel or gold plus/minus buttons to zoom, choose **Reset** to return to the default view, and use the height buttons or lower-right corner to resize it. The map height is remembered by the browser.
+
 ## Troubleshooting
 
 - **Setup required:** add the AISHub username.

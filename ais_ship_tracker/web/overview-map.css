@@ -1,0 +1,10 @@
+.sea-map{min-height:260px;max-height:720px;resize:vertical;touch-action:none;cursor:grab}
+.sea-map.dragging{cursor:grabbing}
+.map-world{position:absolute;inset:0;transform-origin:50% 50%;will-change:transform}
+.map-controls{position:absolute;right:12px;top:12px;display:flex;gap:5px;z-index:8}
+.map-controls button{height:30px;min-width:30px;padding:0 9px;border:1px solid rgba(212,175,55,.52);border-radius:7px;background:rgba(10,9,7,.82);box-shadow:0 4px 12px rgba(0,0,0,.22);color:#faf6f0;cursor:pointer;font-size:16px;font-weight:700}
+.map-controls button:hover{border-color:#d4af37;background:rgba(40,29,17,.94)}
+.map-controls #map-reset{font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.resize-corner{position:absolute;right:2px;bottom:2px;width:18px;height:18px;pointer-events:none;background:linear-gradient(135deg,transparent 0 48%,rgba(212,175,55,.8) 50% 57%,transparent 59% 67%,rgba(212,175,55,.8) 69% 76%,transparent 78%)}
+.sea-map .map-empty{pointer-events:none;z-index:4}
+@media(max-width:760px){.sea-map{min-height:240px;max-height:560px}.map-controls{right:9px;top:9px}}

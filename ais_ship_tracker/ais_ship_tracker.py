@@ -15,7 +15,7 @@ import threading
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -48,6 +48,9 @@ try:
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
+    weather_val = config.get('tv_weather_overlay', False)
+    TV_WEATHER_OVERLAY = str(weather_val).lower() in ['true', '1', 't', 'y', 'yes'] if weather_val is not None else False
+    TV_WEATHER_OPACITY = max(10, min(100, get_safe_int('tv_weather_opacity', 65)))
     lat_south = float(config.get('latitude_south', 50.90))
     lon_west = float(config.get('longitude_west', 1.20))
     lat_north = float(config.get('latitude_north', 51.20))
@@ -174,6 +177,8 @@ def dashboard_snapshot():
                 "poll_interval": AISHUB_POLL_INTERVAL,
                 "receiver_port": RECEIVER_UDP_PORT,
                 "sharing_configured": bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT),
+                "tv_weather_overlay": TV_WEATHER_OVERLAY,
+                "tv_weather_opacity": TV_WEATHER_OPACITY,
             },
             "feed": dict(feed_state),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
