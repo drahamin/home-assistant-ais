@@ -13,7 +13,7 @@ configuration:
     description: Friendly hardware name shown in logs and status details.
   receiver_mode:
     name: AIS Receiver Connection
-    description: Receive NMEA data by UDP listener, TCP connection, or an attached serial radio.
+    description: Use the included AIS-catcher with an RTL-SDR, or receive decoded NMEA by UDP, TCP, or serial.
   receiver_host:
     name: AIS Receiver Host
     description: Network address used in TCP mode.
@@ -29,6 +29,24 @@ configuration:
   receiver_channel:
     name: AIS Radio Channels
     description: Both channels, channel A 161.975 MHz, or channel B 162.025 MHz.
+  sdr_device:
+    name: RTL-SDR Device
+    description: Device index such as 0, or its serial number when multiple dongles are attached.
+  sdr_gain:
+    name: RTL-SDR Tuner Gain
+    description: Use auto initially, or enter a manual gain from 0 to 50 dB.
+  sdr_ppm:
+    name: RTL-SDR Frequency Correction
+    description: Frequency correction from -150 to 150 PPM. Start at 0 for the NESDR SMArt v5.
+  sdr_rtl_agc:
+    name: RTL-SDR Automatic Gain
+    description: Enables RTL automatic gain control, the recommended starting setting.
+  sdr_bias_tee:
+    name: RTL-SDR Bias Tee
+    description: Keep off for the NESDR SMArt v5 unless attached hardware explicitly requires DC power.
+  sdr_bandwidth:
+    name: AIS Decoder Bandwidth
+    description: 192K is the recommended AIS-catcher starting filter.
   GPS_USE_USB:
     name: Use Attached USB GPS
     description: Use a recent NMEA GPS fix for map centering and distance ranking.

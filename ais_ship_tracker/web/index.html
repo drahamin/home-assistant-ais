@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#081426">
   <title>Baiamonte AIS</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="decoder.css?v=240">
   <link rel="stylesheet" href="overview-map.css?v=232">
   <link rel="stylesheet" href="traffic-cards.css?v=232">
 </head>
@@ -57,7 +58,7 @@
           </article>
 
           <div class="status-column">
-            <article class="metric-card cyan"><span><svg><use href="#i-radar"/></svg></span><div><small>AISSTREAM LINK</small><h3 id="link-card">Connecting</h3><p id="link-detail">Opening the receiver feed</p></div></article>
+            <article class="metric-card cyan"><span><svg><use href="#i-radar"/></svg></span><div><small>LOCAL AIS RECEIVER</small><h3 id="link-card">Connecting</h3><p id="link-detail">Opening the receiver feed</p></div></article>
             <article class="metric-card violet"><span><svg><use href="#i-ship"/></svg></span><div><small>LATEST CONTACT</small><h3 id="latest-name">No contacts yet</h3><p id="latest-detail">The watch area is clear</p></div></article>
             <article class="metric-card amber"><span><svg><use href="#i-route"/></svg></span><div><small>WATCHLIST</small><h3 id="watchlist-count">Open watch</h3><p>Priority MMSI filtering</p></div></article>
           </div>
@@ -75,10 +76,11 @@
       </section>
 
       <section class="page" id="area">
-        <div class="section-head"><div><p>ESTATE MARITIME PERIMETER</p><h2>AIS watch area</h2><span>The configured AISHub coverage area and tracking behavior.</span></div><span class="badge neutral">Configuration</span></div>
+        <div class="section-head"><div><p>ESTATE MARITIME PERIMETER</p><h2>AIS watch area</h2><span>Local radio, decoder, reciprocal feed, GPS, and configured coverage.</span></div><span class="badge neutral">Configuration</span></div>
         <div class="area-grid">
           <article class="panel coordinate-card"><p>BOUNDING BOX</p><h3>Monitored waters</h3><div class="coordinate-grid"><div><small>NORTH</small><b id="north">—</b></div><div><small>WEST</small><b id="west">—</b></div><div><small>EAST</small><b id="east">—</b></div><div><small>SOUTH</small><b id="south">—</b></div></div></article>
           <article class="panel settings-card"><p>TRACKING PROFILE</p><h3>Receiver behavior</h3><div class="setting-row"><span>Commercial Class A</span><b>Included</b></div><div class="setting-row"><span>Leisure Class B</span><b id="class-b">—</b></div><div class="setting-row"><span>Vessel entity timeout</span><b id="timeout">—</b></div><div class="setting-row"><span>Dedicated map entities</span><b id="entities">—</b></div></article>
+          <article class="panel settings-card decoder-card"><p>RADIO &amp; DECODER</p><h3 id="decoder-title">AIS-catcher</h3><div class="setting-row"><span>Status</span><b id="decoder-status">—</b></div><div class="setting-row"><span>RTL-SDR device</span><b id="decoder-device">—</b></div><div class="setting-row"><span>Gain / correction</span><b id="decoder-tuning">—</b></div><div class="setting-row"><span>Decoder filter</span><b id="decoder-bandwidth">—</b></div></article>
         </div>
         <article class="panel integration-card"><div class="panel-head"><div><p>HOME ASSISTANT INTEGRATION</p><h3>Baiamonte entities</h3></div><span class="route-icon"><svg><use href="#i-route"/></svg></span></div><div class="entity-route"><span><small>CONNECTION</small><code>sensor.baiamonte_ais_connection_status</code></span><i>→</i><span><small>LATEST CONTACT</small><code>sensor.baiamonte_ais_last_passing_ship</code></span><i>→</i><span><small>LIVE FLEET</small><code>sensor.baiamonte_ais_ship_*</code></span></div></article>
         <div class="area-grid detail-panels">
@@ -88,7 +90,7 @@
       </section>
     </main>
   </div>
-  <script src="maritime-flags.js?v=232"></script>
-  <script src="app.js?v=232"></script>
+  <script src="maritime-flags.js?v=240"></script>
+  <script src="app.js?v=240"></script>
 </body>
 </html>

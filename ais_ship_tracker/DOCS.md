@@ -1,14 +1,16 @@
 # Baiamonte AIS setup
 
-Baiamonte AIS exchanges data with AISHub: it forwards your receiver's raw NMEA AIS feed and retrieves the community vessel network for your chosen area.
+Baiamonte AIS includes AIS-catcher, so an attached RTL-SDR can receive, decode, display, and share AIS without a separate decoder add-on. AISHub is optional for local vessels and adds reciprocal community coverage when configured.
 
 ## Before starting
 
-Apply at [AISHub Join Us](https://www.aishub.net/join-us). AISHub will email the feed destination and, once your station meets its quality requirements, provide the username used by its data API.
+For local reception, attach an RTL-SDR and an AIS/VHF antenna. For wider reciprocal coverage, apply at [AISHub Join Us](https://www.aishub.net/join-us). AISHub will email the feed destination and, once your station meets its quality requirements, provide the username used by its data API.
 
 ## Connect the AIS hardware
 
-Choose **UDP**, **TCP**, or **Serial** under **AIS Receiver Connection**. UDP receivers normally send raw NMEA to the Home Assistant host on port `10110`; TCP mode connects to the configured receiver host and port; serial mode reads an attached radio at the selected device and baud rate. Most serial AIS radios use 38400 baud. The radio-channel setting records whether your hardware receives both international AIS channels, channel A at 161.975 MHz, or channel B at 162.025 MHz.
+Choose **SDR** for the included AIS-catcher decoder, or **UDP**, **TCP**, or **Serial** for an already decoded receiver. UDP receivers normally send raw NMEA to the Home Assistant host on port `10110`; TCP mode connects to the configured receiver host and port; serial mode reads an attached radio at the selected device and baud rate.
+
+For a Nooelec NESDR SMArt v5, start with device `0`, tuner gain `auto`, correction `0` PPM, RTL AGC enabled, bias tee disabled, and decoder bandwidth `192K`. AIS-catcher listens to both AIS A at 161.975 MHz and AIS B at 162.025 MHz. If several RTL-SDR devices are attached, use the dongle serial number instead of index `0`. Only one app can own a USB dongle at a time.
 
 The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open the app log after starting it. You should see the friendly receiver name, its network address, valid NMEA counts, and forwarding totals.
 
@@ -18,7 +20,10 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **AISHub Feed Host:** the destination hostname or IP supplied by AISHub.
 - **AISHub Feed Port:** your dedicated AISHub UDP port.
 - **AIS Receiver Name:** the label shown in logs and Home Assistant status.
-- **AIS Receiver Connection:** UDP listener, TCP client, or attached serial radio.
+- **AIS Receiver Connection:** included AIS-catcher/RTL-SDR decoder, UDP listener, TCP client, or attached serial radio.
+- **RTL-SDR Device / Gain / PPM / AGC:** selects and tunes the attached dongle.
+- **RTL-SDR Bias Tee:** leave off for a NESDR SMArt v5 unless attached active hardware explicitly requires power.
+- **AIS Decoder Bandwidth:** use the recommended `192K` starting filter, `288K`, or `OFF` for diagnosis.
 - **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.
 - **Live Rain Radar on Dashboard / TV:** enable RainViewer independently for each surface.
 - **FlightAware Airport Weather:** optional AeroAPI v4 observations, using an API key and ICAO airport code such as `LICC`.
@@ -27,7 +32,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **MMSI Filter:** optional comma-separated list of vessels to retain.
 - **Ship Entity Timeout:** removes stale vessel entities.
 
-Start the app and open **AIS** in the Home Assistant sidebar. A green AISHub state confirms downloads. The reciprocal feed card confirms receiver traffic and sharing.
+Start the app and open **AIS** in the Home Assistant sidebar. A green local receiver state confirms AIS-catcher is running; received vessels appear without AISHub credentials. The reciprocal feed details separately confirm AISHub sharing and downloads.
 
 ## TV map
 
@@ -48,6 +53,8 @@ The **Watch Area** page includes the hardware receiver log, GPS/reference positi
 - **Setup required:** add the AISHub username.
 - **Receiver ready · AISHub destination needed:** add the feed host and assigned UDP port.
 - **No hardware detected:** confirm the receiver is sending UDP NMEA to the Home Assistant host on port `10110` and that the port is reachable on your network.
+- **AIS-catcher start failed / no supported devices:** confirm the RTL-SDR is attached to the Home Assistant host, no other add-on owns it, and the receiver mode is SDR.
+- **Decoder running but no boats:** use an antenna designed for approximately 162 MHz, move it higher or outdoors, and confirm vessels are within VHF range.
 - **Sharing error:** recheck the AISHub host and port supplied by email.
 - **AISHub connection error:** confirm the username is active and wait at least one minute between retries.
 - **Zero vessels:** verify the configured geographic bounds and maximum position age.
