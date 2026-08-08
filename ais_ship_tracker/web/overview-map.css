@@ -12,5 +12,6 @@
 .map-controls #map-reset{font-size:9px;letter-spacing:.08em;text-transform:uppercase}
 .resize-corner{position:absolute;right:2px;bottom:2px;width:18px;height:18px;pointer-events:none;background:linear-gradient(135deg,transparent 0 48%,rgba(212,175,55,.8) 50% 57%,transparent 59% 67%,rgba(212,175,55,.8) 69% 76%,transparent 78%)}
 .sea-map .map-empty{pointer-events:none;z-index:4}
+.recent-flag{width:35px;height:35px;border-radius:10px;background:#eef6f6;display:grid;place-items:center;font-size:21px}
 .detail-panels{margin-top:18px}.receiver-log{max-height:260px;overflow:auto;margin-top:14px}.receiver-log-row{padding:9px 0;border-top:1px solid #eee5da;display:grid;grid-template-columns:70px 1fr;gap:10px;font-size:9px}.receiver-log-row time{color:#9a8d7d}.receiver-log-row span{color:#574e44}.weather-summary{margin-top:14px;padding:15px;border-radius:12px;background:#f3ede4;color:#655a4e;font-size:11px;line-height:1.6}
 @media(max-width:760px){.sea-map{min-height:240px;max-height:560px}.map-controls{right:9px;top:9px}}

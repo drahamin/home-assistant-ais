@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.1
+
+* Prevents hidden Home Assistant pages and zero-size layouts from clearing or misplacing overview-map vessels.
+* Re-renders the map after page, visibility, resize, and saved-height changes while preserving the last good AIS state.
+* Keeps a valid receiver status during brief dashboard refresh failures and reports an update delay instead.
+* Aligns vessel markers with the same Mercator projection used by map and weather tiles.
+* Expands MMSI flag-state recognition from the official ITU MID table and shows flags on the map, recent contacts, Live traffic, and TV view when identifiable.
+
 ## 2.3.0
 
 * Adds UDP, TCP, and serial AIS receiver profiles with port, baud, and channel settings.

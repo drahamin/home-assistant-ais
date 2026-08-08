@@ -20,15 +20,7 @@ let tvDrag=null,tvPinch=0;
 const apiPath=location.pathname.replace(/\/tv\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const midCountries={
-  201:['AL','Albania'],202:['AD','Andorra'],203:['AT','Austria'],205:['BE','Belgium'],209:['CY','Cyprus'],210:['CY','Cyprus'],211:['DE','Germany'],212:['CY','Cyprus'],213:['GE','Georgia'],215:['MT','Malta'],218:['DE','Germany'],219:['DK','Denmark'],220:['DK','Denmark'],224:['ES','Spain'],225:['ES','Spain'],226:['FR','France'],227:['FR','France'],228:['FR','France'],229:['MT','Malta'],230:['FI','Finland'],231:['FO','Faroe Islands'],232:['GB','United Kingdom'],233:['GB','United Kingdom'],234:['GB','United Kingdom'],235:['GB','United Kingdom'],236:['GI','Gibraltar'],237:['GR','Greece'],238:['HR','Croatia'],239:['GR','Greece'],240:['GR','Greece'],241:['GR','Greece'],242:['MA','Morocco'],243:['HU','Hungary'],244:['NL','Netherlands'],245:['NL','Netherlands'],246:['NL','Netherlands'],247:['IT','Italy'],248:['MT','Malta'],249:['MT','Malta'],250:['IE','Ireland'],251:['IS','Iceland'],252:['LI','Liechtenstein'],253:['LU','Luxembourg'],254:['MC','Monaco'],255:['PT','Portugal'],256:['MT','Malta'],257:['NO','Norway'],258:['NO','Norway'],259:['NO','Norway'],261:['PL','Poland'],263:['PT','Portugal'],264:['RO','Romania'],265:['SE','Sweden'],266:['SE','Sweden'],267:['SK','Slovakia'],269:['CH','Switzerland'],270:['CZ','Czechia'],271:['TR','Türkiye'],272:['UA','Ukraine'],273:['RU','Russia'],274:['MK','North Macedonia'],275:['LV','Latvia'],276:['EE','Estonia'],277:['LT','Lithuania'],278:['SI','Slovenia'],279:['RS','Serbia'],301:['AI','Anguilla'],303:['US','United States'],304:['AG','Antigua and Barbuda'],305:['AG','Antigua and Barbuda'],306:['CW','Curaçao'],308:['BS','Bahamas'],309:['BS','Bahamas'],310:['BM','Bermuda'],311:['BS','Bahamas'],316:['CA','Canada'],319:['KY','Cayman Islands'],338:['US','United States'],366:['US','United States'],367:['US','United States'],368:['US','United States'],369:['US','United States'],370:['PA','Panama'],371:['PA','Panama'],372:['PA','Panama'],373:['PA','Panama'],374:['PA','Panama'],375:['VC','Saint Vincent'],376:['VC','Saint Vincent'],377:['VC','Saint Vincent'],412:['CN','China'],413:['CN','China'],414:['CN','China'],416:['TW','Taiwan'],431:['JP','Japan'],432:['JP','Japan'],440:['KR','South Korea'],441:['KR','South Korea'],477:['HK','Hong Kong'],503:['AU','Australia'],512:['NZ','New Zealand'],525:['ID','Indonesia'],533:['MY','Malaysia'],538:['MH','Marshall Islands'],563:['SG','Singapore'],564:['SG','Singapore'],565:['SG','Singapore'],566:['SG','Singapore'],601:['ZA','South Africa'],636:['LR','Liberia'],657:['NG','Nigeria'],701:['AR','Argentina'],710:['BR','Brazil'],720:['BO','Bolivia'],725:['CL','Chile'],730:['CO','Colombia'],735:['EC','Ecuador'],760:['PE','Peru']
-};
-
-function flagInfo(mmsi){
-  const entry=midCountries[Number(String(mmsi).slice(0,3))];
-  if(!entry)return {flag:'🏳',country:'Unknown flag'};
-  return {flag:entry[0].split('').map(char=>String.fromCodePoint(127397+char.charCodeAt())).join(''),country:entry[1]};
-}
+const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
 
 function project(lat,lon,zoom){
   const scale=TILE*Math.pow(2,zoom);
@@ -134,7 +126,8 @@ function boatNode(vessel,view){
   node.style.left=`${point.x-view.originX}px`;
   node.style.top=`${point.y-view.originY}px`;
   const direction=Number(vessel.heading!==null&&vessel.heading!==undefined?vessel.heading:(vessel.cog!==null&&vessel.cog!==undefined?vessel.cog:0));
-  const safeName=escapeHtml(vessel.name||`MMSI ${vessel.mmsi}`);
+  const info=flagInfo(vessel.mmsi);
+  const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
   node.innerHTML=`<svg class="boat-icon" viewBox="0 0 24 34" style="transform:translate(-12px,-17px) rotate(${direction}deg)"><path d="M12 1.5 21 27l-9 5.5L3 27z"/></svg><span class="boat-label">${safeName}</span>`;
   return node;
 }
