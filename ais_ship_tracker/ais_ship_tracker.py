@@ -22,7 +22,7 @@ import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {

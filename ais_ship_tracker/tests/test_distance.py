@@ -93,5 +93,25 @@ class WeatherTileTests(unittest.TestCase):
         self.assertFalse(tracker.valid_weather_tile_path("v2/radar/../../options.json"))
 
 
+class DashboardAssetTests(unittest.TestCase):
+    def test_shared_maritime_flags_are_loaded_by_dashboard_and_tv(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        television = (web / "tv.html").read_text()
+        flags = (web / "maritime-flags.js").read_text()
+        self.assertIn("maritime-flags.js", dashboard)
+        self.assertIn("maritime-flags.js", television)
+        self.assertIn("midFromMmsi", flags)
+        self.assertIn("'00','98','99'", flags)
+        self.assertIn("247','IT','Italy", flags)
+        self.assertIn("636 637','LR','Liberia", flags)
+
+    def test_dashboard_defers_map_rendering_until_overview_is_visible(self):
+        script = (TRACKER.parent / "web" / "app.js").read_text()
+        self.assertIn("function mapIsVisible()", script)
+        self.assertIn("if(!mapIsVisible())return", script)
+        self.assertIn("Update delayed · retrying", script)
+
+
 if __name__ == "__main__":
     unittest.main()
