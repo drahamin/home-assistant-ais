@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0
+
+* Adds UDP, TCP, and serial AIS receiver profiles with port, baud, and channel settings.
+* Adds automatic USB GPS support for map centering and vessel distance ranking.
+* Adds independently configurable live rain radar on the dashboard and TV map.
+* Adds optional FlightAware AeroAPI airport observations for the Watch Area page.
+* Adds receiver activity logs to Watch Area and compact flag, identity, vessel-type, and destination cards.
+* Aligns navigation names and map controls with Baiamonte ADS-B and LTE styling.
+* Adds pinch-to-zoom and Samsung/Tizen TV fallbacks while retaining same-origin map and weather proxies.
+
 ## 2.2.2
 
 * Accepts RainViewer's current alphanumeric radar-frame identifiers so precipitation tiles render on dashboards and TV displays.

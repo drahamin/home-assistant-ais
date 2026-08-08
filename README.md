@@ -10,7 +10,7 @@ Open `http://HOME_ASSISTANT_IP:8999/tv` on a television or kiosk browser for a f
 
 Enable **TV Live Weather Radar** in the app configuration to place current RainViewer precipitation radar over the vessel map. **TV Weather Opacity** accepts values from 10 to 100 and defaults to 65. The radar source and observation time appear on the map whenever the layer is enabled.
 
-The Overview vessel map can be dragged to reposition the watch area, zoomed with the mouse wheel or gold controls, reset to its original view, and resized with the height buttons or its lower-right corner. The chosen height is saved in that browser.
+The Overview and TV maps can be dragged, pinched, zoomed with the wheel or gold controls, and reset. The Overview map can also be resized. Same-origin tile proxies and a flexbox layout fallback support older Samsung/Tizen TV browsers.
 
 ## How the exchange works
 
@@ -38,6 +38,11 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | AISHub Feed Host | Feed destination host supplied by AISHub |
 | AISHub Feed Port | Dedicated UDP port supplied by AISHub |
 | AIS Receiver Name | Friendly hardware name used in logs and status sensors |
+| AIS Receiver Connection | UDP, TCP, or serial NMEA receiver |
+| AIS radio channel | Dual channel, 161.975 MHz channel A, or 162.025 MHz channel B |
+| USB GPS | Automatic estate reference location for map and distance ranking |
+| Dashboard / TV live rain | Independent RainViewer precipitation overlays |
+| FlightAware weather | Optional AeroAPI airport observation on Watch Area |
 | Longitude/Latitude bounds | Geographic area returned by the AISHub API |
 | Multi-Ship Tracking | Creates one Home Assistant entity per active vessel |
 | MMSI Filter | Optional comma-separated list of nine-digit MMSIs |

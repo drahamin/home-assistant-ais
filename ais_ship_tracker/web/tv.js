@@ -13,10 +13,13 @@ const TILE=256;
 let latest=null;
 let weatherMetadata=null;
 let weatherMetadataFetched=0;
+let manualCenter=null,manualZoom=null;
+const tvPointers={};
+let tvDrag=null,tvPinch=0;
 
 const apiPath=location.pathname.replace(/\/tv\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
-const escapeHtml=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const midCountries={
   201:['AL','Albania'],202:['AD','Andorra'],203:['AT','Austria'],205:['BE','Belgium'],209:['CY','Cyprus'],210:['CY','Cyprus'],211:['DE','Germany'],212:['CY','Cyprus'],213:['GE','Georgia'],215:['MT','Malta'],218:['DE','Germany'],219:['DK','Denmark'],220:['DK','Denmark'],224:['ES','Spain'],225:['ES','Spain'],226:['FR','France'],227:['FR','France'],228:['FR','France'],229:['MT','Malta'],230:['FI','Finland'],231:['FO','Faroe Islands'],232:['GB','United Kingdom'],233:['GB','United Kingdom'],234:['GB','United Kingdom'],235:['GB','United Kingdom'],236:['GI','Gibraltar'],237:['GR','Greece'],238:['HR','Croatia'],239:['GR','Greece'],240:['GR','Greece'],241:['GR','Greece'],242:['MA','Morocco'],243:['HU','Hungary'],244:['NL','Netherlands'],245:['NL','Netherlands'],246:['NL','Netherlands'],247:['IT','Italy'],248:['MT','Malta'],249:['MT','Malta'],250:['IE','Ireland'],251:['IS','Iceland'],252:['LI','Liechtenstein'],253:['LU','Luxembourg'],254:['MC','Monaco'],255:['PT','Portugal'],256:['MT','Malta'],257:['NO','Norway'],258:['NO','Norway'],259:['NO','Norway'],261:['PL','Poland'],263:['PT','Portugal'],264:['RO','Romania'],265:['SE','Sweden'],266:['SE','Sweden'],267:['SK','Slovakia'],269:['CH','Switzerland'],270:['CZ','Czechia'],271:['TR','Türkiye'],272:['UA','Ukraine'],273:['RU','Russia'],274:['MK','North Macedonia'],275:['LV','Latvia'],276:['EE','Estonia'],277:['LT','Lithuania'],278:['SI','Slovenia'],279:['RS','Serbia'],301:['AI','Anguilla'],303:['US','United States'],304:['AG','Antigua and Barbuda'],305:['AG','Antigua and Barbuda'],306:['CW','Curaçao'],308:['BS','Bahamas'],309:['BS','Bahamas'],310:['BM','Bermuda'],311:['BS','Bahamas'],316:['CA','Canada'],319:['KY','Cayman Islands'],338:['US','United States'],366:['US','United States'],367:['US','United States'],368:['US','United States'],369:['US','United States'],370:['PA','Panama'],371:['PA','Panama'],372:['PA','Panama'],373:['PA','Panama'],374:['PA','Panama'],375:['VC','Saint Vincent'],376:['VC','Saint Vincent'],377:['VC','Saint Vincent'],412:['CN','China'],413:['CN','China'],414:['CN','China'],416:['TW','Taiwan'],431:['JP','Japan'],432:['JP','Japan'],440:['KR','South Korea'],441:['KR','South Korea'],477:['HK','Hong Kong'],503:['AU','Australia'],512:['NZ','New Zealand'],525:['ID','Indonesia'],533:['MY','Malaysia'],538:['MH','Marshall Islands'],563:['SG','Singapore'],564:['SG','Singapore'],565:['SG','Singapore'],566:['SG','Singapore'],601:['ZA','South Africa'],636:['LR','Liberia'],657:['NG','Nigeria'],701:['AR','Argentina'],710:['BR','Brazil'],720:['BO','Bolivia'],725:['CL','Chile'],730:['CO','Colombia'],735:['EC','Ecuador'],760:['PE','Peru']
 };
@@ -24,11 +27,11 @@ const midCountries={
 function flagInfo(mmsi){
   const entry=midCountries[Number(String(mmsi).slice(0,3))];
   if(!entry)return {flag:'🏳',country:'Unknown flag'};
-  return {flag:[...entry[0]].map(char=>String.fromCodePoint(127397+char.charCodeAt())).join(''),country:entry[1]};
+  return {flag:entry[0].split('').map(char=>String.fromCodePoint(127397+char.charCodeAt())).join(''),country:entry[1]};
 }
 
 function project(lat,lon,zoom){
-  const scale=TILE*(2**zoom);
+  const scale=TILE*Math.pow(2,zoom);
   const sin=clamp(Math.sin(lat*Math.PI/180),-.9999,.9999);
   return {
     x:(lon+180)/360*scale,
@@ -45,13 +48,15 @@ function fitView(bounds,width,height){
     const se=project(bounds.south,bounds.east,candidate);
     if(se.x-nw.x<=width*.82&&se.y-nw.y<=height*.78){zoom=candidate;break}
   }
-  const center=project(centerLat,centerLon,zoom);
-  return {zoom,originX:center.x-width/2,originY:center.y-height/2};
+  zoom=manualZoom===null?zoom:manualZoom;
+  const chosen=manualCenter||{lat:centerLat,lon:centerLon};
+  const center=project(chosen.lat,chosen.lon,zoom);
+  return {zoom,center:chosen,originX:center.x-width/2,originY:center.y-height/2};
 }
 
 function renderTiles(view,width,height,style){
-  tiles.replaceChildren();
-  const count=2**view.zoom;
+  tiles.innerHTML='';
+  const count=Math.pow(2,view.zoom);
   const firstX=Math.floor(view.originX/TILE);
   const lastX=Math.floor((view.originX+width)/TILE);
   const firstY=Math.max(0,Math.floor(view.originY/TILE));
@@ -70,28 +75,29 @@ function renderTiles(view,width,height,style){
   }
 }
 
-async function getWeatherFrame(){
-  if(weatherMetadata&&Date.now()-weatherMetadataFetched<300000)return weatherMetadata;
-  const response=await fetch('api/weather-maps',{cache:'no-store'});
-  if(!response.ok)throw new Error(`RainViewer metadata ${response.status}`);
-  const metadata=await response.json();
-  const frames=metadata?.radar?.past||[];
-  if(!metadata.host||!frames.length)throw new Error('RainViewer has no current radar frame');
-  weatherMetadata={host:metadata.host,frame:frames[frames.length-1]};
-  weatherMetadataFetched=Date.now();
-  return weatherMetadata;
+function getWeatherFrame(){
+  if(weatherMetadata&&Date.now()-weatherMetadataFetched<300000)return Promise.resolve(weatherMetadata);
+  return fetch('api/weather-maps',{cache:'no-store'}).then(function(response){
+    if(!response.ok)throw new Error(`RainViewer metadata ${response.status}`);
+    return response.json();
+  }).then(function(metadata){
+    const frames=metadata&&metadata.radar&&metadata.radar.past||[];
+    if(!metadata.host||!frames.length)throw new Error('RainViewer has no current radar frame');
+    weatherMetadata={host:metadata.host,frame:frames[frames.length-1]};
+    weatherMetadataFetched=Date.now();
+    return weatherMetadata;
+  });
 }
 
-async function renderWeather(view,width,height,config){
-  weather.replaceChildren();
+function renderWeather(view,width,height,config){
+  weather.innerHTML='';
   weatherCredit.hidden=true;
   if(!config.tv_weather_overlay)return;
-  try{
-    const metadata=await getWeatherFrame();
+  getWeatherFrame().then(function(metadata){
     const overlayZoom=Math.min(view.zoom,7);
-    const scale=2**(view.zoom-overlayZoom);
+    const scale=Math.pow(2,view.zoom-overlayZoom);
     const renderedTile=TILE*scale;
-    const count=2**overlayZoom;
+    const count=Math.pow(2,overlayZoom);
     const firstX=Math.floor(view.originX/renderedTile);
     const lastX=Math.floor((view.originX+width)/renderedTile);
     const firstY=Math.max(0,Math.floor(view.originY/renderedTile));
@@ -114,11 +120,11 @@ async function renderWeather(view,width,height,config){
     }
     weatherTime.textContent=`Radar ${new Date(metadata.frame.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
     weatherCredit.hidden=false;
-  }catch(error){
+  }).catch(function(error){
     weatherTime.textContent='Radar temporarily unavailable';
     weatherCredit.hidden=false;
     console.warn(error);
-  }
+  });
 }
 
 function boatNode(vessel,view){
@@ -127,7 +133,7 @@ function boatNode(vessel,view){
   node.className='boat';
   node.style.left=`${point.x-view.originX}px`;
   node.style.top=`${point.y-view.originY}px`;
-  const direction=Number(vessel.heading ?? vessel.cog ?? 0);
+  const direction=Number(vessel.heading!==null&&vessel.heading!==undefined?vessel.heading:(vessel.cog!==null&&vessel.cog!==undefined?vessel.cog:0));
   const safeName=escapeHtml(vessel.name||`MMSI ${vessel.mmsi}`);
   node.innerHTML=`<svg class="boat-icon" viewBox="0 0 24 34" style="transform:translate(-12px,-17px) rotate(${direction}deg)"><path d="M12 1.5 21 27l-9 5.5L3 27z"/></svg><span class="boat-label">${safeName}</span>`;
   return node;
@@ -149,7 +155,7 @@ function render(data){
   const view=fitView(bounds,width,height);
   renderTiles(view,width,height,cfg.map_style||'standard');
   renderWeather(view,width,height,cfg);
-  boats.replaceChildren();
+  boats.innerHTML='';
   const visible=(data.vessels||[]).filter(v=>Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude))&&Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   const nearest=(data.nearest_vessels||visible).filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));
@@ -161,19 +167,29 @@ function render(data){
   feedStatus.textContent=connected?`AISHub live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`AISHub ${String(data.connection).toLowerCase()}`;
 }
 
-async function refresh(){
-  try{
-    const response=await fetch(apiPath,{cache:'no-store'});
+function refresh(){
+  fetch(apiPath,{cache:'no-store'}).then(function(response){
     if(!response.ok)throw new Error(`TV feed ${response.status}`);
-    render(await response.json());
-  }catch(error){
+    return response.json();
+  }).then(render).catch(function(error){
     empty.textContent='Waiting for AIS feed';
     empty.classList.add('show');
     console.error(error);
-  }
+  });
 }
 
 let resizeTimer;
 addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>latest&&render(latest),150)});
+function rerenderMap(){if(latest)render(latest)}
+document.querySelector('#tv-map-in').onclick=function(){if(!latest)return;manualZoom=Math.min(13,(manualZoom===null?fitView(latest.config.bounds,map.clientWidth,map.clientHeight).zoom:manualZoom)+1);rerenderMap()};
+document.querySelector('#tv-map-out').onclick=function(){if(!latest)return;manualZoom=Math.max(2,(manualZoom===null?fitView(latest.config.bounds,map.clientWidth,map.clientHeight).zoom:manualZoom)-1);rerenderMap()};
+document.querySelector('#tv-map-reset').onclick=function(){manualCenter=null;manualZoom=null;rerenderMap()};
+map.addEventListener('pointerdown',function(event){if(!latest||(event.target.closest&&event.target.closest('.tv-map-controls,a')))return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};if(map.setPointerCapture)map.setPointerCapture(event.pointerId);if(Object.keys(tvPointers).length===1){const view=fitView(latest.config.bounds,map.clientWidth,map.clientHeight);tvDrag={x:event.clientX,y:event.clientY,center:view.center,zoom:view.zoom,world:project(view.center.lat,view.center.lon,view.zoom)}}else{const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});tvPinch=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}});
+map.addEventListener('pointermove',function(event){if(!tvPointers[event.pointerId]||!latest)return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});if(points.length===2){const distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);if(tvPinch&&Math.abs(distance-tvPinch)>35){manualZoom=Math.max(2,Math.min(13,(manualZoom===null?fitView(latest.config.bounds,map.clientWidth,map.clientHeight).zoom:manualZoom)+(distance>tvPinch?1:-1)));tvPinch=distance;rerenderMap()}return}if(tvDrag){const scale=TILE*Math.pow(2,tvDrag.zoom),worldX=tvDrag.world.x-(event.clientX-tvDrag.x),worldY=tvDrag.world.y-(event.clientY-tvDrag.y),lon=worldX/scale*360-180,mercator=Math.PI*(1-2*worldY/scale),lat=Math.atan(Math.sinh(mercator))*180/Math.PI;manualCenter={lat:lat,lon:lon};manualZoom=tvDrag.zoom;rerenderMap()}});
+function stopTvPointer(event){delete tvPointers[event.pointerId];tvDrag=null;tvPinch=0;if(map.hasPointerCapture&&map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId)}
+map.addEventListener('pointerup',stopTvPointer);map.addEventListener('pointercancel',stopTvPointer);
+map.addEventListener('touchstart',function(event){if(!latest)return;const touches=event.touches;if(touches.length===1){const view=fitView(latest.config.bounds,map.clientWidth,map.clientHeight);tvDrag={x:touches[0].clientX,y:touches[0].clientY,center:view.center,zoom:view.zoom,world:project(view.center.lat,view.center.lon,view.zoom)}}else if(touches.length===2){tvPinch=Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY)}},false);
+map.addEventListener('touchmove',function(event){if(!latest)return;event.preventDefault();const touches=event.touches;if(touches.length===2){const distance=Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);if(tvPinch&&Math.abs(distance-tvPinch)>35){manualZoom=Math.max(2,Math.min(13,(manualZoom===null?fitView(latest.config.bounds,map.clientWidth,map.clientHeight).zoom:manualZoom)+(distance>tvPinch?1:-1)));tvPinch=distance;rerenderMap()}return}if(touches.length===1&&tvDrag){const scale=TILE*Math.pow(2,tvDrag.zoom),worldX=tvDrag.world.x-(touches[0].clientX-tvDrag.x),worldY=tvDrag.world.y-(touches[0].clientY-tvDrag.y),lon=worldX/scale*360-180,mercator=Math.PI*(1-2*worldY/scale),lat=Math.atan(Math.sinh(mercator))*180/Math.PI;manualCenter={lat:lat,lon:lon};manualZoom=tvDrag.zoom;rerenderMap()}},false);
+map.addEventListener('touchend',function(){tvDrag=null;tvPinch=0},false);
 refresh();
 setInterval(refresh,10000);

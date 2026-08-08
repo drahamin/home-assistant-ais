@@ -1,8 +1,8 @@
 :root{color-scheme:dark;background:#0b1719;font-family:Futura,"Avenir Next",Avenir,system-ui,sans-serif;--gold:#d4af37;--ivory:#faf6f0;--ink:#090d0e;--charcoal:#222;--brown:#8b4513}
 *{box-sizing:border-box}
 html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
-#tv-shell{display:grid;grid-template-columns:minmax(0,1fr) clamp(340px,27vw,470px);background:var(--ink)}
-#map{position:relative;min-width:0;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 35%,#1a3639 0,#102427 48%,#081315 100%)}
+#tv-shell{display:flex;background:var(--ink)}
+#map{position:relative;flex:1 1 auto;min-width:0;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 35%,#1a3639 0,#102427 48%,#081315 100%)}
 #tiles,#weather,#shade,#boats{position:absolute;inset:0}
 #tiles{overflow:hidden;background:#17383b}
 .tile{position:absolute;width:256px;height:256px;display:block;user-select:none;-webkit-user-drag:none}
@@ -21,17 +21,19 @@ html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
 #weather-credit[hidden]{display:none}
 #weather-credit i{width:7px;height:7px;border-radius:50%;background:#65aee6;box-shadow:0 0 0 4px rgba(101,174,230,.12),0 0 10px rgba(101,174,230,.48)}
 #weather-credit a{padding-left:7px;border-left:1px solid rgba(250,246,240,.18);color:var(--gold);text-decoration:none}
-#fleet{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;border-left:1px solid rgba(212,175,55,.45);background:linear-gradient(155deg,#252525 0,#151718 52%,#0c1112 100%);box-shadow:-18px 0 55px rgba(0,0,0,.38);z-index:10}
+.tv-map-controls{position:absolute;right:12px;top:12px;z-index:9;display:flex;overflow:hidden;border:1px solid rgba(212,175,55,.45);border-radius:8px;background:rgba(5,5,5,.86)}.tv-map-controls button{min-width:34px;height:34px;border:0;border-right:1px solid rgba(212,175,55,.25);background:transparent;color:#f3d978;font-size:17px;font-weight:900}.tv-map-controls button:last-child{border-right:0;padding:0 10px;font-size:8px;letter-spacing:.08em;text-transform:uppercase}
+#map{touch-action:none}
+#fleet{position:relative;display:flex;flex:0 0 420px;flex-direction:column;height:100%;border-left:1px solid rgba(212,175,55,.45);background:linear-gradient(155deg,#252525 0,#151718 52%,#0c1112 100%);box-shadow:-18px 0 55px rgba(0,0,0,.38);z-index:10}
 #fleet:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(139,69,19,.13),transparent 14%),radial-gradient(circle at 100% 0,rgba(212,175,55,.08),transparent 32%)}
-.fleet-head{position:relative;display:grid;grid-template-columns:52px minmax(0,1fr) 48px;align-items:center;gap:14px;padding:24px 22px 20px;border-bottom:1px solid rgba(212,175,55,.3)}
+.fleet-head{position:relative;display:flex;align-items:center;gap:14px;padding:24px 22px 20px;border-bottom:1px solid rgba(212,175,55,.3)}.fleet-head>div{flex:1;min-width:0}
 .fleet-head img{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(0,0,0,.35))}
 .fleet-head span{display:block;margin-bottom:4px;color:var(--gold);font-size:10px;font-weight:700;letter-spacing:.2em}
 .fleet-head h1{margin:0;color:var(--ivory);font-size:25px;font-weight:500;letter-spacing:.015em}
-#fleet-count{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--gold);border-radius:50%;color:var(--gold);font-size:17px;font-weight:500}
-#vessel-list{position:relative;overflow:hidden;padding:10px 14px 14px}
-.vessel-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;padding:14px 10px;border-bottom:1px solid rgba(250,246,240,.1)}
+#fleet-count{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:1px solid var(--gold);border-radius:50%;color:var(--gold);font-size:17px;font-weight:500}
+#vessel-list{position:relative;flex:1;min-height:0;overflow:hidden;padding:10px 14px 14px}
+.vessel-row{display:flex;gap:12px;padding:14px 10px;border-bottom:1px solid rgba(250,246,240,.1)}
 .vessel-row:last-child{border-bottom:0}
-.flag{display:grid;place-items:center;width:40px;height:32px;margin-top:2px;border:1px solid rgba(212,175,55,.32);border-radius:4px;background:rgba(250,246,240,.06);font-size:24px;line-height:1;box-shadow:0 3px 9px rgba(0,0,0,.22)}
+.flag{display:flex;align-items:center;justify-content:center;width:40px;height:32px;margin-top:2px;border:1px solid rgba(212,175,55,.32);border-radius:4px;background:rgba(250,246,240,.06);font-size:24px;line-height:1;box-shadow:0 3px 9px rgba(0,0,0,.22)}
 .vessel-main{min-width:0}
 .vessel-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .vessel-title h2{margin:0;overflow:hidden;color:var(--ivory);font-size:15px;font-weight:650;letter-spacing:.035em;white-space:nowrap;text-overflow:ellipsis}
@@ -46,4 +48,5 @@ html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
 #feed-light{width:7px;height:7px;border-radius:50%;background:#846f3d;box-shadow:0 0 0 4px rgba(212,175,55,.08)}
 #feed-light.online{background:#68b780;box-shadow:0 0 0 4px rgba(104,183,128,.11),0 0 12px rgba(104,183,128,.5)}
 @media (min-width:1500px){.boat-icon{width:30px;height:42px;transform:translate(-15px,-21px)}.boat-label{top:29px;font-size:13px;padding:6px 10px}.vessel-row{padding:16px 12px}.vessel-title h2,.vessel-title strong{font-size:17px}.vessel-meta{font-size:11px}.vessel-dest{font-size:12px}}
-@media (max-width:900px){#tv-shell{grid-template-columns:minmax(0,1fr) 320px}.fleet-head{grid-template-columns:42px minmax(0,1fr) 38px;padding:16px 14px}.fleet-head img{width:42px;height:42px}.fleet-head h1{font-size:20px}#fleet-count{width:36px;height:36px}.vessel-row{padding:11px 6px}}
+@media (max-width:900px){#fleet{flex-basis:320px}.fleet-head{padding:16px 14px}.fleet-head img{width:42px;height:42px}.fleet-head h1{font-size:20px}#fleet-count{width:36px;height:36px}.vessel-row{padding:11px 6px}}
+@supports(display:grid){#tv-shell{display:grid;grid-template-columns:minmax(0,1fr) 420px;grid-template-columns:minmax(0,1fr) clamp(340px,27vw,470px)}#fleet{display:grid;flex:none;grid-template-rows:auto minmax(0,1fr) auto}.fleet-head{display:grid;grid-template-columns:52px minmax(0,1fr) 48px}.fleet-head>div{display:block}.vessel-row{display:grid;grid-template-columns:42px minmax(0,1fr)}}
