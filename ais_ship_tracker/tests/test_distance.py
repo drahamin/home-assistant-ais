@@ -112,6 +112,20 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("if(!mapIsVisible())return", script)
         self.assertIn("Update delayed · retrying", script)
 
+    def test_dashboard_offers_labels_selected_and_tv_map_displays(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        script = (web / "app.js").read_text()
+        styles = (web / "overview-map.css").read_text()
+        self.assertIn('data-map-display="labels"', dashboard)
+        self.assertIn('data-map-display="focus"', dashboard)
+        self.assertIn('href="tv"', dashboard)
+        self.assertIn("mapVesselDetail", script)
+        self.assertIn("layoutMapLabels", script)
+        self.assertIn("baiamonteAisMapDisplay", script)
+        self.assertIn(".map-vessel-label", styles)
+        self.assertIn(".map-vessel-detail", styles)
+
 
 if __name__ == "__main__":
     unittest.main()
