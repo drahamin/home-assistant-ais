@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.2
+
+* Adds compact vessel callouts directly on the Home Assistant overview map with flag, identity, vessel type, speed, destination, and last-seen time.
+* Adds a touch-friendly selected-vessel map mode with an expanded detail panel.
+* Links the map display selector directly to the Samsung-compatible TV split view and remembers the preferred dashboard mode per browser.
+
 ## 2.3.1
 
 * Prevents hidden Home Assistant pages and zero-size layouts from clearing or misplacing overview-map vessels.

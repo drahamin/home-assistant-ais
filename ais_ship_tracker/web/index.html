@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#081426">
   <title>Baiamonte AIS</title>
   <link rel="stylesheet" href="app.css">
-  <link rel="stylesheet" href="overview-map.css?v=231">
-  <link rel="stylesheet" href="traffic-cards.css?v=231">
+  <link rel="stylesheet" href="overview-map.css?v=232">
+  <link rel="stylesheet" href="traffic-cards.css?v=232">
 </head>
 <body>
   <svg class="sprite" aria-hidden="true"><defs>
@@ -51,9 +51,9 @@
 
         <div class="overview-grid">
           <article class="panel map-panel">
-            <div class="panel-head"><div><p>LIVE WATCH AREA</p><h3>Vessel positions</h3></div><span class="live-pill"><i></i>LIVE</span></div>
-            <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div id="dashboard-tiles" aria-hidden="true"></div><div id="dashboard-weather" aria-hidden="true"></div><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><div id="dashboard-weather-status" hidden>LIVE RAIN</div><span class="resize-corner" aria-hidden="true"></span></div>
-            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Drag or pinch to move and zoom · corner to resize</span></div>
+            <div class="panel-head map-panel-head"><div><p>LIVE WATCH AREA</p><h3>Vessel positions</h3></div><div class="map-display-switch" aria-label="Map display"><button type="button" data-map-display="labels" aria-pressed="true">Labels</button><button type="button" data-map-display="focus" aria-pressed="false">Selected</button><a href="tv" target="_blank" rel="noopener">TV split</a><span class="live-pill"><i></i>LIVE</span></div></div>
+            <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div id="dashboard-tiles" aria-hidden="true"></div><div id="dashboard-weather" aria-hidden="true"></div><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><article id="map-vessel-detail" class="map-vessel-detail" hidden><button type="button" id="map-detail-close" aria-label="Close vessel details">×</button><div id="map-detail-content"></div></article><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><div id="dashboard-weather-status" hidden>LIVE RAIN</div><span class="resize-corner" aria-hidden="true"></span></div>
+            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span id="map-mode-hint">All nearby vessels labeled · drag or pinch to explore</span></div>
           </article>
 
           <div class="status-column">
@@ -88,7 +88,7 @@
       </section>
     </main>
   </div>
-  <script src="maritime-flags.js?v=231"></script>
-  <script src="app.js?v=231"></script>
+  <script src="maritime-flags.js?v=232"></script>
+  <script src="app.js?v=232"></script>
 </body>
 </html>

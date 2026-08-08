@@ -37,6 +37,8 @@ Turn on **TV Live Weather Radar** to add current precipitation radar from RainVi
 
 On Overview and TV pages, drag the map to move it, pinch or use the wheel and gold plus/minus buttons to zoom, and choose **Reset** to return to the automatic view. The Overview map also has height controls and a lower-right resize corner. Its height is remembered by the browser. The TV layout includes a flexbox fallback and same-origin tile proxy for Samsung/Tizen browsers.
 
+The Overview map offers **Labels** and **Selected** display modes. Labels shows compact flag, MMSI, type, speed, destination, and last-seen callouts beside nearby vessels. Selected keeps the map clear until a vessel is tapped or clicked, then opens an expanded detail panel. **TV split** opens the Samsung-compatible fullscreen map and closest-vessel rail. The dashboard remembers its last display mode in that browser.
+
 Vessel flags are derived from the MMSI Maritime Identification Digits when the transmitting identity contains an allocated MID. The same flag appears on overview map labels, recent contacts, Live traffic cards, and the TV vessel list. Special group, coast-station, SAR-aircraft, and AIS aid-to-navigation MMSI formats are recognized when possible. Unknown or malformed identities use a neutral flag rather than guessing a registry.
 
 The **Watch Area** page includes the hardware receiver log, GPS/reference position, receiver profile, and optional FlightAware airport observation.
