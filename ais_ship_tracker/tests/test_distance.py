@@ -53,6 +53,16 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in snapshot["nearest_vessels"]], ["Near", "Far"])
         self.assertIsNone(snapshot["vessels"][-1]["distance_km"])
 
+    def test_snapshot_includes_receiver_gps_weather_and_hardware_log(self):
+        tracker.receiver_logs.clear()
+        tracker.log("AIS receiver test event")
+        snapshot = tracker.dashboard_snapshot()
+        self.assertEqual(snapshot["config"]["receiver_mode"], "udp")
+        self.assertEqual(snapshot["config"]["receiver_channel"], "dual")
+        self.assertIn("reference_location", snapshot["config"])
+        self.assertFalse(snapshot["flightaware_weather"]["enabled"])
+        self.assertEqual(snapshot["receiver_log"][0]["message"], "AIS receiver test event")
+
 
 class AisHubPayloadTests(unittest.TestCase):
     def test_documented_metadata_and_records_shape(self):

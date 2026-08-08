@@ -7,6 +7,7 @@
   <title>Baiamonte AIS</title>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="overview-map.css">
+  <link rel="stylesheet" href="traffic-cards.css">
 </head>
 <body>
   <svg class="sprite" aria-hidden="true"><defs>
@@ -23,7 +24,7 @@
       <div class="brand"><img src="brand-icon.png" alt=""><span><strong>Baiamonte AIS</strong><small>Estate maritime watch</small></span></div>
       <nav>
         <button class="nav active" data-page="overview"><svg><use href="#i-grid"/></svg>Overview</button>
-        <button class="nav" data-page="fleet"><svg><use href="#i-ship"/></svg>Live vessels <em id="nav-count">0</em></button>
+        <button class="nav" data-page="fleet"><svg><use href="#i-ship"/></svg>Live traffic <em id="nav-count">0</em></button>
         <button class="nav" data-page="area"><svg><use href="#i-zone"/></svg>Watch area</button>
       </nav>
       <div class="estate-note"><i id="side-light"></i><span><b>Reciprocal AIS</b><small id="side-status">Connecting to AISHub</small></span></div>
@@ -31,7 +32,7 @@
 
     <main>
       <header>
-        <div><p class="eyebrow">TENUTA BAIAMONTE · MARITIME OPERATIONS</p><h1 id="page-title">Vessel overview</h1></div>
+        <div><p class="eyebrow">TENUTA BAIAMONTE · MARITIME OPERATIONS</p><h1 id="page-title">Overview</h1></div>
         <div class="header-tools"><span id="last-check">Waiting for first check</span><button id="refresh"><svg><use href="#i-refresh"/></svg>Refresh</button></div>
       </header>
 
@@ -51,8 +52,8 @@
         <div class="overview-grid">
           <article class="panel map-panel">
             <div class="panel-head"><div><p>LIVE WATCH AREA</p><h3>Vessel positions</h3></div><span class="live-pill"><i></i>LIVE</span></div>
-            <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><span class="resize-corner" aria-hidden="true"></span></div>
-            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Drag to move · wheel or buttons to zoom · corner to resize</span></div>
+            <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div id="dashboard-tiles" aria-hidden="true"></div><div id="dashboard-weather" aria-hidden="true"></div><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><div id="dashboard-weather-status" hidden>LIVE RAIN</div><span class="resize-corner" aria-hidden="true"></span></div>
+            <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span>Drag or pinch to move and zoom · corner to resize</span></div>
           </article>
 
           <div class="status-column">
@@ -69,7 +70,7 @@
       </section>
 
       <section class="page" id="fleet">
-        <div class="section-head"><div><p>LIVE VESSEL REGISTRY</p><h2>Vessels in the watch area</h2><span>Position, speed, destination, and navigation status from the latest broadcasts.</span></div><span class="badge" id="fleet-badge">0 active</span></div>
+        <div class="section-head"><div><p>LIVE TRAFFIC</p><h2>Live traffic</h2><span>Flag, position, speed, destination, vessel type, and identity from the latest broadcasts.</span></div><span class="badge" id="fleet-badge">0 active</span></div>
         <div id="fleet-grid" class="fleet-grid"></div>
       </section>
 
@@ -80,6 +81,10 @@
           <article class="panel settings-card"><p>TRACKING PROFILE</p><h3>Receiver behavior</h3><div class="setting-row"><span>Commercial Class A</span><b>Included</b></div><div class="setting-row"><span>Leisure Class B</span><b id="class-b">—</b></div><div class="setting-row"><span>Vessel entity timeout</span><b id="timeout">—</b></div><div class="setting-row"><span>Dedicated map entities</span><b id="entities">—</b></div></article>
         </div>
         <article class="panel integration-card"><div class="panel-head"><div><p>HOME ASSISTANT INTEGRATION</p><h3>Baiamonte entities</h3></div><span class="route-icon"><svg><use href="#i-route"/></svg></span></div><div class="entity-route"><span><small>CONNECTION</small><code>sensor.baiamonte_ais_connection_status</code></span><i>→</i><span><small>LATEST CONTACT</small><code>sensor.baiamonte_ais_last_passing_ship</code></span><i>→</i><span><small>LIVE FLEET</small><code>sensor.baiamonte_ais_ship_*</code></span></div></article>
+        <div class="area-grid detail-panels">
+          <article class="panel"><p>RECEIVER LOG</p><h3>Hardware activity</h3><div id="receiver-log" class="receiver-log"></div></article>
+          <article class="panel"><p>FLIGHTAWARE WEATHER</p><h3 id="airport-weather-title">Airport observation</h3><div id="airport-weather" class="weather-summary">Disabled in app configuration</div></article>
+        </div>
       </section>
     </main>
   </div>

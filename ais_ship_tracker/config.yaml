@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.2.2"
+version: "2.3.0"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -11,6 +11,9 @@ startup: "application"
 boot: "auto"
 icon: "icon.png"
 init: false
+usb: true
+uart: true
+udev: true
 homeassistant_api: true
 ingress: true
 ingress_port: 8099
@@ -28,6 +31,19 @@ options:
   aishub_feed_host: ""
   aishub_feed_port: 0
   receiver_name: "Baiamonte AIS receiver"
+  receiver_mode: "udp"
+  receiver_host: ""
+  receiver_port: 10110
+  receiver_serial_device: "auto"
+  receiver_serial_baud: 38400
+  receiver_channel: "dual"
+  GPS_USE_USB: true
+  GPS_DEVICE: "auto"
+  GPS_BAUD: 9600
+  WEATHER_OVERLAY_DASHBOARD: true
+  FLIGHTAWARE_WEATHER_ENABLED: false
+  FLIGHTAWARE_AEROAPI_KEY: ""
+  FLIGHTAWARE_AIRPORT: "LICC"
   tv_weather_overlay: false
   tv_weather_opacity: 65
   map_style: "standard"
@@ -45,6 +61,19 @@ schema:
   aishub_feed_host: "str?"
   aishub_feed_port: "int?"
   receiver_name: "str?"
+  receiver_mode: "list(udp|tcp|serial)?"
+  receiver_host: "str?"
+  receiver_port: "int?"
+  receiver_serial_device: "str?"
+  receiver_serial_baud: "int?"
+  receiver_channel: "list(dual|channel_a|channel_b)?"
+  GPS_USE_USB: "bool?"
+  GPS_DEVICE: "str?"
+  GPS_BAUD: "int?"
+  WEATHER_OVERLAY_DASHBOARD: "bool?"
+  FLIGHTAWARE_WEATHER_ENABLED: "bool?"
+  FLIGHTAWARE_AEROAPI_KEY: "str?"
+  FLIGHTAWARE_AIRPORT: "str?"
   tv_weather_overlay: "bool?"
   tv_weather_opacity: "int?"
   map_style: "list(standard|humanitarian|topographic|dark|satellite)?"
@@ -70,6 +99,45 @@ configuration:
   receiver_name:
     name: AIS Receiver Name
     description: Friendly hardware name shown in logs and connection status.
+  receiver_mode:
+    name: AIS Receiver Connection
+    description: Receive NMEA data by UDP listener, TCP connection, or an attached serial radio.
+  receiver_host:
+    name: AIS Receiver Host
+    description: Network address used in TCP mode. Leave blank for UDP listener or serial mode.
+  receiver_port:
+    name: AIS Receiver Port
+    description: UDP listening port or TCP destination port. The standard Baiamonte port is 10110.
+  receiver_serial_device:
+    name: AIS Serial Device
+    description: Use auto to detect a serial AIS radio, or enter a path such as /dev/ttyUSB0.
+  receiver_serial_baud:
+    name: AIS Serial Baud Rate
+    description: NMEA speed for a serial AIS radio. Most AIS receivers use 38400.
+  receiver_channel:
+    name: AIS Radio Channels
+    description: Document whether the attached radio receives both AIS channels, channel A 161.975 MHz, or channel B 162.025 MHz.
+  GPS_USE_USB:
+    name: Use Attached USB GPS
+    description: Use a recent NMEA GPS fix as the estate reference position for distance ranking and maps.
+  GPS_DEVICE:
+    name: USB GPS Device
+    description: Use auto to detect a GPS or enter a path such as /dev/ttyACM0.
+  GPS_BAUD:
+    name: GPS Baud Rate
+    description: Serial speed used by the attached GPS. Most USB GPS units use 9600.
+  WEATHER_OVERLAY_DASHBOARD:
+    name: Live Rain Radar on Dashboard
+    description: Show current RainViewer precipitation radar on the Overview map.
+  FLIGHTAWARE_WEATHER_ENABLED:
+    name: FlightAware Airport Weather
+    description: Show AeroAPI airport observations on the Watch Area page. Requires an AeroAPI key.
+  FLIGHTAWARE_AEROAPI_KEY:
+    name: FlightAware AeroAPI Key
+    description: Optional FlightAware AeroAPI v4 key used only when airport weather is enabled.
+  FLIGHTAWARE_AIRPORT:
+    name: FlightAware Weather Airport
+    description: ICAO airport code for weather observations. LICC is Catania Fontanarossa.
   tv_weather_overlay:
     name: TV Live Weather Radar
     description: Show the current RainViewer precipitation radar over the TV vessel map.

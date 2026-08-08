@@ -15,10 +15,15 @@ import urllib.parse
 import signal
 import sys
 import threading
+import subprocess
+import glob
+import select
+import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.2.2"
+VERSION = "2.3.0"
+receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
     "latitude_south": 35.85,
@@ -42,6 +47,7 @@ def valid_weather_tile_path(path):
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    receiver_logs.appendleft({"time": datetime.now().isoformat(timespec="seconds"), "message": str(message)})
     try:
         print(f"[{timestamp}] {message}", flush=True)
     except UnicodeEncodeError:
@@ -71,6 +77,23 @@ try:
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
+    RECEIVER_MODE = str(config.get('receiver_mode', 'udp')).strip().lower()
+    if RECEIVER_MODE not in {'udp', 'tcp', 'serial'}:
+        RECEIVER_MODE = 'udp'
+    RECEIVER_HOST = str(config.get('receiver_host', '')).strip()
+    RECEIVER_PORT = max(1, min(65535, get_safe_int('receiver_port', 10110)))
+    RECEIVER_SERIAL_DEVICE = str(config.get('receiver_serial_device', 'auto')).strip() or 'auto'
+    RECEIVER_SERIAL_BAUD = get_safe_int('receiver_serial_baud', 38400)
+    RECEIVER_CHANNEL = str(config.get('receiver_channel', 'dual')).strip().lower()
+    if RECEIVER_CHANNEL not in {'dual', 'channel_a', 'channel_b'}:
+        RECEIVER_CHANNEL = 'dual'
+    GPS_USE_USB = str(config.get('GPS_USE_USB', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    GPS_DEVICE = str(config.get('GPS_DEVICE', 'auto')).strip() or 'auto'
+    GPS_BAUD = get_safe_int('GPS_BAUD', 9600)
+    WEATHER_OVERLAY_DASHBOARD = str(config.get('WEATHER_OVERLAY_DASHBOARD', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    FLIGHTAWARE_WEATHER_ENABLED = str(config.get('FLIGHTAWARE_WEATHER_ENABLED', False)).lower() in ['true', '1', 't', 'y', 'yes']
+    FLIGHTAWARE_AEROAPI_KEY = str(config.get('FLIGHTAWARE_AEROAPI_KEY', '')).strip()
+    FLIGHTAWARE_AIRPORT = re.sub(r'[^A-Z0-9]', '', str(config.get('FLIGHTAWARE_AIRPORT', 'LICC')).upper())[:4] or 'LICC'
     weather_val = config.get('tv_weather_overlay', False)
     TV_WEATHER_OVERLAY = str(weather_val).lower() in ['true', '1', 't', 'y', 'yes'] if weather_val is not None else False
     TV_WEATHER_OPACITY = max(10, min(100, get_safe_int('tv_weather_opacity', 65)))
@@ -167,6 +190,75 @@ feed_state = {
     "ignored_lines": 0,
     "error": None,
 }
+GPS_LOCATION_FILE = Path(os.environ.get("BAIAMONTE_GPS_JSON", "/run/baiamonte/gps.json"))
+flightaware_weather_cache = {"payload": None, "expires": 0.0, "error": None}
+
+
+def current_location():
+    """Prefer a recent USB GPS fix, then use the configured watch-area centre."""
+    fallback = {
+        "latitude": (lat_south + lat_north) / 2,
+        "longitude": (lon_west + lon_east) / 2,
+        "altitude": None,
+        "source": "Configured watch area",
+        "device": "",
+        "fix_age": None,
+    }
+    if not GPS_USE_USB:
+        return fallback
+    try:
+        fix = json.loads(GPS_LOCATION_FILE.read_text(encoding="utf-8"))
+        latitude, longitude = float(fix["lat"]), float(fix["lon"])
+        age = max(0, time.time() - float(fix.get("timestamp", 0)))
+        if -90 <= latitude <= 90 and -180 <= longitude <= 180 and age < 180:
+            return {
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": clean_number(fix.get("alt")),
+                "source": "USB GPS",
+                "device": str(fix.get("device", "")),
+                "fix_age": round(age, 1),
+            }
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        pass
+    return fallback
+
+
+def flightaware_weather():
+    """Return a cached AeroAPI airport observation without exposing the API key."""
+    if not FLIGHTAWARE_WEATHER_ENABLED:
+        return {"enabled": False, "provider": "FlightAware", "airport": FLIGHTAWARE_AIRPORT}
+    if not FLIGHTAWARE_AEROAPI_KEY:
+        return {"enabled": True, "provider": "FlightAware", "airport": FLIGHTAWARE_AIRPORT, "error": "AeroAPI key required"}
+    if flightaware_weather_cache["payload"] and time.time() < flightaware_weather_cache["expires"]:
+        return flightaware_weather_cache["payload"]
+    request = urllib.request.Request(
+        f"https://aeroapi.flightaware.com/aeroapi/airports/{FLIGHTAWARE_AIRPORT}/weather/observations",
+        headers={"x-apikey": FLIGHTAWARE_AEROAPI_KEY, "User-Agent": f"Baiamonte-AIS/{VERSION}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+        observations = raw.get("observations", []) if isinstance(raw, dict) else []
+        latest = observations[0] if observations else {}
+        payload = {
+            "enabled": True,
+            "provider": "FlightAware",
+            "airport": FLIGHTAWARE_AIRPORT,
+            "temperature_c": latest.get("temp_air"),
+            "weather": latest.get("weather"),
+            "wind_direction": latest.get("wind_direction"),
+            "wind_speed_kts": latest.get("wind_speed"),
+            "visibility_miles": latest.get("visibility"),
+            "clouds": latest.get("cloud_friendly"),
+            "observed_at": latest.get("time") or latest.get("observation_time"),
+        }
+        flightaware_weather_cache.update({"payload": payload, "expires": time.time() + 600, "error": None})
+        return payload
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        payload = {"enabled": True, "provider": "FlightAware", "airport": FLIGHTAWARE_AIRPORT, "error": str(exc)}
+        flightaware_weather_cache.update({"payload": payload, "expires": time.time() + 120, "error": str(exc)})
+        return payload
 
 def remember_dashboard_vessel(ship_data):
     """Keep the latest safe telemetry for the ingress overview."""
@@ -197,9 +289,11 @@ def distance_km(lat1, lon1, lat2, lon2):
     return radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 def dashboard_snapshot():
+    airport_weather = flightaware_weather()
     with dashboard_lock:
-        reference_lat = (lat_south + lat_north) / 2
-        reference_lon = (lon_west + lon_east) / 2
+        location = current_location()
+        reference_lat = location["latitude"]
+        reference_lon = location["longitude"]
         vessels = []
         for vessel in dashboard_vessels.values():
             item = dict(vessel)
@@ -230,24 +324,25 @@ def dashboard_snapshot():
                     "south": lat_south, "west": lon_west,
                     "north": lat_north, "east": lon_east,
                 },
-                "reference_location": {
-                    "latitude": reference_lat,
-                    "longitude": reference_lon,
-                    "basis": "configured watch-area centre",
-                },
+                "reference_location": location,
                 "map_entities": ENABLE_MAP_ENTITIES,
                 "include_class_b": INCLUDE_CLASS_B,
                 "timeout_minutes": MAP_TIMEOUT_MINUTES,
                 "watchlist_count": len(watchlist_mmsis),
                 "source": "AISHub",
                 "poll_interval": AISHUB_POLL_INTERVAL,
-                "receiver_port": RECEIVER_UDP_PORT,
+                "receiver_mode": RECEIVER_MODE,
+                "receiver_port": RECEIVER_PORT,
+                "receiver_channel": RECEIVER_CHANNEL,
                 "sharing_configured": bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT),
+                "weather_overlay_dashboard": WEATHER_OVERLAY_DASHBOARD,
                 "tv_weather_overlay": TV_WEATHER_OVERLAY,
                 "tv_weather_opacity": TV_WEATHER_OPACITY,
                 "map_style": MAP_STYLE,
             },
             "feed": dict(feed_state),
+            "receiver_log": list(receiver_logs),
+            "flightaware_weather": airport_weather,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
         }
 
@@ -850,16 +945,94 @@ def build_aishub_url():
     return f"{AISHUB_API_URL}?{urllib.parse.urlencode(params)}"
 
 
+def receiver_packets():
+    """Yield NMEA chunks from the selected UDP, TCP, or serial receiver."""
+    if RECEIVER_MODE == "udp":
+        receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        receiver.bind(("0.0.0.0", RECEIVER_PORT))
+        receiver.settimeout(2)
+        while not shutdown_in_progress:
+            try:
+                yield receiver.recvfrom(65535)
+            except socket.timeout:
+                yield None, None
+        return
+
+    if RECEIVER_MODE == "tcp":
+        while not shutdown_in_progress:
+            if not RECEIVER_HOST:
+                feed_state.update({"state": "Receiver setup required", "error": "TCP receiver host is empty"})
+                yield None, None
+                time.sleep(5)
+                continue
+            try:
+                with socket.create_connection((RECEIVER_HOST, RECEIVER_PORT), timeout=10) as receiver:
+                    receiver.settimeout(2)
+                    log(f"🟢 AIS TCP receiver connected at {RECEIVER_HOST}:{RECEIVER_PORT}")
+                    while not shutdown_in_progress:
+                        try:
+                            payload = receiver.recv(65535)
+                            if not payload:
+                                raise OSError("receiver closed the connection")
+                            yield payload, (RECEIVER_HOST, RECEIVER_PORT)
+                        except socket.timeout:
+                            yield None, None
+            except OSError as exc:
+                feed_state.update({"state": "Receiver reconnecting", "error": str(exc)})
+                log(f"⚠️ AIS TCP receiver connection failed: {exc}")
+                yield None, None
+                time.sleep(5)
+        return
+
+    while not shutdown_in_progress:
+        devices = [RECEIVER_SERIAL_DEVICE] if RECEIVER_SERIAL_DEVICE.lower() != "auto" else (
+            sorted(glob.glob("/dev/serial/by-id/*")) + sorted(glob.glob("/dev/ttyUSB*")) + sorted(glob.glob("/dev/ttyACM*"))
+        )
+        device = next((item for item in devices if Path(item).exists()), None)
+        if not device:
+            feed_state.update({"state": "Waiting for serial receiver", "error": None})
+            yield None, None
+            time.sleep(5)
+            continue
+        fd = None
+        try:
+            fd = os.open(device, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+            attributes = termios.tcgetattr(fd)
+            attributes[0] = attributes[1] = attributes[3] = 0
+            attributes[2] = termios.CLOCAL | termios.CREAD | termios.CS8
+            speed = getattr(termios, f"B{RECEIVER_SERIAL_BAUD}", termios.B38400)
+            attributes[4] = attributes[5] = speed
+            attributes[6][termios.VMIN] = 0
+            attributes[6][termios.VTIME] = 10
+            termios.tcsetattr(fd, termios.TCSANOW, attributes)
+            log(f"🟢 AIS serial receiver opened at {device} ({RECEIVER_SERIAL_BAUD} baud)")
+            while not shutdown_in_progress:
+                readable, _, _ = select.select([fd], [], [], 2)
+                if readable:
+                    payload = os.read(fd, 65535)
+                    if not payload:
+                        raise OSError("serial receiver disconnected")
+                    yield payload, (device, RECEIVER_SERIAL_BAUD)
+                else:
+                    yield None, None
+        except (OSError, termios.error) as exc:
+            feed_state.update({"state": "Serial receiver reconnecting", "error": str(exc)})
+            log(f"⚠️ AIS serial receiver error: {exc}")
+            yield None, None
+            time.sleep(5)
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+
 def receiver_feed_worker():
-    """Receive raw local NMEA over UDP and forward it to the assigned AISHub port."""
-    receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    receiver.bind(("0.0.0.0", RECEIVER_UDP_PORT))
-    receiver.settimeout(2)
+    """Receive raw local NMEA and forward it to the assigned AISHub port."""
     forwarder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     configured = bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT)
     feed_state["state"] = "Waiting for receiver" if configured else "Receiver ready · AISHub destination needed"
-    log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' on UDP {RECEIVER_UDP_PORT}")
+    channel_label = {"dual": "AIS A+B (161.975/162.025 MHz)", "channel_a": "AIS A (161.975 MHz)", "channel_b": "AIS B (162.025 MHz)"}[RECEIVER_CHANNEL]
+    log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' via {RECEIVER_MODE.upper()} · {channel_label}")
     if configured:
         log(f"🤝 AISHub sharing enabled to {AISHUB_FEED_HOST}:{AISHUB_FEED_PORT}")
     else:
@@ -872,29 +1045,25 @@ def receiver_feed_worker():
     summary_ignored = 0
     last_hardware_message = None
     offline_logged = False
-    while not shutdown_in_progress:
-        try:
-            payload, source = receiver.recvfrom(65535)
-        except socket.timeout:
+    for payload, source in receiver_packets():
+        if shutdown_in_progress:
+            break
+        if payload is None:
             if last_hardware_message is not None and time.monotonic() - last_hardware_message >= 120:
                 feed_state["state"] = "Receiver offline"
                 if not offline_logged:
                     log(f"🔴 AIS hardware offline: '{RECEIVER_NAME}' has sent no NMEA data for 120 seconds")
                     offline_logged = True
             continue
-        except OSError as exc:
-            feed_state["state"] = "Receiver error"
-            feed_state["error"] = str(exc)
-            log(f"Local receiver UDP error: {exc}")
-            time.sleep(5)
-            continue
-
+        try:
+            source_label = f"{source[0]}:{source[1]}"
+        except (TypeError, IndexError):
+            source_label = str(source)
         feed_state["datagrams"] += 1
         last_hardware_message = time.monotonic()
         if offline_logged:
             log(f"🟢 AIS hardware restored: '{RECEIVER_NAME}' is sending NMEA data again")
             offline_logged = False
-        source_label = f"{source[0]}:{source[1]}"
         feed_state["receiver_address"] = source_label
         if source_label != last_source:
             if last_source is None:
@@ -956,6 +1125,18 @@ def start_receiver_feed():
     threading.Thread(target=receiver_feed_worker, name="aishub-nmea-forwarder", daemon=True).start()
 
 
+def start_gps():
+    if not GPS_USE_USB:
+        log("📍 USB GPS disabled; using the configured watch-area centre")
+        return
+    command = [sys.executable, "/gps_reader.py", "--device", GPS_DEVICE, "--baud", str(GPS_BAUD), "--output", str(GPS_LOCATION_FILE)]
+    try:
+        subprocess.Popen(command)
+        log(f"📍 USB GPS logger started ({GPS_DEVICE} at {GPS_BAUD} baud)")
+    except OSError as exc:
+        log(f"⚠️ USB GPS could not start: {exc}")
+
+
 def start_tracker():
     global last_purge_time, last_known_error
     if not AISHUB_USERNAME:
@@ -1012,6 +1193,7 @@ if __name__ == "__main__":
 
     start_dashboard()
     sync_state_on_startup()
+    start_gps()
     start_receiver_feed()
         
     try:

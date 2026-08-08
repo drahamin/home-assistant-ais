@@ -1,0 +1,10 @@
+.fleet-grid{gap:12px}
+.vessel-card{border-radius:15px;padding:14px}
+.vessel-card h3{margin:10px 0 3px;font-size:15px}
+.identity-mark{display:flex;align-items:center;gap:8px}
+.card-flag{font-size:21px}
+.operator-mark{display:grid;place-items:center;min-width:34px;height:24px;padding:0 6px;border-radius:6px;background:linear-gradient(135deg,#17130f,#8b4513);color:#f3d978;font-size:8px;font-weight:900;letter-spacing:.08em}
+.vessel-metrics{grid-template-columns:repeat(4,1fr);gap:6px;margin-top:11px}
+.vessel-metrics b{font-size:10px;margin-top:4px}
+.destination{margin-top:9px;padding:8px 10px;gap:8px}
+@media(max-width:760px){.vessel-metrics{grid-template-columns:1fr 1fr}}
