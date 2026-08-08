@@ -1,6 +1,6 @@
 # Baiamonte AIS
 
-Baiamonte AIS is a Home Assistant app for reciprocal vessel tracking through [AISHub](https://www.aishub.net/). It accepts raw NMEA data from your local AIS receiver, forwards that feed to AISHub, and retrieves the shared AISHub vessel network for your configured watch area.
+Baiamonte AIS is an end-to-end Home Assistant vessel station. It includes [AIS-catcher](https://github.com/jvde-github/AIS-catcher) for dual-channel decoding from an RTL-SDR such as the Nooelec NESDR SMArt v5, displays locally received vessels immediately, and can exchange the original NMEA feed with [AISHub](https://www.aishub.net/) for wider-area coverage.
 
 The app includes a Tenuta Baiamonte-styled Home Assistant sidebar dashboard, live vessel entities, receiver health logging, and automatic container updates through GitHub.
 
@@ -14,11 +14,10 @@ The Overview and TV maps can be dragged, pinched, zoomed with the wheel or gold 
 
 ## How the exchange works
 
-1. Apply to [join AISHub](https://www.aishub.net/join-us) with an operational AIS receiver.
-2. AISHub emails you a dedicated UDP destination and later supplies your username when the feed qualifies.
-3. Configure your AIS receiver to send raw NMEA UDP data to the Home Assistant host on port `10110`.
-4. Enter the AISHub username, destination host, and destination port in the Baiamonte AIS configuration.
-5. Baiamonte AIS shares your receiver messages and downloads vessels inside your selected coverage area every 60 seconds.
+1. Attach the RTL-SDR and a VHF antenna suitable for the AIS channels around 162 MHz.
+2. Select **SDR / included AIS-catcher**. The Nooelec-safe starting profile is device `0`, automatic gain, `0` PPM, RTL AGC on, 192K filter, and bias tee off.
+3. Locally decoded vessels appear immediately on the dashboard, TV view, and Home Assistant entities.
+4. Optionally apply to [join AISHub](https://www.aishub.net/join-us), then enter its assigned feed destination and contributor username for reciprocal network coverage.
 
 AISHub requires an average of at least 10 vessels, 90% uptime, no more than 60 seconds of downsampling, and no more than 10 seconds of message delay for aggregated API access.
 
@@ -38,8 +37,12 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | AISHub Feed Host | Feed destination host supplied by AISHub |
 | AISHub Feed Port | Dedicated UDP port supplied by AISHub |
 | AIS Receiver Name | Friendly hardware name used in logs and status sensors |
-| AIS Receiver Connection | UDP, TCP, or serial NMEA receiver |
+| AIS Receiver Connection | Included AIS-catcher/RTL-SDR decoder, or external UDP, TCP, or serial NMEA receiver |
 | AIS radio channel | Dual channel, 161.975 MHz channel A, or 162.025 MHz channel B |
+| RTL-SDR device | Dongle index or serial number |
+| Gain / PPM / AGC | Radio tuner and frequency-correction controls |
+| Bias tee | Off by default for the NESDR SMArt v5; enable only for hardware that explicitly needs DC power |
+| Decoder bandwidth | Recommended 192K AIS-catcher filter, 288K, or Off |
 | USB GPS | Automatic estate reference location for map and distance ranking |
 | Dashboard / TV live rain | Independent RainViewer precipitation overlays |
 | FlightAware weather | Optional AeroAPI airport observation on Watch Area |
@@ -49,6 +52,12 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | Ship Entity Timeout | Removes vessels that have not updated within this period |
 
 The AISHub API does not allow polling more often than once per minute, so the app enforces a minimum 60-second interval.
+
+## Nooelec NESDR SMArt v5
+
+Plug the dongle into the Home Assistant machine, attach an AIS/VHF antenna, select **SDR**, and start with the defaults. The app builds and supervises AIS-catcher v0.70, decodes both international AIS channels, restarts the decoder if it exits, and shows decoder output in **Watch area → Receiver log**. Do not assign the same dongle to another add-on at the same time.
+
+The bundled decoder is intended for observation only and is not approved as a navigation or safety-of-life system.
 
 ## Receiver connection and logging
 
@@ -65,6 +74,7 @@ Accepted sentence prefixes are `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM`. The a
 - Messages forwarded to AISHub
 - Forwarding or socket errors
 - A health summary approximately once per minute while traffic is flowing
+- AIS-catcher startup, radio profile, decoder output, failures, and automatic restarts
 
 No AISHub username, receiver payload, or geographic coordinates are sent to any Baiamonte telemetry service.
 
@@ -82,4 +92,4 @@ GitHub Actions publishes versioned `amd64` and `aarch64` images to `ghcr.io/drah
 
 ## Data source
 
-Aggregated vessel data and contributor exchange are provided by [AISHub](https://www.aishub.net/). AIS data is informational and must not be used as the sole source for navigation or safety decisions.
+Local SDR decoding is provided by [AIS-catcher](https://github.com/jvde-github/AIS-catcher). Aggregated vessel data and contributor exchange are provided by [AISHub](https://www.aishub.net/). AIS data is informational and must not be used as the sole source for navigation or safety decisions.

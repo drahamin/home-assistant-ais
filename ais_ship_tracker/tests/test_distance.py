@@ -57,11 +57,69 @@ class DistanceTests(unittest.TestCase):
         tracker.receiver_logs.clear()
         tracker.log("AIS receiver test event")
         snapshot = tracker.dashboard_snapshot()
-        self.assertEqual(snapshot["config"]["receiver_mode"], "udp")
+        self.assertEqual(snapshot["config"]["receiver_mode"], "sdr")
         self.assertEqual(snapshot["config"]["receiver_channel"], "dual")
         self.assertIn("reference_location", snapshot["config"])
         self.assertFalse(snapshot["flightaware_weather"]["enabled"])
         self.assertEqual(snapshot["receiver_log"][0]["message"], "AIS receiver test event")
+        self.assertTrue(snapshot["decoder"]["enabled"])
+
+
+class AisCatcherTests(unittest.TestCase):
+    def setUp(self):
+        tracker.dashboard_vessels.clear()
+        tracker.static_ship_data.clear()
+
+    def test_nooelec_safe_default_command(self):
+        command = tracker.build_ais_catcher_command("/usr/local/bin/AIS-catcher")
+        self.assertEqual(command[0:2], ["/usr/local/bin/AIS-catcher", "-d:0"])
+        self.assertIn("-gr", command)
+        self.assertEqual(command[command.index("TUNER") + 1], "auto")
+        self.assertEqual(command[command.index("RTLAGC") + 1], "on")
+        self.assertEqual(command[command.index("BIASTEE") + 1], "off")
+        self.assertEqual(command[command.index("-a") + 1], "192K")
+        self.assertEqual(command[-3:], ["10110", "JSON_FULL", "on"])
+
+    def test_json_full_updates_local_vessel_and_preserves_nmea(self):
+        payload = json.dumps({
+            "class": "AIS",
+            "type": 1,
+            "mmsi": 247123456,
+            "lat": 37.75,
+            "lon": 15.05,
+            "speed": 8.5,
+            "course": 121.2,
+            "heading": 120,
+            "status": 0,
+            "status_text": "Under way using engine",
+            "nmea": ["!AIVDM,1,1,,A,TEST,0*00"],
+        }).encode()
+        lines, ignored, local_updates = tracker.decode_receiver_payload(payload)
+        self.assertEqual(lines, ["!AIVDM,1,1,,A,TEST,0*00"])
+        self.assertEqual(ignored, 0)
+        self.assertEqual(local_updates, 1)
+        self.assertEqual(tracker.dashboard_vessels["247123456"]["source"], "Local AIS-catcher")
+        self.assertEqual(tracker.dashboard_vessels["247123456"]["nav_status_string"], "Under way using engine")
+
+    def test_static_message_is_merged_into_later_position(self):
+        tracker.decode_receiver_payload(json.dumps({
+            "class": "AIS", "type": 5, "mmsi": 247123456,
+            "shipname": "BAIAMONTE TEST", "destination": "CATANIA", "shiptype": 70,
+            "nmea": ["!AIVDM,2,1,1,A,STATIC,0*00"],
+        }).encode())
+        tracker.decode_receiver_payload(json.dumps({
+            "class": "AIS", "type": 1, "mmsi": 247123456,
+            "lat": 37.75, "lon": 15.05, "nmea": ["!AIVDM,1,1,,A,POSITION,0*00"],
+        }).encode())
+        vessel = tracker.dashboard_vessels["247123456"]
+        self.assertEqual(vessel["name"], "BAIAMONTE TEST")
+        self.assertEqual(vessel["destination"], "CATANIA")
+
+    def test_container_build_pins_ais_catcher_and_rtlsdr_runtime(self):
+        dockerfile = (TRACKER.parent / "Dockerfile").read_text()
+        self.assertIn("AISCATCHER_VERSION=v0.70", dockerfile)
+        self.assertIn("librtlsdr0", dockerfile)
+        self.assertIn("/usr/local/bin/AIS-catcher", dockerfile)
 
 
 class AisHubPayloadTests(unittest.TestCase):
@@ -125,6 +183,16 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("baiamonteAisMapDisplay", script)
         self.assertIn(".map-vessel-label", styles)
         self.assertIn(".map-vessel-detail", styles)
+
+    def test_watch_area_shows_the_decoder_profile(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        script = (web / "app.js").read_text()
+        styles = (web / "decoder.css").read_text()
+        self.assertIn('id="decoder-status"', dashboard)
+        self.assertIn('id="decoder-tuning"', dashboard)
+        self.assertIn("decoder.state", script)
+        self.assertIn("grid-column: 1 / -1", styles)
 
 
 if __name__ == "__main__":

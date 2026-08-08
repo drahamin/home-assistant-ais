@@ -22,7 +22,7 @@ import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.3.2"
+VERSION = "2.4.0"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -77,9 +77,9 @@ try:
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
-    RECEIVER_MODE = str(config.get('receiver_mode', 'udp')).strip().lower()
-    if RECEIVER_MODE not in {'udp', 'tcp', 'serial'}:
-        RECEIVER_MODE = 'udp'
+    RECEIVER_MODE = str(config.get('receiver_mode', 'sdr')).strip().lower()
+    if RECEIVER_MODE not in {'sdr', 'udp', 'tcp', 'serial'}:
+        RECEIVER_MODE = 'sdr'
     RECEIVER_HOST = str(config.get('receiver_host', '')).strip()
     RECEIVER_PORT = max(1, min(65535, get_safe_int('receiver_port', 10110)))
     RECEIVER_SERIAL_DEVICE = str(config.get('receiver_serial_device', 'auto')).strip() or 'auto'
@@ -87,6 +87,19 @@ try:
     RECEIVER_CHANNEL = str(config.get('receiver_channel', 'dual')).strip().lower()
     if RECEIVER_CHANNEL not in {'dual', 'channel_a', 'channel_b'}:
         RECEIVER_CHANNEL = 'dual'
+    SDR_DEVICE = str(config.get('sdr_device', '0')).strip() or '0'
+    SDR_GAIN = str(config.get('sdr_gain', 'auto')).strip().lower() or 'auto'
+    if SDR_GAIN != 'auto':
+        try:
+            SDR_GAIN = str(max(0.0, min(50.0, float(SDR_GAIN))))
+        except ValueError:
+            SDR_GAIN = 'auto'
+    SDR_PPM = max(-150, min(150, get_safe_int('sdr_ppm', 0)))
+    SDR_RTL_AGC = str(config.get('sdr_rtl_agc', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    SDR_BIAS_TEE = str(config.get('sdr_bias_tee', False)).lower() in ['true', '1', 't', 'y', 'yes']
+    SDR_BANDWIDTH = str(config.get('sdr_bandwidth', '192K')).strip().upper()
+    if SDR_BANDWIDTH not in {'OFF', '192K', '288K'}:
+        SDR_BANDWIDTH = '192K'
     GPS_USE_USB = str(config.get('GPS_USE_USB', True)).lower() in ['true', '1', 't', 'y', 'yes']
     GPS_DEVICE = str(config.get('GPS_DEVICE', 'auto')).strip() or 'auto'
     GPS_BAUD = get_safe_int('GPS_BAUD', 9600)
@@ -165,6 +178,9 @@ last_purge_time = datetime.now()
 last_known_error = ""
 current_conn_status = "Disconnected"
 shutdown_in_progress = False
+ais_catcher_process = None
+ais_catcher_lock = threading.Lock()
+receiver_ready = threading.Event()
 
 # Read-only state used by the Home Assistant ingress dashboard.
 dashboard_vessels = {}
@@ -182,12 +198,27 @@ feed_state = {
     "state": "Waiting for receiver",
     "received": 0,
     "forwarded": 0,
+    "locally_decoded": 0,
     "last_received": None,
     "last_forwarded": None,
     "receiver_name": RECEIVER_NAME,
     "receiver_address": None,
     "datagrams": 0,
     "ignored_lines": 0,
+    "error": None,
+}
+decoder_state = {
+    "enabled": RECEIVER_MODE == "sdr",
+    "state": "Waiting" if RECEIVER_MODE == "sdr" else "Not enabled",
+    "version": None,
+    "device": SDR_DEVICE,
+    "gain": SDR_GAIN,
+    "ppm": SDR_PPM,
+    "rtl_agc": SDR_RTL_AGC,
+    "bias_tee": SDR_BIAS_TEE,
+    "bandwidth": SDR_BANDWIDTH,
+    "restarts": 0,
+    "last_message": None,
     "error": None,
 }
 GPS_LOCATION_FILE = Path(os.environ.get("BAIAMONTE_GPS_JSON", "/run/baiamonte/gps.json"))
@@ -329,7 +360,7 @@ def dashboard_snapshot():
                 "include_class_b": INCLUDE_CLASS_B,
                 "timeout_minutes": MAP_TIMEOUT_MINUTES,
                 "watchlist_count": len(watchlist_mmsis),
-                "source": "AISHub",
+                "source": "Local AIS-catcher + AISHub" if RECEIVER_MODE == "sdr" else "AISHub + local receiver",
                 "poll_interval": AISHUB_POLL_INTERVAL,
                 "receiver_mode": RECEIVER_MODE,
                 "receiver_port": RECEIVER_PORT,
@@ -341,6 +372,7 @@ def dashboard_snapshot():
                 "map_style": MAP_STYLE,
             },
             "feed": dict(feed_state),
+            "decoder": dict(decoder_state),
             "receiver_log": list(receiver_logs),
             "flightaware_weather": airport_weather,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -804,8 +836,12 @@ def update_conn_status(status, new_error=None):
         "vessels_received": aishub_state["records"],
         "receiver_feed_status": feed_state["state"],
         "receiver_messages_received": feed_state["received"],
+        "local_vessels_decoded": feed_state["locally_decoded"],
         "messages_shared": feed_state["forwarded"],
         "last_receiver_message": feed_state["last_received"],
+        "decoder_status": decoder_state["state"],
+        "decoder_version": decoder_state["version"],
+        "decoder_restarts": decoder_state["restarts"],
         "error_message": sanitised_error,
         "icon": icon,
     }
@@ -945,13 +981,140 @@ def build_aishub_url():
     return f"{AISHUB_API_URL}?{urllib.parse.urlencode(params)}"
 
 
+def build_ais_catcher_command(binary="AIS-catcher"):
+    """Build a validated AIS-catcher command for the attached RTL-SDR."""
+    command = [binary]
+    if SDR_DEVICE.isdigit():
+        command.append(f"-d:{int(SDR_DEVICE)}")
+    else:
+        command.extend(["-d", SDR_DEVICE])
+    command.extend([
+        "-gr", "RTLAGC", "on" if SDR_RTL_AGC else "off",
+        "TUNER", SDR_GAIN,
+        "BIASTEE", "on" if SDR_BIAS_TEE else "off",
+    ])
+    if SDR_BANDWIDTH != "OFF":
+        command.extend(["-a", SDR_BANDWIDTH])
+    command.extend([
+        "-p", str(SDR_PPM),
+        "-q", "-v", "10",
+        "-u", "127.0.0.1", str(RECEIVER_PORT), "JSON_FULL", "on",
+    ])
+    return command
+
+
+def local_ais_vessel(message):
+    """Normalize one AIS-catcher JSON_FULL message for the Baiamonte UI."""
+    if not isinstance(message, dict) or str(message.get("class", "")).upper() != "AIS":
+        return None
+    mmsi = str(message.get("mmsi", "")).strip()
+    if len(mmsi) != 9 or not mmsi.isdigit():
+        return None
+    if watchlist_mmsis and mmsi not in watchlist_mmsis:
+        return None
+    raw_message_type = clean_number(message.get("type"))
+    message_type = int(raw_message_type) if raw_message_type is not None else 0
+    if not INCLUDE_CLASS_B and message_type in {18, 19, 24}:
+        return None
+
+    static = {}
+    name = str(message.get("shipname") or message.get("name") or "").strip(" @")
+    if name:
+        static["name"] = name
+    destination = str(message.get("destination") or "").strip(" @")
+    if destination:
+        static["destination"] = destination
+    callsign = str(message.get("callsign") or "").strip(" @")
+    if callsign:
+        static["call_sign"] = callsign
+    imo = message.get("imo")
+    if imo not in (None, "", 0, "0"):
+        static["imo_number"] = str(imo)
+    ship_type = int(clean_number(message.get("shiptype")) or 0)
+    if ship_type:
+        static["vessel_type"] = get_vessel_type_string(ship_type)
+    bow = clean_number(message.get("to_bow"))
+    stern = clean_number(message.get("to_stern"))
+    if bow is not None or stern is not None:
+        static["ship_length"] = (bow or 0) + (stern or 0)
+    if static:
+        static_ship_data.setdefault(mmsi, {}).update(static)
+
+    latitude = clean_number(message.get("lat"), 91)
+    longitude = clean_number(message.get("lon"), 181)
+    if latitude is None or longitude is None or not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    raw_status = clean_number(message.get("status"))
+    status_number = int(raw_status) if raw_status is not None else 15
+    return {
+        "name": static_ship_data.get(mmsi, {}).get("name", f"AIS {mmsi}"),
+        "mmsi": mmsi,
+        "latitude": latitude,
+        "longitude": longitude,
+        "sog": clean_number(message.get("speed"), 102.3),
+        "cog": clean_number(message.get("course"), 360),
+        "heading": clean_number(message.get("heading"), 511),
+        "nav_status_string": str(message.get("status_text") or NAV_STATUS_MAP.get(status_number, "Not defined")),
+        "vessel_class": "Local AIS · Class B" if message_type in {18, 19, 24} else "Local AIS · Class A",
+        "source": "Local AIS-catcher",
+        "icon": ICON_MAP.get(status_number, "mdi:ferry"),
+    }
+
+
+def process_local_ais_message(message):
+    """Publish a locally decoded vessel without requiring AISHub access."""
+    ship_data = local_ais_vessel(message)
+    if not ship_data:
+        return False
+    mmsi = ship_data["mmsi"]
+    is_new = mmsi not in seen_ships
+    remember_dashboard_vessel(ship_data)
+    now = datetime.now()
+    if is_new:
+        log(f"🚢 NEW LOCAL SHIP: {ship_data['name']} (AIS-catcher | MMSI: {mmsi})")
+        update_ha_entity(ship_data)
+    seen_ships[mmsi] = now
+    last_updated = last_map_update.get(mmsi)
+    if last_updated is None or (now - last_updated).total_seconds() >= 60:
+        update_map_entity(ship_data)
+        last_map_update[mmsi] = now
+    return True
+
+
+def decode_receiver_payload(payload):
+    """Return NMEA lines and locally decoded vessels from receiver data."""
+    valid_lines = []
+    ignored = 0
+    local_updates = 0
+    for raw_line in payload.decode("utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("!AIVDM", "!AIVDO", "!BSVDM", "!ABVDM")):
+            valid_lines.append(line)
+            continue
+        if line.startswith("{"):
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                ignored += 1
+                continue
+            nmea = message.get("nmea", []) if isinstance(message, dict) else []
+            valid_lines.extend(item.strip() for item in nmea if isinstance(item, str) and item.strip().startswith(("!AIVDM", "!AIVDO", "!BSVDM", "!ABVDM")))
+            local_updates += int(process_local_ais_message(message))
+            continue
+        ignored += 1
+    return valid_lines, ignored, local_updates
+
+
 def receiver_packets():
-    """Yield NMEA chunks from the selected UDP, TCP, or serial receiver."""
-    if RECEIVER_MODE == "udp":
+    """Yield AIS chunks from the selected SDR, UDP, TCP, or serial receiver."""
+    if RECEIVER_MODE in {"sdr", "udp"}:
         receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         receiver.bind(("0.0.0.0", RECEIVER_PORT))
         receiver.settimeout(2)
+        receiver_ready.set()
         while not shutdown_in_progress:
             try:
                 yield receiver.recvfrom(65535)
@@ -1027,12 +1190,13 @@ def receiver_packets():
 
 
 def receiver_feed_worker():
-    """Receive raw local NMEA and forward it to the assigned AISHub port."""
+    """Receive local AIS, update the UI, and forward original NMEA to AISHub."""
     forwarder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     configured = bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT)
     feed_state["state"] = "Waiting for receiver" if configured else "Receiver ready · AISHub destination needed"
     channel_label = {"dual": "AIS A+B (161.975/162.025 MHz)", "channel_a": "AIS A (161.975 MHz)", "channel_b": "AIS B (162.025 MHz)"}[RECEIVER_CHANNEL]
-    log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' via {RECEIVER_MODE.upper()} · {channel_label}")
+    mode_label = "AIS-catcher / RTL-SDR" if RECEIVER_MODE == "sdr" else RECEIVER_MODE.upper()
+    log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' via {mode_label} · {channel_label}")
     if configured:
         log(f"🤝 AISHub sharing enabled to {AISHUB_FEED_HOST}:{AISHUB_FEED_PORT}")
     else:
@@ -1072,14 +1236,8 @@ def receiver_feed_worker():
                 log(f"🔄 AIS hardware source changed from {last_source} to {source_label}")
             last_source = source_label
 
-        valid_lines = []
-        ignored_lines = 0
-        for raw_line in payload.decode("ascii", errors="ignore").splitlines():
-            line = raw_line.strip()
-            if line.startswith(("!AIVDM", "!AIVDO", "!BSVDM", "!ABVDM")):
-                valid_lines.append(line)
-            elif line:
-                ignored_lines += 1
+        valid_lines, ignored_lines, local_updates = decode_receiver_payload(payload)
+        feed_state["locally_decoded"] += local_updates
         feed_state["ignored_lines"] += ignored_lines
         summary_ignored += ignored_lines
         if not valid_lines:
@@ -1123,6 +1281,67 @@ def receiver_feed_worker():
 
 def start_receiver_feed():
     threading.Thread(target=receiver_feed_worker, name="aishub-nmea-forwarder", daemon=True).start()
+
+
+def ais_catcher_worker():
+    """Run and supervise the bundled dual-channel RTL-SDR decoder."""
+    global ais_catcher_process
+    receiver_ready.wait(timeout=5)
+    while not shutdown_in_progress:
+        command = build_ais_catcher_command()
+        decoder_state.update({"state": "Starting", "error": None})
+        log(
+            "📻 Starting AIS-catcher for RTL-SDR device "
+            f"{SDR_DEVICE} · gain {SDR_GAIN} · PPM {SDR_PPM} · bandwidth {SDR_BANDWIDTH} · "
+            f"RTL AGC {'on' if SDR_RTL_AGC else 'off'} · bias tee {'on' if SDR_BIAS_TEE else 'off'}"
+        )
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            with ais_catcher_lock:
+                ais_catcher_process = process
+            decoder_state["state"] = "Running"
+            log("🟢 AIS-catcher decoder is running and listening on both AIS channels")
+            for output in process.stdout or ():
+                line = output.strip()
+                if not line:
+                    continue
+                decoder_state["last_message"] = datetime.now().isoformat(timespec="seconds")
+                version_match = re.search(r"AIS-catcher[^v]*(v\d+\.\d+)", line, re.IGNORECASE)
+                if version_match:
+                    decoder_state["version"] = version_match.group(1)
+                log(f"AIS-catcher · {line[:300]}")
+            return_code = process.wait()
+            if shutdown_in_progress:
+                break
+            decoder_state.update({"state": "Restarting", "error": f"AIS-catcher exited with code {return_code}"})
+            decoder_state["restarts"] += 1
+            feed_state.update({"state": "Decoder restarting", "error": decoder_state["error"]})
+            log(f"⚠️ {decoder_state['error']}; retrying in 5 seconds")
+        except OSError as exc:
+            decoder_state.update({"state": "Start failed", "error": str(exc)})
+            decoder_state["restarts"] += 1
+            feed_state.update({"state": "Decoder unavailable", "error": str(exc)})
+            log(f"🔴 AIS-catcher could not start: {exc}")
+        finally:
+            with ais_catcher_lock:
+                ais_catcher_process = None
+        for _ in range(10):
+            if shutdown_in_progress:
+                break
+            time.sleep(0.5)
+
+
+def start_ais_catcher():
+    if RECEIVER_MODE != "sdr":
+        log("ℹ️ Built-in AIS-catcher is available but disabled for the selected external receiver mode")
+        return
+    threading.Thread(target=ais_catcher_worker, name="ais-catcher-supervisor", daemon=True).start()
 
 
 def start_gps():
@@ -1183,6 +1402,10 @@ def graceful_shutdown(signum, frame):
     global shutdown_in_progress
     shutdown_in_progress = True
     log("🛑 Received stop signal from Home Assistant. Shutting down gracefully...")
+    with ais_catcher_lock:
+        process = ais_catcher_process
+    if process and process.poll() is None:
+        process.terminate()
     update_conn_status("Stopped", new_error="Add-on stopped by user or system.")
     log("🛑 Tracker safely stopped.")
     sys.exit(0)
@@ -1195,6 +1418,7 @@ if __name__ == "__main__":
     sync_state_on_startup()
     start_gps()
     start_receiver_feed()
+    start_ais_catcher()
         
     try:
         while True:

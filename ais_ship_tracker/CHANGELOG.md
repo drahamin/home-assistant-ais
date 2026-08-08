@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0
+
+* Bundles AIS-catcher v0.70 for end-to-end, dual-channel RTL-SDR AIS reception inside the Home Assistant app.
+* Adds a Nooelec NESDR SMArt v5 starting profile with device, gain, PPM, AGC, bias-tee, and decoder-bandwidth controls.
+* Displays locally decoded AIS-catcher vessels immediately while preserving and optionally forwarding their original NMEA messages to AISHub.
+* Supervises and restarts the decoder, logs its radio profile and output, and exposes decoder health on the Watch Area page and status API.
+
 ## 2.3.2
 
 * Adds compact vessel callouts directly on the Home Assistant overview map with flag, identity, vessel type, speed, destination, and last-seen time.

@@ -27,11 +27,11 @@ function vesselCard(v){const info=vesselFlag(v.mmsi),mark=(v.call_sign||v.imo_nu
 
 function render(data){
   state=data;
-  const vessels=data.vessels||[],cfg=data.config,bounds=cfg.bounds,connected=data.connection==='Connected',feed=data.feed||{};
-  $('#side-light').classList.toggle('online',connected);
-  $('#hero-light').classList.toggle('online',connected);
-  $('#side-status').textContent=connected?'AISHub connected':data.connection;
-  $('#hero-status').textContent=connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
+  const vessels=data.vessels||[],cfg=data.config,bounds=cfg.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},operational=connected||feed.received>0||decoder.state==='Running';
+  $('#side-light').classList.toggle('online',operational);
+  $('#hero-light').classList.toggle('online',operational);
+  $('#side-status').textContent=decoder.state==='Running'?'Local AIS-catcher online':connected?'AISHub connected':data.connection;
+  $('#hero-status').textContent=decoder.state==='Running'?'Local dual-channel AIS receiver is online':connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
   $('#receiver-status').textContent=data.connection;
   $('#vessel-count').textContent=`${vessels.length} active`;
   $('#nav-count').textContent=vessels.length;
@@ -52,9 +52,14 @@ function render(data){
   const events=data.events||[];
   $('#events').innerHTML=events.length?events.slice(0,5).map(event=>`<div class="event-row"><div class="vessel-icon"><svg><use href="#i-radar"/></svg></div><span><b>${esc(event.message)}</b><small>${esc(ago(event.time))}</small></span></div>`).join(''):'<div class="empty">The operations journal is ready for the first contact.</div>';
   $('#north').textContent=bounds.north.toFixed(6);$('#south').textContent=bounds.south.toFixed(6);$('#east').textContent=bounds.east.toFixed(6);$('#west').textContent=bounds.west.toFixed(6);
-  $('#class-b').textContent='AISHub network';
+  $('#class-b').textContent=cfg.include_class_b?'Included':'Excluded';
   $('#timeout').textContent=`${cfg.timeout_minutes} minutes`;
   $('#entities').textContent=cfg.map_entities?'Enabled':'Disabled';
+  $('#decoder-title').textContent=decoder.enabled?`AIS-catcher ${decoder.version||''}`.trim():'External decoded receiver';
+  $('#decoder-status').textContent=decoder.state||'Not enabled';
+  $('#decoder-device').textContent=decoder.enabled?`RTL-SDR ${fmt(decoder.device)}`:String(cfg.receiver_mode||'external').toUpperCase();
+  $('#decoder-tuning').textContent=decoder.enabled?`${fmt(decoder.gain)} dB · ${fmt(decoder.ppm)} PPM`:'Handled by receiver';
+  $('#decoder-bandwidth').textContent=decoder.enabled?`${fmt(decoder.bandwidth)} · AGC ${decoder.rtl_agc?'on':'off'} · bias ${decoder.bias_tee?'on':'off'}`:'NMEA input';
   const logEntries=data.receiver_log||[];
   $('#receiver-log').innerHTML=logEntries.length?logEntries.slice(0,30).map(item=>`<div class="receiver-log-row"><time>${esc(new Date(item.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time><span>${esc(item.message)}</span></div>`).join(''):'<div class="empty">Receiver activity will appear here.</div>';
   const airport=data.flightaware_weather||{};$('#airport-weather-title').textContent=airport.airport?`${airport.airport} airport observation`:'Airport observation';$('#airport-weather').textContent=!airport.enabled?'Disabled in app configuration':airport.error?airport.error:[airport.weather,airport.temperature_c!==null&&airport.temperature_c!==undefined?`${airport.temperature_c}°C`:'',airport.wind_speed_kts!==null&&airport.wind_speed_kts!==undefined?`Wind ${airport.wind_speed_kts} kt`:'',airport.visibility_miles!==null&&airport.visibility_miles!==undefined?`Visibility ${airport.visibility_miles} mi`:''].filter(Boolean).join(' · ')||'Waiting for FlightAware observation';
