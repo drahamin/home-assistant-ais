@@ -23,7 +23,7 @@ import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.5.0"
+VERSION = "2.7.0"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -76,6 +76,13 @@ try:
     AISHUB_POLL_INTERVAL = max(60, get_safe_int('aishub_poll_interval', 60))
     AISHUB_FEED_HOST = str(config.get('aishub_feed_host', '')).strip()
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
+    BAIAMONTE_API_ENABLED = str(config.get('baiamonte_api_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    RAHAMIN_MIAMI_ENABLED = str(config.get('rahamin_miami_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    MIAMI_APPROACH_KM = max(5, min(200, get_safe_int('miami_approach_km', 45)))
+    BAIAMONTE_APPROACH_KM = max(5, min(200, get_safe_int('baiamonte_approach_km', 45)))
+    DEFAULT_MAP_AREA = str(config.get('default_map_area', 'baiamonte')).strip().lower()
+    if DEFAULT_MAP_AREA not in {'baiamonte', 'miami'}:
+        DEFAULT_MAP_AREA = 'baiamonte'
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
     RECEIVER_MODE = str(config.get('receiver_mode', 'sdr')).strip().lower()
@@ -160,6 +167,25 @@ try:
     lat_north = configured_bounds["latitude_north"]
     lon_east = configured_bounds["longitude_east"]
     BOUNDING_BOX = [[[lat_south, lon_west], [lat_north, lon_east]]]
+    MIAMI_BOUNDS = {
+        "south": float(config.get('miami_latitude_south', 25.55)),
+        "west": float(config.get('miami_longitude_west', -80.45)),
+        "north": float(config.get('miami_latitude_north', 26.15)),
+        "east": float(config.get('miami_longitude_east', -79.85)),
+    }
+    MAP_AREAS = {
+        "baiamonte": {
+            "id": "baiamonte", "name": "Baiamonte Sicily", "station": "Baiamonte AIS",
+            "enabled": BAIAMONTE_API_ENABLED,
+            "bounds": {"south": lat_south, "west": lon_west, "north": lat_north, "east": lon_east},
+            "approach_km": BAIAMONTE_APPROACH_KM,
+        },
+        "miami": {
+            "id": "miami", "name": "Rahamin Miami", "station": "Rahamin AIS Miami",
+            "enabled": RAHAMIN_MIAMI_ENABLED, "bounds": MIAMI_BOUNDS,
+            "approach_km": MIAMI_APPROACH_KM,
+        },
+    }
     
     dev_val = config.get('dev_mode', False)
     DEV_MODE = str(dev_val).lower() in ['true', '1', 't', 'y', 'yes'] if dev_val is not None else False
@@ -228,6 +254,11 @@ aishub_state = {
     "records": 0,
     "error": None,
 }
+aishub_area_states = {
+    area_id: {"state": "Waiting", "last_checked": None, "last_success": None, "records": 0, "error": None}
+    for area_id, area in MAP_AREAS.items() if area["enabled"]
+}
+aishub_area_cursor = 0
 feed_state = {
     "state": "Waiting for receiver",
     "received": 0,
@@ -346,6 +377,23 @@ def remember_dashboard_vessel(ship_data):
     mmsi = str(ship_data.get("mmsi", ""))
     if not mmsi:
         return
+    if not ship_data.get("area_id"):
+        latitude = clean_number(ship_data.get("latitude"))
+        longitude = clean_number(ship_data.get("longitude"))
+        if latitude is not None and longitude is not None:
+            for area_id, area in MAP_AREAS.items():
+                if point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
+                    ship_data["area_id"] = area_id
+                    ship_data["area_name"] = area["name"]
+                    ship_data["station"] = area["station"]
+                    ship_data["area_status"] = vessel_area_status(
+                        latitude, longitude, ship_data.get("sog"), ship_data.get("cog"), area
+                    )
+                    break
+        if not ship_data.get("area_id"):
+            ship_data["area_id"] = "baiamonte"
+            ship_data["area_name"] = MAP_AREAS["baiamonte"]["name"]
+            ship_data["station"] = MAP_AREAS["baiamonte"]["station"]
     with dashboard_lock:
         previous = dashboard_vessels.get(mmsi, {})
         merged = {**previous, **ship_data, **static_ship_data.get(ship_data.get("mmsi"), {})}
@@ -355,7 +403,7 @@ def remember_dashboard_vessel(ship_data):
         if not previous:
             dashboard_events.appendleft({
                 "kind": "arrival",
-                "message": f"{merged.get('name', 'Unknown vessel')} entered the estate watch area",
+                "message": f"{merged.get('name', 'Unknown vessel')} entered {merged.get('area_name', 'the AIS watch area')}",
                 "time": merged["last_seen"],
             })
 
@@ -368,6 +416,51 @@ def distance_km(lat1, lon1, lat2, lon2):
     a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
     a = min(1.0, max(0.0, a))
     return radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def area_center(area):
+    bounds = area["bounds"]
+    return ((bounds["south"] + bounds["north"]) / 2, (bounds["west"] + bounds["east"]) / 2)
+
+
+def point_inside_bounds(latitude, longitude, bounds):
+    return bounds["south"] <= latitude <= bounds["north"] and bounds["west"] <= longitude <= bounds["east"]
+
+
+def expanded_area_bounds(area):
+    """Expand an area's API query box to include approaching traffic."""
+    bounds = area["bounds"]
+    center_lat, _ = area_center(area)
+    latitude_delta = area["approach_km"] / 111.0
+    longitude_delta = area["approach_km"] / max(20.0, 111.0 * math.cos(math.radians(center_lat)))
+    return {
+        "south": max(-90, bounds["south"] - latitude_delta),
+        "west": max(-180, bounds["west"] - longitude_delta),
+        "north": min(90, bounds["north"] + latitude_delta),
+        "east": min(180, bounds["east"] + longitude_delta),
+    }
+
+
+def vessel_area_status(latitude, longitude, sog, cog, area):
+    """Classify a contact as in-area, inbound, or nearby from AIS motion data."""
+    if latitude is None or longitude is None:
+        return "unknown"
+    if point_inside_bounds(latitude, longitude, area["bounds"]):
+        return "in_area"
+    speed = clean_number(sog)
+    course = clean_number(cog)
+    if speed is None or course is None or speed < 0.5:
+        return "nearby"
+    # Project 30 minutes along the AIS course and compare distance to the map centre.
+    nautical_miles = speed * 0.5
+    bearing = math.radians(course)
+    projected_lat = latitude + math.cos(bearing) * nautical_miles / 60.0
+    lon_scale = max(0.2, math.cos(math.radians(latitude)))
+    projected_lon = longitude + math.sin(bearing) * nautical_miles / (60.0 * lon_scale)
+    center_lat, center_lon = area_center(area)
+    now_distance = distance_km(latitude, longitude, center_lat, center_lon)
+    projected_distance = distance_km(projected_lat, projected_lon, center_lat, center_lon)
+    return "inbound" if projected_distance < now_distance - 0.5 else "nearby"
 
 
 def marine_stream_ready():
@@ -398,14 +491,20 @@ def dashboard_snapshot():
     airport_weather = flightaware_weather()
     with dashboard_lock:
         location = current_location()
-        reference_lat = location["latitude"]
-        reference_lon = location["longitude"]
+        gps_reference_lat = location["latitude"]
+        gps_reference_lon = location["longitude"]
         vessels = []
         for vessel in dashboard_vessels.values():
             item = dict(vessel)
             latitude = clean_number(item.get("latitude"))
             longitude = clean_number(item.get("longitude"))
             if latitude is not None and longitude is not None:
+                area = MAP_AREAS.get(item.get("area_id"), MAP_AREAS["baiamonte"])
+                reference_lat, reference_lon = (
+                    (gps_reference_lat, gps_reference_lon)
+                    if area["id"] == "baiamonte"
+                    else area_center(area)
+                )
                 item["distance_km"] = round(distance_km(reference_lat, reference_lon, latitude, longitude), 2)
             else:
                 item["distance_km"] = None
@@ -430,6 +529,8 @@ def dashboard_snapshot():
                     "south": lat_south, "west": lon_west,
                     "north": lat_north, "east": lon_east,
                 },
+                "map_areas": list(MAP_AREAS.values()),
+                "default_map_area": DEFAULT_MAP_AREA,
                 "reference_location": location,
                 "map_entities": ENABLE_MAP_ENTITIES,
                 "include_class_b": INCLUDE_CLASS_B,
@@ -447,6 +548,7 @@ def dashboard_snapshot():
                 "map_style": MAP_STYLE,
             },
             "feed": dict(feed_state),
+            "area_feeds": {area_id: dict(area_state) for area_id, area_state in aishub_area_states.items()},
             "decoder": dict(decoder_state),
             "marine_vhf": marine_vhf_snapshot(),
             "receiver_log": list(receiver_logs),
@@ -974,7 +1076,7 @@ def clean_number(value, unavailable=None):
         return None
 
 
-def process_aishub_record(record):
+def process_aishub_record(record, area_id="baiamonte"):
     """Convert one human-readable AISHub vessel record into HA telemetry."""
     mmsi = str(record.get("MMSI", "")).strip()
     if len(mmsi) != 9 or not mmsi.isdigit():
@@ -995,16 +1097,26 @@ def process_aishub_record(record):
     except (TypeError, ValueError):
         vessel_type_number = 0
 
+    area = MAP_AREAS.get(area_id, MAP_AREAS["baiamonte"])
+    latitude = clean_number(record.get("LATITUDE"))
+    longitude = clean_number(record.get("LONGITUDE"))
+    sog = clean_number(record.get("SOG"), 102.4)
+    cog = clean_number(record.get("COG"), 360.0)
     ship_data = {
         "name": name,
         "mmsi": mmsi,
-        "latitude": clean_number(record.get("LATITUDE")),
-        "longitude": clean_number(record.get("LONGITUDE")),
-        "sog": clean_number(record.get("SOG"), 102.4),
-        "cog": clean_number(record.get("COG"), 360.0),
+        "latitude": latitude,
+        "longitude": longitude,
+        "sog": sog,
+        "cog": cog,
         "heading": clean_number(record.get("HEADING"), 511),
         "nav_status_string": NAV_STATUS_MAP.get(nav_status, "Not defined"),
         "vessel_class": "AISHub network",
+        "source": "AISHub API",
+        "station": area["station"],
+        "area_id": area_id,
+        "area_name": area["name"],
+        "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
         "icon": ICON_MAP.get(nav_status, "mdi:ferry"),
     }
 
@@ -1017,6 +1129,8 @@ def process_aishub_record(record):
         "destination": str(record.get("DEST") or "").strip() or None,
         "eta": str(record.get("ETA") or "").strip() or None,
         "ship_length": sum(dimensions) if dimensions else None,
+        "ship_width": sum(value for value in (clean_number(record.get("C")), clean_number(record.get("D"))) if value is not None) or None,
+        "draught": clean_number(record.get("DRAUGHT")),
         "imo_number": str(record.get("IMO")) if record.get("IMO") not in (None, "", 0, "0") else None,
         "call_sign": str(record.get("CALLSIGN") or "").strip() or None,
         "vessel_type": get_vessel_type_string(vessel_type_number),
@@ -1065,16 +1179,18 @@ def parse_aishub_payload(payload):
     return records
 
 
-def build_aishub_url():
+def build_aishub_url(area_id="baiamonte"):
+    area = MAP_AREAS.get(area_id, MAP_AREAS["baiamonte"])
+    query_bounds = expanded_area_bounds(area)
     params = {
         "username": AISHUB_USERNAME,
         "format": 1,
         "output": "json",
         "compress": 0,
-        "latmin": lat_south,
-        "latmax": lat_north,
-        "lonmin": lon_west,
-        "lonmax": lon_east,
+        "latmin": round(query_bounds["south"], 6),
+        "latmax": round(query_bounds["north"], 6),
+        "lonmin": round(query_bounds["west"], 6),
+        "lonmax": round(query_bounds["east"], 6),
         "interval": MAP_TIMEOUT_MINUTES,
     }
     if watchlist_mmsis:
@@ -1623,7 +1739,7 @@ def start_gps():
 
 
 def start_tracker():
-    global last_purge_time, last_known_error
+    global last_purge_time, last_known_error, aishub_area_cursor
     if not AISHUB_USERNAME:
         message = "Enter the AISHub username supplied after your contributor station is approved."
         aishub_state.update({"state": "Setup required", "error": message})
@@ -1632,16 +1748,28 @@ def start_tracker():
         time.sleep(AISHUB_POLL_INTERVAL)
         return
 
-    log(f"🌐 Baiamonte AIS {VERSION} polling the AISHub vessel network every {AISHUB_POLL_INTERVAL} seconds")
+    enabled_areas = [area for area in MAP_AREAS.values() if area["enabled"]]
+    if not enabled_areas:
+        message = "Enable at least one AISHub map area."
+        aishub_state.update({"state": "Setup required", "error": message})
+        update_conn_status("Setup required", new_error=message)
+        time.sleep(AISHUB_POLL_INTERVAL)
+        return
+    area = enabled_areas[aishub_area_cursor % len(enabled_areas)]
+    aishub_area_cursor = (aishub_area_cursor + 1) % len(enabled_areas)
+    area_state = aishub_area_states[area["id"]]
+    log(f"🌐 Baiamonte AIS {VERSION} polling {area['name']} through AISHub")
     update_conn_status("Connecting")
     try:
-        aishub_state["last_checked"] = datetime.now().isoformat(timespec="seconds")
-        request = urllib.request.Request(build_aishub_url(), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
+        checked_at = datetime.now().isoformat(timespec="seconds")
+        aishub_state["last_checked"] = checked_at
+        area_state["last_checked"] = checked_at
+        request = urllib.request.Request(build_aishub_url(area["id"]), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
         with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
         records = parse_aishub_payload(payload)
         for record in records:
-            process_aishub_record(record)
+            process_aishub_record(record, area["id"])
 
         last_known_error = ""
         now = datetime.now().isoformat(timespec="seconds")
@@ -1651,11 +1779,13 @@ def start_tracker():
             "records": len(records),
             "error": None,
         })
+        area_state.update({"state": "Connected", "last_success": now, "records": len(records), "error": None})
         update_conn_status("Connected")
-        log(f"✅ AISHub update complete: {len(records)} vessels in the watch area")
+        log(f"✅ {area['name']} update complete: {len(records)} vessels including the approach area")
     except Exception as exc:
         message = f"AISHub request failed: {exc}"
         aishub_state.update({"state": "Connection error", "error": str(exc)})
+        area_state.update({"state": "Connection error", "error": str(exc)})
         update_conn_status("Connection error", new_error=message)
         log(f"⚠️ {message}")
 

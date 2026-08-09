@@ -6,7 +6,7 @@ The app includes a Tenuta Baiamonte-styled Home Assistant sidebar dashboard, liv
 
 ## TV map
 
-Open `http://HOME_ASSISTANT_IP:8999/tv` on a television or kiosk browser for a full-screen Baiamonte view with a large live map and the 10 closest positioned boats. The map automatically fits the configured watch area and refreshes every ten seconds. Home Assistant ingress continues to use internal port `8099`.
+Open `http://HOME_ASSISTANT_IP:8999/tv` on a television or kiosk browser for a full-screen Baiamonte view with a large live map and the 10 closest positioned boats. Use `/tv?area=miami` for Rahamin Miami or `/tv?area=baiamonte` for Sicily. The on-screen selector can switch areas without reloading. Home Assistant ingress continues to use internal port `8099`.
 
 Enable **TV Live Weather Radar** in the app configuration to place current RainViewer precipitation radar over the vessel map. **TV Weather Opacity** accepts values from 10 to 100 and defaults to 65. The radar source and observation time appear on the map whenever the layer is enabled.
 
@@ -36,6 +36,10 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | AISHub Username | Contributor username supplied by AISHub |
 | AISHub Feed Host | Feed destination host supplied by AISHub |
 | AISHub Feed Port | Dedicated UDP port supplied by AISHub |
+| Baiamonte / Rahamin API areas | Enables Sicily, Miami, or both through the same AISHub account |
+| Default map area | Opens dashboards on Baiamonte Sicily or Rahamin Miami |
+| Approach range | Extends API coverage around each map so moving inbound vessels can be identified |
+| Miami bounds | Configurable local Rahamin AIS viewing box around Miami and Biscayne Bay |
 | AIS Receiver Name | Friendly hardware name used in logs and status sensors |
 | AIS Receiver Connection | Included AIS-catcher/RTL-SDR decoder, or external UDP, TCP, or serial NMEA receiver |
 | AIS radio channel | Dual channel, 161.975 MHz channel A, or 162.025 MHz channel B |
@@ -54,7 +58,7 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | MMSI Filter | Optional comma-separated list of nine-digit MMSIs |
 | Ship Entity Timeout | Removes vessels that have not updated within this period |
 
-The AISHub API does not allow polling more often than once per minute, so the app enforces a minimum 60-second interval.
+The browser and TV never receive the AISHub username. The app acts as the local proxy, caches contacts, and alternates enabled map areas at the minimum 60-second API interval. With both areas enabled, each area refreshes about every two minutes while the displays continue updating from the cache every ten seconds.
 
 ## Nooelec NESDR SMArt v5
 
