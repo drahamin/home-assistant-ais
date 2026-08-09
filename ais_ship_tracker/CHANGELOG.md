@@ -8,6 +8,10 @@
 * Supervises the scanner and private Icecast audio server, includes their output in the Watch Area receiver log, and stops both cleanly with the app.
 * Exposes marine receiver health through the dashboard API and Home Assistant connection sensor attributes.
 
+## 2.4.1
+
+* Brightens the fullscreen AIS basemap to match the corrected Rahamin ADS-B TV profile and reduces the decorative map shade without changing vessels, labels, or rain-radar opacity.
+
 ## 2.4.0
 
 * Bundles AIS-catcher v0.70 for end-to-end, dual-channel RTL-SDR AIS reception inside the Home Assistant app.
