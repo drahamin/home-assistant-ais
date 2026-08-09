@@ -7,6 +7,7 @@
   <title>Baiamonte AIS</title>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="decoder.css?v=240">
+  <link rel="stylesheet" href="marine-radio.css?v=250">
   <link rel="stylesheet" href="overview-map.css?v=232">
   <link rel="stylesheet" href="traffic-cards.css?v=232">
 </head>
@@ -26,6 +27,7 @@
       <nav>
         <button class="nav active" data-page="overview"><svg><use href="#i-grid"/></svg>Overview</button>
         <button class="nav" data-page="fleet"><svg><use href="#i-ship"/></svg>Live traffic <em id="nav-count">0</em></button>
+        <button class="nav" data-page="radio"><svg><use href="#i-radar"/></svg>Marine radio</button>
         <button class="nav" data-page="area"><svg><use href="#i-zone"/></svg>Watch area</button>
       </nav>
       <div class="estate-note"><i id="side-light"></i><span><b>Reciprocal AIS</b><small id="side-status">Connecting to AISHub</small></span></div>
@@ -75,6 +77,20 @@
         <div id="fleet-grid" class="fleet-grid"></div>
       </section>
 
+      <section class="page" id="radio">
+        <div class="section-head"><div><p>RECEIVE-ONLY MARINE COMMUNICATIONS</p><h2>Marine VHF radio</h2><span>A second Nooelec scans the configured Sicily marine channels while AIS-catcher keeps the first radio dedicated to vessels.</span></div><span class="badge neutral" id="marine-radio-badge">Disabled</span></div>
+        <div class="marine-radio-grid">
+          <article class="panel marine-player-card">
+            <div class="panel-head"><div><p>LIVE AUDIO</p><h3>Baiamonte marine scanner</h3></div><span class="marine-live-state" id="marine-live-state">Waiting</span></div>
+            <div class="marine-player-emblem"><img src="brand-icon.png" alt=""><span><small>SECOND RTL-SDR</small><b id="marine-player-device">Nooelec device 1</b></span></div>
+            <audio id="marine-player" controls preload="none"></audio>
+            <p class="marine-player-help" id="marine-player-help">Enable Marine VHF after connecting the second Nooelec, then press Play to listen.</p>
+          </article>
+          <article class="panel marine-profile-card"><p>RADIO PROFILE</p><h3>Marine NFM scanner</h3><div class="marine-profile"><div><small>DEVICE</small><b id="marine-device">—</b></div><div><small>GAIN</small><b id="marine-gain">—</b></div><div><small>PPM</small><b id="marine-ppm">—</b></div><div><small>SQUELCH</small><b id="marine-squelch">—</b></div></div><div class="marine-warning"><b>Receive only</b><span>Never transmit, rebroadcast, or rely on this stream for navigation, distress response, or safety-of-life decisions.</span></div></article>
+        </div>
+        <article class="panel marine-channel-panel"><div class="panel-head"><div><p>SCAN LIST</p><h3>Configured marine channels</h3></div><span id="marine-channel-count">0 channels</span></div><div id="marine-channels" class="marine-channels"></div></article>
+      </section>
+
       <section class="page" id="area">
         <div class="section-head"><div><p>ESTATE MARITIME PERIMETER</p><h2>AIS watch area</h2><span>Local radio, decoder, reciprocal feed, GPS, and configured coverage.</span></div><span class="badge neutral">Configuration</span></div>
         <div class="area-grid">
@@ -91,6 +107,6 @@
     </main>
   </div>
   <script src="maritime-flags.js?v=240"></script>
-  <script src="app.js?v=240"></script>
+  <script src="app.js?v=250"></script>
 </body>
 </html>

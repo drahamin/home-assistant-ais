@@ -16,13 +16,14 @@ import signal
 import sys
 import threading
 import subprocess
+import secrets
 import glob
 import select
 import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -100,6 +101,36 @@ try:
     SDR_BANDWIDTH = str(config.get('sdr_bandwidth', '192K')).strip().upper()
     if SDR_BANDWIDTH not in {'OFF', '192K', '288K'}:
         SDR_BANDWIDTH = '192K'
+    MARINE_VHF_ENABLED = str(config.get('marine_vhf_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
+    MARINE_VHF_DEVICE = str(config.get('marine_vhf_device', '1')).strip() or '1'
+    try:
+        MARINE_VHF_GAIN = max(0.0, min(50.0, float(config.get('marine_vhf_gain', 28))))
+    except (TypeError, ValueError):
+        MARINE_VHF_GAIN = 28.0
+    MARINE_VHF_PPM = max(-150, min(150, get_safe_int('marine_vhf_ppm', 0)))
+    MARINE_VHF_SQUELCH = get_safe_int('marine_vhf_squelch', -28)
+    if MARINE_VHF_SQUELCH > 0:
+        MARINE_VHF_SQUELCH = -MARINE_VHF_SQUELCH
+    MARINE_VHF_SQUELCH = max(-100, min(0, MARINE_VHF_SQUELCH))
+    marine_frequency_values = []
+    for item in str(config.get('marine_vhf_frequencies', '156.800,156.450,156.600,156.700,156.625')).split(','):
+        try:
+            frequency = float(item.strip())
+        except ValueError:
+            continue
+        if 156.0 <= frequency <= 163.0 and len(marine_frequency_values) < 12:
+            marine_frequency_values.append(frequency)
+    if not marine_frequency_values:
+        marine_frequency_values = [156.800]
+    MARINE_VHF_FREQUENCIES = marine_frequency_values
+    marine_labels = [item.strip()[:60] for item in str(config.get('marine_vhf_labels', '')).split(',')]
+    MARINE_VHF_CHANNELS = [
+        {
+            "frequency": f"{frequency:.3f}",
+            "label": marine_labels[index] if index < len(marine_labels) and marine_labels[index] else f"Channel {index + 1}",
+        }
+        for index, frequency in enumerate(MARINE_VHF_FREQUENCIES)
+    ]
     GPS_USE_USB = str(config.get('GPS_USE_USB', True)).lower() in ['true', '1', 't', 'y', 'yes']
     GPS_DEVICE = str(config.get('GPS_DEVICE', 'auto')).strip() or 'auto'
     GPS_BAUD = get_safe_int('GPS_BAUD', 9600)
@@ -180,6 +211,9 @@ current_conn_status = "Disconnected"
 shutdown_in_progress = False
 ais_catcher_process = None
 ais_catcher_lock = threading.Lock()
+marine_vhf_process = None
+marine_icecast_process = None
+marine_vhf_lock = threading.Lock()
 receiver_ready = threading.Event()
 
 # Read-only state used by the Home Assistant ingress dashboard.
@@ -221,6 +255,22 @@ decoder_state = {
     "last_message": None,
     "error": None,
 }
+marine_vhf_state = {
+    "enabled": MARINE_VHF_ENABLED,
+    "state": "Waiting" if MARINE_VHF_ENABLED else "Disabled",
+    "ready": False,
+    "device": MARINE_VHF_DEVICE,
+    "gain": MARINE_VHF_GAIN,
+    "ppm": MARINE_VHF_PPM,
+    "squelch": MARINE_VHF_SQUELCH,
+    "channels": MARINE_VHF_CHANNELS,
+    "restarts": 0,
+    "last_log": None,
+    "error": None,
+}
+MARINE_VHF_MOUNT = "baiamonte-marine.mp3"
+MARINE_VHF_PORT = 8000
+MARINE_VHF_PASSWORD = secrets.token_urlsafe(24)
 GPS_LOCATION_FILE = Path(os.environ.get("BAIAMONTE_GPS_JSON", "/run/baiamonte/gps.json"))
 flightaware_weather_cache = {"payload": None, "expires": 0.0, "error": None}
 
@@ -319,6 +369,31 @@ def distance_km(lat1, lon1, lat2, lon2):
     a = min(1.0, max(0.0, a))
     return radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+
+def marine_stream_ready():
+    if not MARINE_VHF_ENABLED or marine_vhf_state["state"] not in {"Running", "Streaming"}:
+        return False
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{MARINE_VHF_PORT}/status-json.xsl", timeout=0.35) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        source = payload.get("icestats", {}).get("source", [])
+        sources = source if isinstance(source, list) else [source]
+        return any(
+            str(item.get("listenurl", "")).rstrip("/").endswith("/" + MARINE_VHF_MOUNT)
+            for item in sources if isinstance(item, dict)
+        )
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
+        return False
+
+
+def marine_vhf_snapshot():
+    snapshot = dict(marine_vhf_state)
+    snapshot["ready"] = marine_stream_ready()
+    snapshot["stream_url"] = "api/marine-radio" if snapshot["ready"] else None
+    if snapshot["ready"]:
+        snapshot["state"] = "Streaming"
+    return snapshot
+
 def dashboard_snapshot():
     airport_weather = flightaware_weather()
     with dashboard_lock:
@@ -373,6 +448,7 @@ def dashboard_snapshot():
             },
             "feed": dict(feed_state),
             "decoder": dict(decoder_state),
+            "marine_vhf": marine_vhf_snapshot(),
             "receiver_log": list(receiver_logs),
             "flightaware_weather": airport_weather,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -381,6 +457,28 @@ def dashboard_snapshot():
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         request_path = self.path.split("?", 1)[0]
+        if request_path.rstrip("/") == "/api/marine-radio":
+            if not marine_stream_ready():
+                self.send_error(503, "Marine VHF stream is not ready")
+                return
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{MARINE_VHF_PORT}/{MARINE_VHF_MOUNT}", timeout=15
+                ) as stream:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mpeg")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    while not shutdown_in_progress:
+                        chunk = stream.read(16384)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError, urllib.error.URLError):
+                pass
+            return
         if request_path.rstrip("/") == "/api/weather-maps":
             try:
                 payload = fetch_weather_metadata()
@@ -842,6 +940,9 @@ def update_conn_status(status, new_error=None):
         "decoder_status": decoder_state["state"],
         "decoder_version": decoder_state["version"],
         "decoder_restarts": decoder_state["restarts"],
+        "marine_vhf_status": marine_vhf_state["state"],
+        "marine_vhf_device": MARINE_VHF_DEVICE if MARINE_VHF_ENABLED else None,
+        "marine_vhf_channels": len(MARINE_VHF_CHANNELS) if MARINE_VHF_ENABLED else 0,
         "error_message": sanitised_error,
         "icon": icon,
     }
@@ -1344,6 +1445,171 @@ def start_ais_catcher():
     threading.Thread(target=ais_catcher_worker, name="ais-catcher-supervisor", daemon=True).start()
 
 
+def config_string(value):
+    """Quote a value for RTLSDR-Airband's libconfig format."""
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def build_marine_vhf_config(source_password):
+    frequency_block = ", ".join(item["frequency"] for item in MARINE_VHF_CHANNELS)
+    label_block = ", ".join(config_string(item["label"]) for item in MARINE_VHF_CHANNELS)
+    selector = (
+        f"index = {int(MARINE_VHF_DEVICE)};"
+        if MARINE_VHF_DEVICE.isdigit()
+        else f"serial = {config_string(MARINE_VHF_DEVICE)};"
+    )
+    return f'''# Generated by Baiamonte AIS. Configure this in Home Assistant.
+devices: ({{
+  type = "rtlsdr";
+  {selector}
+  gain = {MARINE_VHF_GAIN};
+  correction = {MARINE_VHF_PPM};
+  mode = "scan";
+  channels: (
+    {{
+      freqs = ( {frequency_block} );
+      labels = ( {label_block} );
+      squelch_threshold = {MARINE_VHF_SQUELCH};
+      outputs: (
+        {{
+          type = "icecast";
+          server = "127.0.0.1";
+          port = {MARINE_VHF_PORT};
+          mountpoint = "{MARINE_VHF_MOUNT}";
+          username = "source";
+          password = {config_string(source_password)};
+          name = "Baiamonte Marine VHF";
+          genre = "Marine";
+          description = "Tenuta Baiamonte receive-only marine VHF scanner";
+          send_scan_freq_tags = true;
+        }}
+      );
+    }}
+  );
+}});
+'''
+
+
+def build_marine_icecast_config(source_password):
+    return f'''<icecast>
+  <location>Tenuta Baiamonte</location>
+  <admin>local@baiamonte.invalid</admin>
+  <limits><clients>20</clients><sources>2</sources><queue-size>524288</queue-size><client-timeout>30</client-timeout><header-timeout>15</header-timeout><source-timeout>10</source-timeout></limits>
+  <authentication><source-password>{source_password}</source-password><relay-password>{source_password}</relay-password><admin-user>admin</admin-user><admin-password>{source_password}</admin-password></authentication>
+  <hostname>127.0.0.1</hostname>
+  <listen-socket><port>{MARINE_VHF_PORT}</port><bind-address>127.0.0.1</bind-address></listen-socket>
+  <http-headers><header name="Access-Control-Allow-Origin" value="*" /></http-headers>
+  <fileserve>1</fileserve>
+  <paths><logdir>/tmp</logdir><webroot>/usr/share/icecast2/web</webroot><adminroot>/usr/share/icecast2/admin</adminroot><pidfile>/tmp/baiamonte-icecast.pid</pidfile></paths>
+  <logging><accesslog>baiamonte-icecast-access.log</accesslog><errorlog>baiamonte-icecast-error.log</errorlog><loglevel>2</loglevel><logsize>10000</logsize></logging>
+  <security><chroot>0</chroot><changeowner><user>icecast2</user><group>icecast</group></changeowner></security>
+</icecast>
+'''
+
+
+def pipe_radio_logs(process, label):
+    for output in process.stdout or ():
+        line = output.strip()
+        if not line:
+            continue
+        marine_vhf_state["last_log"] = datetime.now().isoformat(timespec="seconds")
+        log(f"{label} · {line[:300]}")
+
+
+def terminate_process(process):
+    if process and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def marine_vhf_device_conflict():
+    return MARINE_VHF_ENABLED and RECEIVER_MODE == "sdr" and MARINE_VHF_DEVICE == SDR_DEVICE
+
+
+def marine_vhf_worker():
+    """Supervise the second Nooelec, NFM scanner, and private audio server."""
+    global marine_vhf_process, marine_icecast_process
+    if marine_vhf_device_conflict():
+        message = "AIS and marine VHF cannot use the same RTL-SDR device; assign the second Nooelec to marine VHF"
+        marine_vhf_state.update({"state": "Device conflict", "ready": False, "error": message})
+        log(f"🔴 {message}")
+        return
+    runtime = Path("/run/baiamonte")
+    runtime.mkdir(parents=True, exist_ok=True)
+    radio_config = runtime / "rtl-marine-vhf.conf"
+    icecast_config = runtime / "marine-icecast.xml"
+    radio_config.write_text(build_marine_vhf_config(MARINE_VHF_PASSWORD), encoding="utf-8")
+    icecast_config.write_text(build_marine_icecast_config(MARINE_VHF_PASSWORD), encoding="utf-8")
+    os.chmod(radio_config, 0o600)
+    os.chmod(icecast_config, 0o600)
+
+    while not shutdown_in_progress:
+        marine_vhf_state.update({"state": "Starting", "ready": False, "error": None})
+        labels = ", ".join(f"{item['label']} {item['frequency']} MHz" for item in MARINE_VHF_CHANNELS)
+        log(
+            f"📻 Starting marine VHF on RTL-SDR {MARINE_VHF_DEVICE} · gain {MARINE_VHF_GAIN:g} · "
+            f"PPM {MARINE_VHF_PPM} · squelch {MARINE_VHF_SQUELCH} · {labels}"
+        )
+        try:
+            icecast = subprocess.Popen(
+                ["icecast2", "-c", str(icecast_config)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            )
+            with marine_vhf_lock:
+                marine_icecast_process = icecast
+            threading.Thread(target=pipe_radio_logs, args=(icecast, "Marine audio"), daemon=True).start()
+            for _ in range(30):
+                if icecast.poll() is not None or shutdown_in_progress:
+                    break
+                try:
+                    with socket.create_connection(("127.0.0.1", MARINE_VHF_PORT), timeout=0.2):
+                        break
+                except OSError:
+                    time.sleep(0.1)
+            if icecast.poll() is not None:
+                raise OSError(f"marine audio server exited with code {icecast.returncode}")
+            radio = subprocess.Popen(
+                ["rtl_airband", "-F", "-e", "-c", str(radio_config)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            )
+            with marine_vhf_lock:
+                marine_vhf_process = radio
+            threading.Thread(target=pipe_radio_logs, args=(radio, "Marine VHF"), daemon=True).start()
+            marine_vhf_state["state"] = "Running"
+            log("🟢 Marine VHF scanner is running; press Play on the Marine radio page to listen")
+            while not shutdown_in_progress and radio.poll() is None and icecast.poll() is None:
+                time.sleep(1)
+            if not shutdown_in_progress:
+                failure = radio.returncode if radio.poll() is not None else icecast.returncode
+                raise OSError(f"marine radio service exited with code {failure}")
+        except OSError as exc:
+            if not shutdown_in_progress:
+                marine_vhf_state.update({"state": "Restarting", "ready": False, "error": str(exc)})
+                marine_vhf_state["restarts"] += 1
+                log(f"⚠️ Marine VHF error: {exc}; retrying in 5 seconds")
+        finally:
+            with marine_vhf_lock:
+                radio, icecast = marine_vhf_process, marine_icecast_process
+                marine_vhf_process = None
+                marine_icecast_process = None
+            terminate_process(radio)
+            terminate_process(icecast)
+        for _ in range(10):
+            if shutdown_in_progress:
+                break
+            time.sleep(0.5)
+
+
+def start_marine_vhf():
+    if not MARINE_VHF_ENABLED:
+        log("ℹ️ Marine VHF is disabled; enable it after connecting the second Nooelec")
+        return
+    threading.Thread(target=marine_vhf_worker, name="marine-vhf-supervisor", daemon=True).start()
+
+
 def start_gps():
     if not GPS_USE_USB:
         log("📍 USB GPS disabled; using the configured watch-area centre")
@@ -1404,8 +1670,11 @@ def graceful_shutdown(signum, frame):
     log("🛑 Received stop signal from Home Assistant. Shutting down gracefully...")
     with ais_catcher_lock:
         process = ais_catcher_process
-    if process and process.poll() is None:
-        process.terminate()
+    terminate_process(process)
+    with marine_vhf_lock:
+        radio, icecast = marine_vhf_process, marine_icecast_process
+    terminate_process(radio)
+    terminate_process(icecast)
     update_conn_status("Stopped", new_error="Add-on stopped by user or system.")
     log("🛑 Tracker safely stopped.")
     sys.exit(0)
@@ -1419,6 +1688,7 @@ if __name__ == "__main__":
     start_gps()
     start_receiver_feed()
     start_ais_catcher()
+    start_marine_vhf()
         
     try:
         while True:

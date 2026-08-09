@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.4.0"
+version: "2.5.0"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -43,6 +43,13 @@ options:
   sdr_rtl_agc: true
   sdr_bias_tee: false
   sdr_bandwidth: "192K"
+  marine_vhf_enabled: false
+  marine_vhf_device: "1"
+  marine_vhf_frequencies: "156.800,156.450,156.600,156.700,156.625"
+  marine_vhf_labels: "Channel 16 Distress,Channel 9 Calling,Channel 12 Port Operations,Channel 14 Port Operations,Channel 72 Ship-to-Ship"
+  marine_vhf_gain: 28
+  marine_vhf_ppm: 0
+  marine_vhf_squelch: -28
   GPS_USE_USB: true
   GPS_DEVICE: "auto"
   GPS_BAUD: 9600
@@ -79,6 +86,13 @@ schema:
   sdr_rtl_agc: "bool?"
   sdr_bias_tee: "bool?"
   sdr_bandwidth: "list(OFF|192K|288K)?"
+  marine_vhf_enabled: "bool?"
+  marine_vhf_device: "str?"
+  marine_vhf_frequencies: "str?"
+  marine_vhf_labels: "str?"
+  marine_vhf_gain: "float?"
+  marine_vhf_ppm: "int?"
+  marine_vhf_squelch: "int?"
   GPS_USE_USB: "bool?"
   GPS_DEVICE: "str?"
   GPS_BAUD: "int?"
@@ -147,6 +161,27 @@ configuration:
   sdr_bandwidth:
     name: AIS Decoder Bandwidth
     description: 192K is the recommended AIS-catcher starting filter. Use Off only while diagnosing reception.
+  marine_vhf_enabled:
+    name: Enable Marine VHF Receiver
+    description: Use a second RTL-SDR as a receive-only marine VHF scanner with live dashboard audio.
+  marine_vhf_device:
+    name: Marine VHF RTL-SDR Device
+    description: Use device index 1 for the second Nooelec, or enter its unique serial number. It must differ from the AIS device.
+  marine_vhf_frequencies:
+    name: Marine VHF Frequencies
+    description: Comma-separated receive frequencies in MHz. Confirm the channels used in your local waters.
+  marine_vhf_labels:
+    name: Marine VHF Channel Labels
+    description: Comma-separated labels matching the configured frequencies.
+  marine_vhf_gain:
+    name: Marine VHF Gain
+    description: RTL-SDR tuner gain from 0 to 50 dB. Start at 28 and adjust for the antenna and local signal level.
+  marine_vhf_ppm:
+    name: Marine VHF Frequency Correction
+    description: Frequency correction from -150 to 150 PPM. Start at 0 for a NESDR SMArt v5.
+  marine_vhf_squelch:
+    name: Marine VHF Squelch
+    description: Signal threshold from -100 to 0 dBFS. Start at -28; move toward 0 if noise opens the receiver.
   GPS_USE_USB:
     name: Use Attached USB GPS
     description: Use a recent NMEA GPS fix as the estate reference position for distance ranking and maps.

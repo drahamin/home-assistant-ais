@@ -8,7 +8,7 @@ try{mapDisplayMode=localStorage.getItem('baiamonteAisMapDisplay')==='focus'?'foc
 
 function mapIsVisible(){return $('#overview').classList.contains('active')&&$('#sea-map').clientWidth>0&&$('#sea-map').clientHeight>0}
 function rerenderVisibleMap(){if(!state||!mapIsVisible())return;requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(state.vessels||[],state.config.bounds,state.config)))}
-function showPage(id){const page=$(`#${id}`)?id:'overview';$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview')rerenderVisibleMap()}
+function showPage(id){const page=$(`#${id}`)?id:'overview';$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview')rerenderVisibleMap()}
 $$('.nav').forEach(node=>node.onclick=()=>showPage(node.dataset.page));$$('[data-go]').forEach(node=>node.onclick=()=>showPage(node.dataset.go));
 
 const MAP_TILE=256;
@@ -24,6 +24,24 @@ function layoutMapLabels(view){const groups={east:[],west:[]};$$('.vessel-marker
 function renderMap(vessels,bounds,cfg){if(!mapIsVisible())return;const world=$('#map-world'),view=dashboardView(bounds);$('#sea-map').dataset.display=mapDisplayMode;renderDashboardTiles(view,cfg.map_style||'standard');renderDashboardWeather(view,cfg);$$('.vessel-marker').forEach(node=>node.remove());let positioned=0,selected=null;vessels.forEach(v=>{if(typeof v.latitude!=='number'||typeof v.longitude!=='number')return;const point=geoPoint(v.latitude,v.longitude,view.zoom),x=point.x-view.left,y=point.y-view.top;if(x<0||y<0||x>view.width||y>view.height)return;positioned+=1;const info=vesselFlag(v.mmsi),node=document.createElement('button');node.type='button';node.className='vessel-marker label-east';if(positioned>10)node.classList.add('label-hidden');node.dataset.mmsi=String(v.mmsi);node.dataset.mapX=String(x);node.dataset.mapY=String(y);node.style.left=`${x}px`;node.style.top=`${y}px`;node.title=`${info.country} · ${v.name||'Unknown vessel'} · ${fmt(v.sog)} kn`;node.innerHTML=`<span class="vessel-arrow" style="transform:rotate(${Number(v.heading??v.cog)||0}deg)">▲</span><span class="map-vessel-label"><b>${info.flag} ${esc(v.name||'Unknown vessel')}</b><span>MMSI ${esc(v.mmsi)} · ${esc(v.vessel_type||v.vessel_class||'AIS contact')}</span><span>${esc(fmt(v.sog))} kn · ${esc(v.destination||'Destination not broadcast')}</span><em>${esc(ago(v.last_seen))}</em></span>`;node.onclick=event=>{event.stopPropagation();showMapVessel(v)};if(String(v.mmsi)===selectedMapMmsi){node.classList.add('selected');selected=v}world.appendChild(node)});if(mapDisplayMode==='labels')layoutMapLabels(view);if(mapDisplayMode==='focus'&&selected)showMapVessel(selected);else if(mapDisplayMode==='labels')$('#map-vessel-detail').hidden=true;else if(selectedMapMmsi&&!selected)hideMapVessel();$('#map-empty').classList.toggle('hidden',positioned>0)}
 function vesselRow(v){const info=vesselFlag(v.mmsi);return`<div class="recent-row"><span class="recent-flag" title="${esc(info.country)}">${info.flag}</span><span><b>${esc(v.name||'Unknown vessel')}</b><small>${esc(info.country)} · MMSI ${esc(v.mmsi)} · ${esc(v.nav_status_string||'Status unavailable')}</small></span><em>${esc(fmt(v.sog))} kn</em></div>`}
 function vesselCard(v){const info=vesselFlag(v.mmsi),mark=(v.call_sign||v.imo_number||'AIS').toString().slice(0,8);return`<article class="vessel-card"><div class="vessel-card-top"><div class="identity-mark"><span class="identity-flag" title="${esc(info.country)}"><small>FLAG</small><span class="card-flag">${info.flag}</span></span><span class="operator-mark">${esc(mark)}</span></div><span class="status">${esc(v.nav_status_string||'Not defined')}</span></div><h3>${esc(v.name||'Unknown vessel')}</h3><span class="mmsi">${esc(info.country)} · MID ${esc(info.mid||'—')} · MMSI ${esc(v.mmsi)} · ${esc(v.vessel_type||v.vessel_class||'Unknown type')}</span><div class="vessel-metrics"><div><small>SPEED</small><b>${esc(fmt(v.sog))} kn</b></div><div><small>COURSE</small><b>${esc(fmt(v.cog))}°</b></div><div><small>HEADING</small><b>${esc(fmt(v.heading))}°</b></div><div><small>SEEN</small><b>${esc(ago(v.last_seen))}</b></div></div><div class="destination"><span>Destination</span><b>${esc(v.destination||'Not broadcast')}</b></div></article>`}
+
+function renderMarineRadio(radio){
+  const enabled=Boolean(radio.enabled),ready=Boolean(radio.ready),player=$('#marine-player'),stateText=radio.state||'Disabled';
+  $('#marine-radio-badge').textContent=stateText;
+  $('#marine-live-state').textContent=stateText;
+  $('#marine-live-state').className=`marine-live-state ${ready?'ready':radio.error?'error':''}`;
+  $('#marine-player-device').textContent=`Nooelec RTL-SDR ${fmt(radio.device)}`;
+  $('#marine-device').textContent=`RTL-SDR ${fmt(radio.device)}`;
+  $('#marine-gain').textContent=`${fmt(radio.gain)} dB`;
+  $('#marine-ppm').textContent=`${fmt(radio.ppm)} PPM`;
+  $('#marine-squelch').textContent=`${fmt(radio.squelch)} dBFS`;
+  const channels=radio.channels||[];
+  $('#marine-channel-count').textContent=`${channels.length} channel${channels.length===1?'':'s'}`;
+  $('#marine-channels').innerHTML=channels.map((channel,index)=>`<div class="marine-channel"><span><b>${esc(channel.label||`Channel ${index+1}`)}</b><small>Receive-only NFM</small></span><em>${esc(channel.frequency)} MHz</em></div>`).join('')||'<div class="empty">No marine channels configured.</div>';
+  if(ready&&radio.stream_url&&!player.getAttribute('src')){player.src=radio.stream_url;player.load()}
+  if(!enabled||radio.state==='Device conflict'){player.pause();player.removeAttribute('src');player.load()}
+  $('#marine-player-help').textContent=ready?'Live receiver is connected. Press Play to listen; the scanner follows the first active configured channel.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
+}
 
 function render(data){
   state=data;
@@ -60,6 +78,7 @@ function render(data){
   $('#decoder-device').textContent=decoder.enabled?`RTL-SDR ${fmt(decoder.device)}`:String(cfg.receiver_mode||'external').toUpperCase();
   $('#decoder-tuning').textContent=decoder.enabled?`${fmt(decoder.gain)} dB · ${fmt(decoder.ppm)} PPM`:'Handled by receiver';
   $('#decoder-bandwidth').textContent=decoder.enabled?`${fmt(decoder.bandwidth)} · AGC ${decoder.rtl_agc?'on':'off'} · bias ${decoder.bias_tee?'on':'off'}`:'NMEA input';
+  renderMarineRadio(data.marine_vhf||{});
   const logEntries=data.receiver_log||[];
   $('#receiver-log').innerHTML=logEntries.length?logEntries.slice(0,30).map(item=>`<div class="receiver-log-row"><time>${esc(new Date(item.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time><span>${esc(item.message)}</span></div>`).join(''):'<div class="empty">Receiver activity will appear here.</div>';
   const airport=data.flightaware_weather||{};$('#airport-weather-title').textContent=airport.airport?`${airport.airport} airport observation`:'Airport observation';$('#airport-weather').textContent=!airport.enabled?'Disabled in app configuration':airport.error?airport.error:[airport.weather,airport.temperature_c!==null&&airport.temperature_c!==undefined?`${airport.temperature_c}°C`:'',airport.wind_speed_kts!==null&&airport.wind_speed_kts!==undefined?`Wind ${airport.wind_speed_kts} kt`:'',airport.visibility_miles!==null&&airport.visibility_miles!==undefined?`Visibility ${airport.visibility_miles} mi`:''].filter(Boolean).join(' · ')||'Waiting for FlightAware observation';

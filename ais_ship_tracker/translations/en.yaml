@@ -47,6 +47,27 @@ configuration:
   sdr_bandwidth:
     name: AIS Decoder Bandwidth
     description: 192K is the recommended AIS-catcher starting filter.
+  marine_vhf_enabled:
+    name: Enable Marine VHF Receiver
+    description: Use a second RTL-SDR as a receive-only marine VHF scanner with live dashboard audio.
+  marine_vhf_device:
+    name: Marine VHF RTL-SDR Device
+    description: Use device index 1 for the second Nooelec, or its unique serial number. It must differ from AIS.
+  marine_vhf_frequencies:
+    name: Marine VHF Frequencies
+    description: Comma-separated receive frequencies in MHz for your local waters.
+  marine_vhf_labels:
+    name: Marine VHF Channel Labels
+    description: Comma-separated labels matching the frequency list.
+  marine_vhf_gain:
+    name: Marine VHF Gain
+    description: RTL-SDR tuner gain from 0 to 50 dB. Start at 28.
+  marine_vhf_ppm:
+    name: Marine VHF Frequency Correction
+    description: Frequency correction from -150 to 150 PPM. Start at 0 for a NESDR SMArt v5.
+  marine_vhf_squelch:
+    name: Marine VHF Squelch
+    description: Signal threshold from -100 to 0 dBFS. Start at -28.
   GPS_USE_USB:
     name: Use Attached USB GPS
     description: Use a recent NMEA GPS fix for map centering and distance ranking.

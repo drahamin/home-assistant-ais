@@ -12,6 +12,8 @@ Choose **SDR** for the included AIS-catcher decoder, or **UDP**, **TCP**, or **S
 
 For a Nooelec NESDR SMArt v5, start with device `0`, tuner gain `auto`, correction `0` PPM, RTL AGC enabled, bias tee disabled, and decoder bandwidth `192K`. AIS-catcher listens to both AIS A at 161.975 MHz and AIS B at 162.025 MHz. If several RTL-SDR devices are attached, use the dongle serial number instead of index `0`. Only one app can own a USB dongle at a time.
 
+For two Nooelec receivers, leave AIS on device `0` and select device `1` for **Marine VHF**. Prefer unique dongle serial numbers for a permanent installation so a USB reorder cannot swap the receivers. The app refuses to start marine scanning if its device matches the AIS device.
+
 The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open the app log after starting it. You should see the friendly receiver name, its network address, valid NMEA counts, and forwarding totals.
 
 ## App settings
@@ -24,6 +26,10 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **RTL-SDR Device / Gain / PPM / AGC:** selects and tunes the attached dongle.
 - **RTL-SDR Bias Tee:** leave off for a NESDR SMArt v5 unless attached active hardware explicitly requires power.
 - **AIS Decoder Bandwidth:** use the recommended `192K` starting filter, `288K`, or `OFF` for diagnosis.
+- **Enable Marine VHF Receiver:** starts the bundled receive-only RTLSDR-Airband NFM scanner and private audio service.
+- **Marine VHF RTL-SDR Device:** use `1` for the second Nooelec or its unique serial; it must not match the AIS device.
+- **Marine Frequencies / Labels:** matching comma-separated scan lists, with up to 12 frequencies between 156 and 163 MHz. Confirm the correct local channel plan.
+- **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and squelch `-28`, then adjust for the antenna and local noise floor.
 - **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.
 - **Live Rain Radar on Dashboard / TV:** enable RainViewer independently for each surface.
 - **FlightAware Airport Weather:** optional AeroAPI v4 observations, using an API key and ICAO airport code such as `LICC`.
@@ -33,6 +39,8 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **Ship Entity Timeout:** removes stale vessel entities.
 
 Start the app and open **AIS** in the Home Assistant sidebar. A green local receiver state confirms AIS-catcher is running; received vessels appear without AISHub credentials. The reciprocal feed details separately confirm AISHub sharing and downloads.
+
+Open **Marine radio** for the live audio player, current scanner state, device profile, and channel list. The browser will not autoplay radio audio; press Play. Marine receiver activity is included in **Watch area → Receiver log**. The stream stays inside the add-on and is proxied through the same dashboard server, with no separate audio port or Icecast credentials exposed.
 
 ## TV map
 
@@ -55,8 +63,12 @@ The **Watch Area** page includes the hardware receiver log, GPS/reference positi
 - **No hardware detected:** confirm the receiver is sending UDP NMEA to the Home Assistant host on port `10110` and that the port is reachable on your network.
 - **AIS-catcher start failed / no supported devices:** confirm the RTL-SDR is attached to the Home Assistant host, no other add-on owns it, and the receiver mode is SDR.
 - **Decoder running but no boats:** use an antenna designed for approximately 162 MHz, move it higher or outdoors, and confirm vessels are within VHF range.
+- **Marine VHF device conflict:** select the second Nooelec or its unique serial; AIS and marine radio cannot share one dongle.
+- **Marine audio unavailable:** confirm Marine VHF is enabled, the second dongle is attached and not used elsewhere, and review the receiver log. Adjust squelch only after confirming the configured channels and antenna.
 - **Sharing error:** recheck the AISHub host and port supplied by email.
 - **AISHub connection error:** confirm the username is active and wait at least one minute between retries.
 - **Zero vessels:** verify the configured geographic bounds and maximum position age.
 
 AISHub limits API access to one request per minute. Baiamonte AIS enforces that limit automatically.
+
+Marine VHF is receive-only and informational. Follow local laws concerning reception, recording, and redistribution, and never treat dashboard audio as a distress-monitoring or safety-of-life service.
