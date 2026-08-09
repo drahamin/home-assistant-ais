@@ -1,0 +1,18 @@
+:root{color-scheme:light dark}
+@media(prefers-color-scheme:dark){
+  :root{--ink:#f1ede5;--muted:#aaa094;--line:#3b362d;--paper:#0f0e0d;--white:#1b1917;--shadow:0 18px 50px rgba(0,0,0,.38)}
+  html,body{background:#0b0b0b;color:var(--ink)}
+  header,.section-head span{color:#aaa094}
+  .panel,.metric-card,.vessel-card,.summary-strip,.settings-card,.radio-card{background:#1b1917;border-color:#3b362d;box-shadow:0 8px 25px rgba(0,0,0,.32)}
+  .summary-strip div,.recent-row,.event-row,.vessel-metrics,.receiver-log-row,.setting-row{border-color:#3b362d}
+  .coordinate-grid div,.entity-route span,.destination,.weather-summary,.radio-profile div,.decoder-metric,.device-list div,.frequency-list span{background:#151310;border-color:#3b362d;color:#eee8df}
+  .section-head span,.map-footer,.recent-row small,.event-row small,.vessel-card .mmsi,.vessel-metrics small,.coordinate-grid small,.setting-row span,.receiver-log-row time,.diagnostic-grid small,.radio-profile small{color:#aaa094}
+  .receiver-log-row span,.destination b,.radio-profile b,.frequency-list span{color:#e9e1d7}
+  #refresh{background:#211d19;border-color:#41372e;color:#f4ede4}
+  .badge.neutral,.status.off{background:#2a2520;color:#beb4a8}
+  .route-icon,.vessel-icon{background:#2b241d;color:#d6b55b}
+  .live-pill{background:#26301f;color:#a8c38c}
+  .map-display-switch button,.map-display-switch>a,.map-controls button{background:#211d19;border-color:#51483d;color:#f4ede4}
+  .map-display-switch button[aria-pressed="true"]{background:#6a5420;border-color:#d4af37;color:#fffaf0}
+  .map-vessel-detail{background:rgba(15,14,13,.96);border-color:#6a5420;color:#f4ede4}
+}

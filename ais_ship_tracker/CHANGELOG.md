@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.0
+
+* Adds automatic browser light/dark mode to the Home Assistant AIS dashboard.
+* Aligns cards, status badges, muted text, controls, and map chrome with ADS-B and Vineyard Operations.
+* Keeps the fullscreen TV display dark for distance viewing while retaining the brighter basemap.
+
 ## 2.5.0
 
 * Adds an optional second-Nooelec marine VHF receiver using RTLSDR-Airband 5.2.0 in NFM scan mode.

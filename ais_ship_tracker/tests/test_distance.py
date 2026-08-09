@@ -197,6 +197,15 @@ class WeatherTileTests(unittest.TestCase):
 
 
 class DashboardAssetTests(unittest.TestCase):
+    def test_dashboard_follows_browser_color_scheme(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        theme = (web / "theme.css").read_text()
+        self.assertIn('href="theme.css?v=260"', dashboard)
+        self.assertIn('media="(prefers-color-scheme: dark)"', dashboard)
+        self.assertIn("@media(prefers-color-scheme:dark)", theme)
+        self.assertIn("color-scheme:light dark", theme)
+
     def test_shared_maritime_flags_are_loaded_by_dashboard_and_tv(self):
         web = TRACKER.parent / "web"
         dashboard = (web / "index.html").read_text()
