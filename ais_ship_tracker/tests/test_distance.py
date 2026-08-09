@@ -63,6 +63,8 @@ class DistanceTests(unittest.TestCase):
         self.assertFalse(snapshot["flightaware_weather"]["enabled"])
         self.assertEqual(snapshot["receiver_log"][0]["message"], "AIS receiver test event")
         self.assertTrue(snapshot["decoder"]["enabled"])
+        self.assertIn("marine_vhf", snapshot)
+        self.assertFalse(snapshot["marine_vhf"]["enabled"])
 
 
 class AisCatcherTests(unittest.TestCase):
@@ -120,6 +122,49 @@ class AisCatcherTests(unittest.TestCase):
         self.assertIn("AISCATCHER_VERSION=v0.70", dockerfile)
         self.assertIn("librtlsdr0", dockerfile)
         self.assertIn("/usr/local/bin/AIS-catcher", dockerfile)
+        self.assertIn("RTL_AIRBAND_VERSION=v5.2.0", dockerfile)
+        self.assertIn("-DNFM=TRUE", dockerfile)
+        self.assertIn("icecast2", dockerfile)
+        self.assertIn("libfftw3-single3", dockerfile)
+        self.assertIn("/usr/local/bin/rtl_airband", dockerfile)
+
+
+class MarineVhfTests(unittest.TestCase):
+    def test_config_uses_second_nooelec_and_private_audio_mount(self):
+        rendered = tracker.build_marine_vhf_config("test-secret")
+        self.assertIn("index = 1;", rendered)
+        self.assertIn('mode = "scan";', rendered)
+        self.assertIn("156.800", rendered)
+        self.assertIn('mountpoint = "baiamonte-marine.mp3";', rendered)
+        self.assertIn('password = "test-secret";', rendered)
+
+    def test_serial_device_is_supported(self):
+        previous = tracker.MARINE_VHF_DEVICE
+        tracker.MARINE_VHF_DEVICE = "MARINE002"
+        try:
+            rendered = tracker.build_marine_vhf_config("secret")
+            self.assertIn('serial = "MARINE002";', rendered)
+            self.assertNotIn("index =", rendered)
+        finally:
+            tracker.MARINE_VHF_DEVICE = previous
+
+    def test_device_conflict_requires_distinct_radios(self):
+        previous = (tracker.MARINE_VHF_ENABLED, tracker.RECEIVER_MODE, tracker.MARINE_VHF_DEVICE, tracker.SDR_DEVICE)
+        tracker.MARINE_VHF_ENABLED = True
+        tracker.RECEIVER_MODE = "sdr"
+        tracker.MARINE_VHF_DEVICE = "0"
+        tracker.SDR_DEVICE = "0"
+        try:
+            self.assertTrue(tracker.marine_vhf_device_conflict())
+            tracker.MARINE_VHF_DEVICE = "1"
+            self.assertFalse(tracker.marine_vhf_device_conflict())
+        finally:
+            tracker.MARINE_VHF_ENABLED, tracker.RECEIVER_MODE, tracker.MARINE_VHF_DEVICE, tracker.SDR_DEVICE = previous
+
+    def test_snapshot_never_exposes_audio_password(self):
+        snapshot = tracker.marine_vhf_snapshot()
+        self.assertNotIn("password", snapshot)
+        self.assertNotIn(tracker.MARINE_VHF_PASSWORD, json.dumps(snapshot))
 
 
 class AisHubPayloadTests(unittest.TestCase):
@@ -193,6 +238,16 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="decoder-tuning"', dashboard)
         self.assertIn("decoder.state", script)
         self.assertIn("grid-column: 1 / -1", styles)
+
+    def test_dashboard_has_marine_radio_page_and_player(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        script = (web / "app.js").read_text()
+        styles = (web / "marine-radio.css").read_text()
+        self.assertIn('data-page="radio"', dashboard)
+        self.assertIn('id="marine-player"', dashboard)
+        self.assertIn("renderMarineRadio", script)
+        self.assertIn("marine-radio-grid", styles)
 
 
 if __name__ == "__main__":

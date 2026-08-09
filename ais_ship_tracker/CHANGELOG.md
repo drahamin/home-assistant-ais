@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.0
+
+* Adds an optional second-Nooelec marine VHF receiver using RTLSDR-Airband 5.2.0 in NFM scan mode.
+* Adds a Baiamonte-styled Marine radio sidebar page with live in-app audio, receiver state, tuning profile, and configured channel cards.
+* Adds matching device, frequency, label, gain, PPM, and squelch controls and prevents AIS and marine services from opening the same RTL-SDR.
+* Supervises the scanner and private Icecast audio server, includes their output in the Watch Area receiver log, and stops both cleanly with the app.
+* Exposes marine receiver health through the dashboard API and Home Assistant connection sensor attributes.
+
 ## 2.4.1
 
 * Brightens the fullscreen AIS basemap to match the corrected Rahamin ADS-B TV profile and reduces the decorative map shade without changing vessels, labels, or rain-radar opacity.

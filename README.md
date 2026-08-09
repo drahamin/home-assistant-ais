@@ -1,6 +1,6 @@
 # Baiamonte AIS
 
-Baiamonte AIS is an end-to-end Home Assistant vessel station. It includes [AIS-catcher](https://github.com/jvde-github/AIS-catcher) for dual-channel decoding from an RTL-SDR such as the Nooelec NESDR SMArt v5, displays locally received vessels immediately, and can exchange the original NMEA feed with [AISHub](https://www.aishub.net/) for wider-area coverage.
+Baiamonte AIS is an end-to-end Home Assistant vessel station. It includes [AIS-catcher](https://github.com/jvde-github/AIS-catcher) for dual-channel decoding from an RTL-SDR such as the Nooelec NESDR SMArt v5, displays locally received vessels immediately, and can exchange the original NMEA feed with [AISHub](https://www.aishub.net/) for wider-area coverage. A second Nooelec can run a receive-only marine VHF scanner with live audio in the AIS sidebar.
 
 The app includes a Tenuta Baiamonte-styled Home Assistant sidebar dashboard, live vessel entities, receiver health logging, and automatic container updates through GitHub.
 
@@ -43,6 +43,9 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | Gain / PPM / AGC | Radio tuner and frequency-correction controls |
 | Bias tee | Off by default for the NESDR SMArt v5; enable only for hardware that explicitly needs DC power |
 | Decoder bandwidth | Recommended 192K AIS-catcher filter, 288K, or Off |
+| Marine VHF receiver | Enables the second Nooelec as a receive-only NFM scanner |
+| Marine device / channels | Separate dongle index or serial plus comma-separated frequencies and labels |
+| Marine gain / PPM / squelch | Tuning controls for the second radio |
 | USB GPS | Automatic estate reference location for map and distance ranking |
 | Dashboard / TV live rain | Independent RainViewer precipitation overlays |
 | FlightAware weather | Optional AeroAPI airport observation on Watch Area |
@@ -58,6 +61,14 @@ The AISHub API does not allow polling more often than once per minute, so the ap
 Plug the dongle into the Home Assistant machine, attach an AIS/VHF antenna, select **SDR**, and start with the defaults. The app builds and supervises AIS-catcher v0.70, decodes both international AIS channels, restarts the decoder if it exits, and shows decoder output in **Watch area → Receiver log**. Do not assign the same dongle to another add-on at the same time.
 
 The bundled decoder is intended for observation only and is not approved as a navigation or safety-of-life system.
+
+## Two-Nooelec AIS and marine VHF setup
+
+Connect two separately assigned dongles and antennas. Keep Nooelec #1 on AIS device `0`, set Nooelec #2 as Marine VHF device `1`, and then enable **Marine VHF Receiver**. The app prevents both decoders from opening the same device. For a durable installation, program unique RTL-SDR serials and enter those serials instead of `0` and `1`, because USB indexes can change after a reboot.
+
+The second receiver uses RTLSDR-Airband's NFM scanner and a private in-app audio stream. Open **Marine radio** in the AIS sidebar and press Play. Its startup, tuned channels, scanner output, failures, and restarts also appear in **Watch area → Receiver log**. The supplied channel list is only a starting profile; confirm and configure the frequencies authorized and used in your local waters.
+
+This feature is receive-only. Do not use, transmit, record, or redistribute communications where prohibited, and never rely on the stream for navigation, distress response, or safety-of-life decisions.
 
 ## Receiver connection and logging
 
@@ -75,6 +86,7 @@ Accepted sentence prefixes are `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM`. The a
 - Forwarding or socket errors
 - A health summary approximately once per minute while traffic is flowing
 - AIS-catcher startup, radio profile, decoder output, failures, and automatic restarts
+- Marine VHF scanner and audio-server startup, profile, output, failures, and automatic restarts
 
 No AISHub username, receiver payload, or geographic coordinates are sent to any Baiamonte telemetry service.
 
@@ -92,4 +104,4 @@ GitHub Actions publishes versioned `amd64` and `aarch64` images to `ghcr.io/drah
 
 ## Data source
 
-Local SDR decoding is provided by [AIS-catcher](https://github.com/jvde-github/AIS-catcher). Aggregated vessel data and contributor exchange are provided by [AISHub](https://www.aishub.net/). AIS data is informational and must not be used as the sole source for navigation or safety decisions.
+Local SDR decoding is provided by [AIS-catcher](https://github.com/jvde-github/AIS-catcher). Receive-only marine audio uses [RTLSDR-Airband](https://github.com/rtl-airband/RTLSDR-Airband) and Icecast. Aggregated vessel data and contributor exchange are provided by [AISHub](https://www.aishub.net/). AIS and radio data are informational and must not be used as the sole source for navigation or safety decisions.
