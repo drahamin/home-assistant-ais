@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.parse
 from pathlib import Path
 
 
@@ -187,6 +188,36 @@ class AisHubPayloadTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Access pending"):
             tracker.parse_aishub_payload([{"ERROR": True, "ERROR_MESSAGE": "Access pending"}])
 
+    def test_same_aishub_api_builds_separate_sicily_and_miami_queries(self):
+        sicily = urllib.parse.parse_qs(urllib.parse.urlparse(tracker.build_aishub_url("baiamonte")).query, keep_blank_values=True)
+        miami = urllib.parse.parse_qs(urllib.parse.urlparse(tracker.build_aishub_url("miami")).query, keep_blank_values=True)
+        self.assertEqual(sicily["username"], miami["username"])
+        self.assertNotEqual(sicily["lonmin"], miami["lonmin"])
+        self.assertLess(float(miami["lonmin"][0]), tracker.MIAMI_BOUNDS["west"])
+        self.assertGreater(float(miami["lonmax"][0]), tracker.MIAMI_BOUNDS["east"])
+
+    def test_miami_motion_classifies_inbound_and_outbound_contacts(self):
+        area = tracker.MAP_AREAS["miami"]
+        self.assertEqual(tracker.vessel_area_status(25.85, -80.50, 12, 90, area), "inbound")
+        self.assertEqual(tracker.vessel_area_status(25.85, -80.50, 12, 270, area), "nearby")
+        self.assertEqual(tracker.vessel_area_status(25.85, -80.20, 0, 0, area), "in_area")
+
+    def test_miami_record_keeps_source_station_and_ship_details(self):
+        tracker.dashboard_vessels.clear()
+        tracker.process_aishub_record({
+            "MMSI": 367123456, "NAME": "RAHAMIN TEST", "LATITUDE": 25.85,
+            "LONGITUDE": -80.20, "SOG": 9.2, "COG": 45, "TYPE": 70,
+            "A": 20, "B": 30, "C": 5, "D": 6, "DRAUGHT": 4.5,
+            "DEST": "MIAMI", "CALLSIGN": "WTEST",
+        }, "miami")
+        vessel = tracker.dashboard_vessels["367123456"]
+        self.assertEqual(vessel["area_id"], "miami")
+        self.assertEqual(vessel["area_status"], "in_area")
+        self.assertEqual(vessel["station"], "Rahamin AIS Miami")
+        self.assertEqual(vessel["source"], "AISHub API")
+        self.assertEqual(vessel["ship_width"], 11.0)
+        self.assertEqual(vessel["draught"], 4.5)
+
 
 class WeatherTileTests(unittest.TestCase):
     def test_current_rainviewer_hash_path_is_valid(self):
@@ -237,6 +268,18 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("baiamonteAisMapDisplay", script)
         self.assertIn(".map-vessel-label", styles)
         self.assertIn(".map-vessel-detail", styles)
+
+    def test_dashboard_and_tv_offer_baiamonte_and_miami_api_areas(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        dashboard_script = (web / "app.js").read_text()
+        television = (web / "tv.html").read_text()
+        television_script = (web / "tv.js").read_text()
+        self.assertIn('id="map-area-switch"', dashboard)
+        self.assertIn("map_areas", dashboard_script)
+        self.assertIn('id="tv-area-switch"', television)
+        self.assertIn("URLSearchParams(location.search).get('area')", television_script)
+        self.assertIn("area_status==='inbound'", television_script)
 
     def test_watch_area_shows_the_decoder_profile(self):
         web = TRACKER.parent / "web"

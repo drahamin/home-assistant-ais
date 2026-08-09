@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.6.0"
+version: "2.7.0"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -30,6 +30,15 @@ options:
   aishub_username: ""
   aishub_feed_host: ""
   aishub_feed_port: 0
+  baiamonte_api_enabled: true
+  rahamin_miami_enabled: true
+  default_map_area: "baiamonte"
+  baiamonte_approach_km: 45
+  miami_approach_km: 45
+  miami_longitude_west: -80.45
+  miami_latitude_south: 25.55
+  miami_longitude_east: -79.85
+  miami_latitude_north: 26.15
   receiver_name: "Nooelec NESDR SMArt v5"
   receiver_mode: "sdr"
   receiver_host: ""
@@ -73,6 +82,15 @@ schema:
   aishub_username: "str"
   aishub_feed_host: "str?"
   aishub_feed_port: "int?"
+  baiamonte_api_enabled: "bool?"
+  rahamin_miami_enabled: "bool?"
+  default_map_area: "list(baiamonte|miami)?"
+  baiamonte_approach_km: "int?"
+  miami_approach_km: "int?"
+  miami_longitude_west: "float?"
+  miami_latitude_south: "float?"
+  miami_longitude_east: "float?"
+  miami_latitude_north: "float?"
   receiver_name: "str?"
   receiver_mode: "list(sdr|udp|tcp|serial)?"
   receiver_host: "str?"
@@ -122,6 +140,33 @@ configuration:
   aishub_feed_port:
     name: AISHub Feed Port
     description: Dedicated UDP destination port supplied by AISHub.
+  baiamonte_api_enabled:
+    name: Baiamonte Sicily API Area
+    description: Fetch Baiamonte Sicily vessels and approaching traffic from the configured AISHub API.
+  rahamin_miami_enabled:
+    name: Rahamin Miami API Area
+    description: Fetch local and inbound Miami vessels from the same configured AISHub API.
+  default_map_area:
+    name: Default Map Area
+    description: Choose whether dashboards open on Baiamonte Sicily or Rahamin Miami.
+  baiamonte_approach_km:
+    name: Baiamonte Approach Range
+    description: Extra kilometres around the Sicily map requested for inbound-vessel detection.
+  miami_approach_km:
+    name: Miami Approach Range
+    description: Extra kilometres around the Miami map requested for inbound-vessel detection.
+  miami_longitude_west:
+    name: Miami Bounding Box - West
+    description: Left edge of the Rahamin Miami local-vessel map.
+  miami_latitude_south:
+    name: Miami Bounding Box - South
+    description: Bottom edge of the Rahamin Miami local-vessel map.
+  miami_longitude_east:
+    name: Miami Bounding Box - East
+    description: Right edge of the Rahamin Miami local-vessel map.
+  miami_latitude_north:
+    name: Miami Bounding Box - North
+    description: Top edge of the Rahamin Miami local-vessel map.
   receiver_name:
     name: AIS Receiver Name
     description: Friendly hardware name shown in logs and connection status.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.0
+
+* Adds Rahamin Miami and Baiamonte Sicily as switchable map areas backed by the same server-side AISHub API proxy.
+* Alternates area requests at the configured one-minute interval so the shared AISHub account is never polled faster than once per minute.
+* Extends each API query by a configurable approach range and identifies contacts as In area, Inbound, or Nearby from AIS course and speed.
+* Adds `/tv?area=miami` and `/tv?area=baiamonte`, plus touch-friendly area controls on the Home Assistant and Samsung TV maps.
+* Adds station/source, vessel width, draught, destination, flag, and approach status to compact vessel details.
+
 ## 2.6.0
 
 * Adds automatic browser light/dark mode to the Home Assistant AIS dashboard.
