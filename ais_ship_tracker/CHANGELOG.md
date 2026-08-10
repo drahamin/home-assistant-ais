@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.11
+
+- Fixes `/tv` map drift by using the fixed centre of the selected AIS watch area instead of following changing GPS snapshots.
+- Removes the automatic 30-second and browser-resume recentering that could unexpectedly move the TV map.
+- Makes the Reset button immediately cancel any queued drag repaint and restore the fixed home centre and fitted zoom.
+- Keeps the chosen pan and zoom exactly unchanged during AIS data refreshes.
+
 ## 2.7.10
 
 - Stabilizes the AIS TV map by retaining already-loaded base-map and radar tiles during the 10-second vessel refresh.
