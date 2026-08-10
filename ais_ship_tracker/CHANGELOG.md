@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.8
+
+- Matches the AIS `/tv` vessel sidebar dimensions and target-row density to the Baiamonte ADS-B TV display.
+- Uses the same 360 px adaptive sidebar, compact header, flag tile, typography, spacing, and responsive scaling while preserving vessel destination and type details.
+
 ## 2.7.7
 
 - Adds Baiamonte AIS favicons, Apple touch icons, Android/PWA icons, and an installable web manifest to the dashboard and TV map.
