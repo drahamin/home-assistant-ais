@@ -14,7 +14,9 @@ let latest=null;
 let weatherMetadata=null;
 let weatherMetadataFetched=0;
 let manualCenter=null,manualZoom=null;
-let activeArea=(new URLSearchParams(location.search).get('area')||'').toLowerCase();
+const requestedArea=(new URLSearchParams(location.search).get('area')||'').toLowerCase();
+let activeArea=requestedArea;
+let tvVesselsVisible=null;
 const tvPointers={};
 let tvDrag=null,tvPinch=0;
 
@@ -23,7 +25,7 @@ const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
 function tvAreas(config){return (config.map_areas||[{id:'baiamonte',name:'Baiamonte Sicily',bounds:config.bounds,enabled:true}]).filter(function(area){return area.enabled!==false})}
-function currentTvArea(config){const areas=tvAreas(config);return areas.find(function(area){return area.id===activeArea})||areas.find(function(area){return area.id===config.default_map_area})||areas[0]}
+function currentTvArea(config){const areas=tvAreas(config),preferred=requestedArea||config.tv_default_map_area||'baiamonte';return areas.find(function(area){return area.id===activeArea})||areas.find(function(area){return area.id===preferred})||areas.find(function(area){return area.id==='baiamonte'})||areas[0]}
 function currentTvBounds(){return currentTvArea(latest.config).bounds}
 function chooseTvArea(areaId){activeArea=areaId;manualCenter=null;manualZoom=null;const url=new URL(location.href);url.searchParams.set('area',areaId);history.replaceState(null,'',url.pathname+url.search);if(latest)render(latest)}
 function renderTvAreaSwitch(config){const area=currentTvArea(config);activeArea=area.id;document.querySelector('#tv-area-switch').innerHTML=tvAreas(config).map(function(item){return `<button type="button" data-area="${escapeHtml(item.id)}" aria-pressed="${item.id===area.id}">${escapeHtml(item.name)}</button>`}).join('');Array.prototype.forEach.call(document.querySelectorAll('#tv-area-switch [data-area]'),function(button){button.onclick=function(){chooseTvArea(button.getAttribute('data-area'))}});return area}
@@ -151,6 +153,8 @@ function render(data){
   latest=data;
   const width=map.clientWidth,height=map.clientHeight;
   const cfg=data.config;
+  if(tvVesselsVisible===null)tvVesselsVisible=cfg.tv_map_vessels!==false;
+  document.querySelector('#tv-vessels-toggle').setAttribute('aria-pressed',String(tvVesselsVisible));
   const area=renderTvAreaSwitch(cfg);
   const bounds=area.bounds;
   const view=fitView(bounds,width,height);
@@ -160,13 +164,14 @@ function render(data){
   const areaVessels=(data.vessels||[]).filter(v=>String(v.area_id||'baiamonte')===area.id&&Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude)));
   const visible=areaVessels.filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   const nearest=areaVessels.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3},aRank=rank[a.area_status]===undefined?3:rank[a.area_status],bRank=rank[b.area_status]===undefined?3:rank[b.area_status];return aRank-bRank||Number(a.distance_km||99999)-Number(b.distance_km||99999)});
-  visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));
-  empty.classList.toggle('show',visible.length===0);
-  fleetCount.textContent=areaVessels.length;
-  vesselList.innerHTML=nearest.length?nearest.slice(0,10).map(vesselRow).join(''):'<div class="list-empty">No positioned boats in the watch area</div>';
+  if(tvVesselsVisible)visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));
+  empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);
+  const liveTraffic=cfg.tv_live_traffic_only===false?nearest:visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
+  fleetCount.textContent=liveTraffic.length;
+  vesselList.innerHTML=liveTraffic.length?liveTraffic.slice(0,10).map(vesselRow).join(''):'<div class="list-empty">No live vessels inside this map view</div>';
   const connected=data.connection==='Connected';
   feedLight.classList.toggle('online',connected);
-  feedStatus.textContent=connected?`AISHub live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`AISHub ${String(data.connection).toLowerCase()}`;
+  feedStatus.textContent=connected?`${area.name} live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${String(data.connection).toLowerCase()}`;
 }
 
 function refresh(){
@@ -186,6 +191,7 @@ function rerenderMap(){if(latest)render(latest)}
 document.querySelector('#tv-map-in').onclick=function(){if(!latest)return;manualZoom=Math.min(13,(manualZoom===null?fitView(currentTvBounds(),map.clientWidth,map.clientHeight).zoom:manualZoom)+1);rerenderMap()};
 document.querySelector('#tv-map-out').onclick=function(){if(!latest)return;manualZoom=Math.max(2,(manualZoom===null?fitView(currentTvBounds(),map.clientWidth,map.clientHeight).zoom:manualZoom)-1);rerenderMap()};
 document.querySelector('#tv-map-reset').onclick=function(){manualCenter=null;manualZoom=null;rerenderMap()};
+document.querySelector('#tv-vessels-toggle').onclick=function(){tvVesselsVisible=!tvVesselsVisible;rerenderMap()};
 map.addEventListener('pointerdown',function(event){if(!latest||(event.target.closest&&event.target.closest('.tv-map-controls,.tv-area-switch,a')))return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};if(map.setPointerCapture)map.setPointerCapture(event.pointerId);if(Object.keys(tvPointers).length===1){const view=fitView(currentTvBounds(),map.clientWidth,map.clientHeight);tvDrag={x:event.clientX,y:event.clientY,center:view.center,zoom:view.zoom,world:project(view.center.lat,view.center.lon,view.zoom)}}else{const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});tvPinch=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}});
 map.addEventListener('pointermove',function(event){if(!tvPointers[event.pointerId]||!latest)return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});if(points.length===2){const distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);if(tvPinch&&Math.abs(distance-tvPinch)>35){manualZoom=Math.max(2,Math.min(13,(manualZoom===null?fitView(currentTvBounds(),map.clientWidth,map.clientHeight).zoom:manualZoom)+(distance>tvPinch?1:-1)));tvPinch=distance;rerenderMap()}return}if(tvDrag){const scale=TILE*Math.pow(2,tvDrag.zoom),worldX=tvDrag.world.x-(event.clientX-tvDrag.x),worldY=tvDrag.world.y-(event.clientY-tvDrag.y),lon=worldX/scale*360-180,mercator=Math.PI*(1-2*worldY/scale),lat=Math.atan(Math.sinh(mercator))*180/Math.PI;manualCenter={lat:lat,lon:lon};manualZoom=tvDrag.zoom;rerenderMap()}});
 function stopTvPointer(event){delete tvPointers[event.pointerId];tvDrag=null;tvPinch=0;if(map.hasPointerCapture&&map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId)}

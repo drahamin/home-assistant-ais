@@ -23,7 +23,7 @@ import termios
 from datetime import datetime, timedelta
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -83,6 +83,12 @@ try:
     DEFAULT_MAP_AREA = str(config.get('default_map_area', 'baiamonte')).strip().lower()
     if DEFAULT_MAP_AREA not in {'baiamonte', 'miami'}:
         DEFAULT_MAP_AREA = 'baiamonte'
+    TV_DEFAULT_MAP_AREA = str(config.get('tv_default_map_area', 'baiamonte')).strip().lower()
+    if TV_DEFAULT_MAP_AREA not in {'baiamonte', 'miami'}:
+        TV_DEFAULT_MAP_AREA = 'baiamonte'
+    DASHBOARD_MAP_VESSELS = str(config.get('dashboard_map_vessels', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    TV_MAP_VESSELS = str(config.get('tv_map_vessels', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    TV_LIVE_TRAFFIC_ONLY = str(config.get('tv_live_traffic_only', True)).lower() in ['true', '1', 't', 'y', 'yes']
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
     RECEIVER_MODE = str(config.get('receiver_mode', 'sdr')).strip().lower()
@@ -531,6 +537,10 @@ def dashboard_snapshot():
                 },
                 "map_areas": list(MAP_AREAS.values()),
                 "default_map_area": DEFAULT_MAP_AREA,
+                "tv_default_map_area": TV_DEFAULT_MAP_AREA,
+                "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
+                "tv_map_vessels": TV_MAP_VESSELS,
+                "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
                 "reference_location": location,
                 "map_entities": ENABLE_MAP_ENTITIES,
                 "include_class_b": INCLUDE_CLASS_B,

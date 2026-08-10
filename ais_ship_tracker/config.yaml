@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.0"
+version: "2.7.1"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -33,6 +33,10 @@ options:
   baiamonte_api_enabled: true
   rahamin_miami_enabled: true
   default_map_area: "baiamonte"
+  tv_default_map_area: "baiamonte"
+  dashboard_map_vessels: true
+  tv_map_vessels: true
+  tv_live_traffic_only: true
   baiamonte_approach_km: 45
   miami_approach_km: 45
   miami_longitude_west: -80.45
@@ -85,6 +89,10 @@ schema:
   baiamonte_api_enabled: "bool?"
   rahamin_miami_enabled: "bool?"
   default_map_area: "list(baiamonte|miami)?"
+  tv_default_map_area: "list(baiamonte|miami)?"
+  dashboard_map_vessels: "bool?"
+  tv_map_vessels: "bool?"
+  tv_live_traffic_only: "bool?"
   baiamonte_approach_km: "int?"
   miami_approach_km: "int?"
   miami_longitude_west: "float?"
@@ -149,6 +157,18 @@ configuration:
   default_map_area:
     name: Default Map Area
     description: Choose whether dashboards open on Baiamonte Sicily or Rahamin Miami.
+  tv_default_map_area:
+    name: TV Default Map Area
+    description: Area opened by /tv when no area is supplied. Keep Baiamonte selected for the local Sicily traffic display.
+  dashboard_map_vessels:
+    name: Show Vessels on Dashboard Map
+    description: Show live vessel markers on the Home Assistant Overview map. They can also be hidden temporarily from the map toolbar.
+  tv_map_vessels:
+    name: Show Vessels on TV Map
+    description: Show live vessel markers on /tv. They can also be hidden temporarily from the TV map controls.
+  tv_live_traffic_only:
+    name: TV Live Traffic Only
+    description: Keep the TV count and vessel list matched to boats actually inside the displayed map instead of approach traffic outside its edges.
   baiamonte_approach_km:
     name: Baiamonte Approach Range
     description: Extra kilometres around the Sicily map requested for inbound-vessel detection.
