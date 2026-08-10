@@ -56,7 +56,7 @@
 
         <div class="overview-grid">
           <article class="panel map-panel">
-            <div class="panel-head map-panel-head"><div><p>LIVE WATCH AREA</p><h3 id="map-area-title">Vessel positions</h3></div><div class="map-head-tools"><div class="map-area-switch" id="map-area-switch" aria-label="AIS map area"></div><div class="map-display-switch" aria-label="Map display"><button type="button" data-map-display="labels" aria-pressed="true">Labels</button><button type="button" data-map-display="focus" aria-pressed="false">Selected</button><a id="tv-link" href="tv" target="_blank" rel="noopener">TV split</a><span class="live-pill"><i></i>LIVE</span></div></div></div>
+            <div class="panel-head map-panel-head"><div><p>LIVE WATCH AREA</p><h3 id="map-area-title">Vessel positions</h3></div><div class="map-head-tools"><div class="map-area-switch" id="map-area-switch" aria-label="AIS map area"></div><div class="map-display-switch" aria-label="Map display"><button type="button" id="dashboard-vessels-toggle" aria-pressed="true">Vessels</button><button type="button" data-map-display="labels" aria-pressed="true">Labels</button><button type="button" data-map-display="focus" aria-pressed="false">Selected</button><a id="tv-link" href="tv" target="_blank" rel="noopener">TV map</a><span class="live-pill"><i></i>LIVE</span></div></div></div>
             <div class="sea-map" id="sea-map"><div class="map-world" id="map-world"><div id="dashboard-tiles" aria-hidden="true"></div><div id="dashboard-weather" aria-hidden="true"></div><div class="range-ring one"></div><div class="range-ring two"></div><div class="sweep"></div><span class="compass">N</span></div><div class="map-controls"><button type="button" id="map-zoom-in" aria-label="Zoom map in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom map out">−</button><button type="button" id="map-size-down" aria-label="Make map shorter">↕−</button><button type="button" id="map-size-up" aria-label="Make map taller">↕+</button><button type="button" id="map-reset" aria-label="Reset map position">Reset</button></div><article id="map-vessel-detail" class="map-vessel-detail" hidden><button type="button" id="map-detail-close" aria-label="Close vessel details">×</button><div id="map-detail-content"></div></article><div class="map-empty" id="map-empty"><svg><use href="#i-radar"/></svg><b>Scanning the watch area</b><small>Vessels appear as their AIS broadcasts arrive.</small></div><div id="dashboard-weather-status" hidden>LIVE RAIN</div><span class="resize-corner" aria-hidden="true"></span></div>
             <div class="map-footer"><span id="bounds-label">Loading coordinates…</span><span id="map-mode-hint">All nearby vessels labeled · drag or pinch to explore</span></div>
           </article>
@@ -109,6 +109,6 @@
     </main>
   </div>
   <script src="maritime-flags.js?v=240"></script>
-  <script src="app.js?v=270"></script>
+  <script src="app.js?v=271"></script>
 </body>
 </html>

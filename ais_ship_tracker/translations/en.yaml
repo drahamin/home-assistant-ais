@@ -17,6 +17,18 @@ configuration:
   default_map_area:
     name: Default Map Area
     description: Choose whether dashboards open on Baiamonte Sicily or Rahamin Miami.
+  tv_default_map_area:
+    name: TV Default Map Area
+    description: Area opened by /tv when no area is supplied. Keep Baiamonte selected for the local Sicily traffic display.
+  dashboard_map_vessels:
+    name: Show Vessels on Dashboard Map
+    description: Show live vessel markers on the Home Assistant Overview map. They can also be hidden temporarily from the map toolbar.
+  tv_map_vessels:
+    name: Show Vessels on TV Map
+    description: Show live vessel markers on /tv. They can also be hidden temporarily from the TV map controls.
+  tv_live_traffic_only:
+    name: TV Live Traffic Only
+    description: Keep the TV count and vessel list matched to boats actually inside the displayed map instead of approach traffic outside its edges.
   baiamonte_approach_km:
     name: Baiamonte Approach Range
     description: Extra kilometres around the Sicily map requested for inbound-vessel detection.

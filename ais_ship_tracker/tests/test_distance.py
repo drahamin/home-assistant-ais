@@ -60,6 +60,10 @@ class DistanceTests(unittest.TestCase):
         snapshot = tracker.dashboard_snapshot()
         self.assertEqual(snapshot["config"]["receiver_mode"], "sdr")
         self.assertEqual(snapshot["config"]["receiver_channel"], "dual")
+        self.assertEqual(snapshot["config"]["tv_default_map_area"], "baiamonte")
+        self.assertTrue(snapshot["config"]["dashboard_map_vessels"])
+        self.assertTrue(snapshot["config"]["tv_map_vessels"])
+        self.assertTrue(snapshot["config"]["tv_live_traffic_only"])
         self.assertIn("reference_location", snapshot["config"])
         self.assertFalse(snapshot["flightaware_weather"]["enabled"])
         self.assertEqual(snapshot["receiver_log"][0]["message"], "AIS receiver test event")
@@ -280,6 +284,23 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="tv-area-switch"', television)
         self.assertIn("URLSearchParams(location.search).get('area')", television_script)
         self.assertIn("area_status==='inbound'", television_script)
+
+    def test_dashboard_and_tv_offer_live_vessel_map_controls(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        dashboard_script = (web / "app.js").read_text()
+        television = (web / "tv.html").read_text()
+        television_script = (web / "tv.js").read_text()
+        config = (TRACKER.parent / "config.yaml").read_text()
+        self.assertIn('id="dashboard-vessels-toggle"', dashboard)
+        self.assertIn("cfg.dashboard_map_vessels!==false", dashboard_script)
+        self.assertIn('id="tv-vessels-toggle"', television)
+        self.assertIn("config.tv_default_map_area||'baiamonte'", television_script)
+        self.assertIn("cfg.tv_live_traffic_only===false?nearest:visible", television_script)
+        self.assertIn('tv_default_map_area: "baiamonte"', config)
+        self.assertIn("dashboard_map_vessels: true", config)
+        self.assertIn("tv_map_vessels: true", config)
+        self.assertIn("tv_live_traffic_only: true", config)
 
     def test_watch_area_shows_the_decoder_profile(self):
         web = TRACKER.parent / "web"

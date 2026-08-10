@@ -17,7 +17,7 @@
       <div id="empty">Waiting for vessels</div>
       <div id="tv-area-switch" class="tv-area-switch" aria-label="AIS map area"></div>
       <div id="weather-credit" hidden><i></i><span id="weather-time">Live precipitation</span><a href="https://www.rainviewer.com/" target="_blank" rel="noreferrer">RainViewer radar</a></div>
-      <div class="tv-map-controls"><button type="button" id="tv-map-in" aria-label="Zoom map in">+</button><button type="button" id="tv-map-out" aria-label="Zoom map out">−</button><button type="button" id="tv-map-reset">Reset</button></div>
+      <div class="tv-map-controls"><button type="button" id="tv-vessels-toggle" aria-pressed="true">Vessels</button><button type="button" id="tv-map-in" aria-label="Zoom map in">+</button><button type="button" id="tv-map-out" aria-label="Zoom map out">−</button><button type="button" id="tv-map-reset">Reset</button></div>
       <a id="attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
     </section>
     <aside id="fleet" aria-label="Live vessel list">
@@ -27,10 +27,10 @@
         <b id="fleet-count">0</b>
       </header>
       <div id="vessel-list"></div>
-      <footer><i id="feed-light"></i><span id="feed-status">Connecting to AISHub</span></footer>
+      <footer><i id="feed-light"></i><span id="feed-status">Connecting to Baiamonte AIS</span></footer>
     </aside>
   </main>
   <script src="maritime-flags.js?v=231"></script>
-  <script src="tv.js?v=270"></script>
+  <script src="tv.js?v=271"></script>
 </body>
 </html>

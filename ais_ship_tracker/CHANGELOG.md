@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.1
+
+* Adds independent Home Assistant options for showing live vessel markers on the dashboard and TV maps, with matching temporary map-toolbar toggles.
+* Makes `/tv` open on the Baiamonte Sicily live map by default while preserving explicit `?area=miami` access.
+* Defaults the TV count and compact side list to vessels actually inside the displayed map so Miami and off-map approach traffic cannot leak into the local view.
+
 ## 2.7.0
 
 * Adds Rahamin Miami and Baiamonte Sicily as switchable map areas backed by the same server-side AISHub API proxy.

@@ -44,13 +44,13 @@ Open **Marine radio** for the live audio player, current scanner state, device p
 
 ## TV map
 
-For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8999/tv`. This Baiamonte-styled view includes the live map plus a distance-ranked side list of the 10 closest positioned boats, and refreshes automatically. Internal port `8099` remains dedicated to Home Assistant ingress.
+For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8999/tv`. With no query parameter, the display opens the Baiamonte Sicily map and shows only live boats inside the visible watch area in its count and compact side list. Miami remains available only when deliberately selected on screen or opened with `/tv?area=miami`. Internal port `8099` remains dedicated to Home Assistant ingress.
 
 Turn on **TV Live Weather Radar** to add current precipitation radar from RainViewer. Turn on **Live Rain Radar on Dashboard** for the Overview map. Adjust **TV Weather Opacity** between 10 and 100 if the radar is too faint or covers too much of the base map. Radar availability is best-effort; boats and the base map continue working if the weather service is temporarily unavailable.
 
 On Overview and TV pages, drag the map to move it, pinch or use the wheel and gold plus/minus buttons to zoom, and choose **Reset** to return to the automatic view. The Overview map also has height controls and a lower-right resize corner. Its height is remembered by the browser. The TV layout includes a flexbox fallback and same-origin tile proxy for Samsung/Tizen browsers.
 
-The Overview map offers **Labels** and **Selected** display modes. Labels shows compact flag, MMSI, type, speed, destination, and last-seen callouts beside nearby vessels. Selected keeps the map clear until a vessel is tapped or clicked, then opens an expanded detail panel. **TV split** opens the Samsung-compatible fullscreen map and closest-vessel rail. The dashboard remembers its last display mode in that browser.
+The Overview map offers **Vessels**, **Labels**, and **Selected** controls. Vessels temporarily shows or hides all boat markers. Labels shows compact flag, MMSI, type, speed, destination, and last-seen callouts beside nearby vessels. Selected keeps the map clear until a vessel is tapped or clicked, then opens an expanded detail panel. **TV map** opens the Samsung-compatible fullscreen local map and vessel rail. The TV has its own Vessels control. The Home Assistant options **Show Vessels on Dashboard Map** and **Show Vessels on TV Map** set the startup behavior, while **TV Live Traffic Only** keeps the TV count and list limited to boats actually visible in the selected map area.
 
 Vessel flags are derived from the MMSI Maritime Identification Digits when the transmitting identity contains an allocated MID. The same flag appears on overview map labels, recent contacts, Live traffic cards, and the TV vessel list. Special group, coast-station, SAR-aircraft, and AIS aid-to-navigation MMSI formats are recognized when possible. Unknown or malformed identities use a neutral flag rather than guessing a registry.
 
