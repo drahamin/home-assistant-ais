@@ -36,6 +36,7 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | AISHub Username | Contributor username supplied by AISHub |
 | AISHub Feed Host | Feed destination host supplied by AISHub |
 | AISHub Feed Port | Dedicated UDP port supplied by AISHub |
+| Rahamin AIS Private Proxy | Pulls the Pi's separate cached Miami and Sicily area feeds over the private routed network |
 | Baiamonte / Rahamin API areas | Enables Sicily, Miami, or both through the same AISHub account |
 | Default map area | Opens dashboards on Baiamonte Sicily or Rahamin Miami |
 | Approach range | Extends API coverage around each map so moving inbound vessels can be identified |
@@ -58,7 +59,7 @@ Install **Baiamonte AIS**, configure it, start it, and enable **Show in sidebar*
 | MMSI Filter | Optional comma-separated list of nine-digit MMSIs |
 | Ship Entity Timeout | Removes vessels that have not updated within this period |
 
-The browser and TV never receive the AISHub username. The app acts as the local proxy, caches contacts, and alternates enabled map areas at the minimum 60-second API interval. With both areas enabled, each area refreshes about every two minutes while the displays continue updating from the cache every ten seconds.
+The browser and TV never receive the AISHub username. When **Rahamin AIS Private Proxy** is enabled, Home Assistant requests the Miami Pi's separate `/api/status?area=miami` and `/api/status?area=baiamonte` caches and does not duplicate the Pi's AISHub requests. If the private proxy is disabled, the Home Assistant app can instead poll AISHub directly and alternate the enabled areas at the minimum 60-second API interval.
 
 ## Nooelec NESDR SMArt v5
 

@@ -169,9 +169,9 @@ function render(data){
   const liveTraffic=cfg.tv_live_traffic_only===false?nearest:visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
   fleetCount.textContent=liveTraffic.length;
   vesselList.innerHTML=liveTraffic.length?liveTraffic.slice(0,10).map(vesselRow).join(''):'<div class="list-empty">No live vessels inside this map view</div>';
-  const proxy=data.rahamin_proxy||{},connected=data.connection==='Connected'||(area.id==='miami'&&proxy.state==='Connected');
+  const proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyConnected=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),connected=data.connection==='Connected'||proxyConnected;
   feedLight.classList.toggle('online',connected);
-  feedStatus.textContent=connected?`${area.name} live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${String(area.id==='miami'?proxy.state:data.connection).toLowerCase()}`;
+  feedStatus.textContent=connected?`${area.name} live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${String(proxyArea.state||data.connection).toLowerCase()}`;
 }
 
 function refresh(){

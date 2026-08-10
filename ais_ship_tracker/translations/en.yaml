@@ -19,13 +19,13 @@ configuration:
     description: Fetch local and inbound Miami vessels from the same configured AISHub API.
   rahamin_proxy_enabled:
     name: Rahamin AIS Private Proxy
-    description: Import the Miami map and inbound vessel feed from the Rahamin AIS Pi over the private routed network.
+    description: Import the separate Miami and Sicily cached vessel feeds from the Rahamin AIS Pi over the private routed network.
   rahamin_proxy_url:
     name: Rahamin AIS Proxy URL
     description: Private Rahamin AIS status endpoint. The standard Miami Pi endpoint is http://192.168.86.196:8999/api/status.
   rahamin_proxy_interval:
     name: Rahamin AIS Proxy Refresh
-    description: Seconds between private Miami vessel updates. Recommended value is 15.
+    description: Seconds between private Miami and Sicily vessel updates. Recommended value is 15.
   default_map_area:
     name: Default Map Area
     description: Choose whether dashboards open on Baiamonte Sicily or Rahamin Miami.

@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.3"
+VERSION = "2.7.4"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -272,13 +272,17 @@ aishub_area_states = {
     for area_id, area in MAP_AREAS.items() if area["enabled"]
 }
 rahamin_proxy_state = {
-    "enabled": RAHAMIN_PROXY_ENABLED and RAHAMIN_MIAMI_ENABLED,
-    "state": "Waiting" if RAHAMIN_PROXY_ENABLED and RAHAMIN_MIAMI_ENABLED else "Disabled",
+    "enabled": RAHAMIN_PROXY_ENABLED and any(area["enabled"] for area in MAP_AREAS.values()),
+    "state": "Waiting" if RAHAMIN_PROXY_ENABLED and any(area["enabled"] for area in MAP_AREAS.values()) else "Disabled",
     "url": RAHAMIN_PROXY_URL,
     "last_checked": None,
     "last_success": None,
     "records": 0,
     "error": None,
+    "areas": {
+        area_id: {"state": "Waiting", "last_checked": None, "last_success": None, "records": 0, "error": None}
+        for area_id, area in MAP_AREAS.items() if area["enabled"]
+    },
 }
 aishub_area_cursor = 0
 feed_state = {
@@ -1196,7 +1200,7 @@ def process_aishub_record(record, area_id="baiamonte"):
         last_map_update[mmsi] = now
 
 
-def process_rahamin_proxy_record(record):
+def process_rahamin_proxy_record(record, area_id="miami"):
     """Import one positioned vessel from the private Rahamin AIS status API."""
     if not isinstance(record, dict):
         return False
@@ -1205,7 +1209,9 @@ def process_rahamin_proxy_record(record):
         return False
     latitude = clean_number(record.get("latitude"))
     longitude = clean_number(record.get("longitude"))
-    area = MAP_AREAS["miami"]
+    area = MAP_AREAS.get(area_id)
+    if not area or not area.get("enabled"):
+        return False
     if latitude is None or longitude is None or not point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
         return False
     sog = clean_number(record.get("sog"), 102.4)
@@ -1220,9 +1226,9 @@ def process_rahamin_proxy_record(record):
         "heading": clean_number(record.get("heading"), 511),
         "nav_status_string": str(record.get("nav_status_string") or "Not defined"),
         "vessel_class": str(record.get("vessel_class") or "Rahamin AIS network"),
-        "source": "Rahamin AIS private proxy",
+        "source": f"Rahamin AIS private proxy · {area['name']}",
         "station": area["station"],
-        "area_id": "miami",
+        "area_id": area_id,
         "area_name": area["name"],
         "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
         "icon": str(record.get("icon") or "mdi:ferry"),
@@ -1248,36 +1254,68 @@ def process_rahamin_proxy_record(record):
     return True
 
 
+def rahamin_proxy_area_url(area_id):
+    """Add or replace the area query while preserving private proxy URL options."""
+    parsed = urllib.parse.urlparse(RAHAMIN_PROXY_URL)
+    query = [(key, value) for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True) if key != "area"]
+    query.append(("area", area_id))
+    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
+
+
 def rahamin_proxy_worker():
-    """Poll the private Miami Pi API without exposing it outside the routed network."""
+    """Poll both cached map areas from the private Miami Pi API."""
     if not rahamin_proxy_state["enabled"] or not RAHAMIN_PROXY_URL:
         return
     last_reported_state = None
     while not shutdown_in_progress:
         checked_at = datetime.now().isoformat(timespec="seconds")
         rahamin_proxy_state["last_checked"] = checked_at
-        try:
-            request = urllib.request.Request(RAHAMIN_PROXY_URL, headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
-            with urllib.request.urlopen(request, timeout=12) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            records = payload.get("vessels", []) if isinstance(payload, dict) else []
-            if not isinstance(records, list):
-                raise ValueError("Rahamin AIS proxy did not return a vessel list")
-            imported = sum(int(process_rahamin_proxy_record(record)) for record in records)
-            now = datetime.now().isoformat(timespec="seconds")
-            rahamin_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
-            if "miami" in aishub_area_states:
-                aishub_area_states["miami"].update({"state": "Private proxy", "last_checked": checked_at, "last_success": now, "records": imported, "error": None})
-            if last_reported_state != "Connected":
-                log(f"✅ Rahamin AIS private proxy connected: {imported} Miami-area vessels")
-            last_reported_state = "Connected"
-        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
-            rahamin_proxy_state.update({"state": "Connection error", "records": 0, "error": str(exc)})
-            if "miami" in aishub_area_states:
-                aishub_area_states["miami"].update({"state": "Proxy error", "last_checked": checked_at, "error": str(exc)})
-            if last_reported_state != "Connection error":
-                log(f"⚠️ Rahamin AIS private proxy failed: {exc}")
-            last_reported_state = "Connection error"
+        total_imported = 0
+        area_counts = {}
+        errors = []
+        for area_id, area in MAP_AREAS.items():
+            if not area["enabled"]:
+                continue
+            area_proxy_state = rahamin_proxy_state["areas"].setdefault(
+                area_id, {"state": "Waiting", "last_checked": None, "last_success": None, "records": 0, "error": None}
+            )
+            area_proxy_state["last_checked"] = checked_at
+            try:
+                request = urllib.request.Request(rahamin_proxy_area_url(area_id), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
+                with urllib.request.urlopen(request, timeout=12) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                records = payload.get("vessels", []) if isinstance(payload, dict) else []
+                response_area = str(payload.get("config", {}).get("area_id", area_id)).lower() if isinstance(payload, dict) else area_id
+                if response_area != area_id:
+                    raise ValueError(f"Rahamin AIS returned {response_area} data for the {area_id} request")
+                if not isinstance(records, list):
+                    raise ValueError("Rahamin AIS proxy did not return a vessel list")
+                imported = sum(int(process_rahamin_proxy_record(record, area_id)) for record in records)
+                now = datetime.now().isoformat(timespec="seconds")
+                area_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
+                if area_id in aishub_area_states:
+                    aishub_area_states[area_id].update({"state": "Private proxy", "last_checked": checked_at, "last_success": now, "records": imported, "error": None})
+                total_imported += imported
+                area_counts[area_id] = imported
+            except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
+                area_proxy_state.update({"state": "Connection error", "records": 0, "error": str(exc)})
+                if area_id in aishub_area_states:
+                    aishub_area_states[area_id].update({"state": "Proxy error", "last_checked": checked_at, "error": str(exc)})
+                errors.append(f"{area['name']}: {exc}")
+        proxy_state = "Connected" if not errors else ("Degraded" if area_counts else "Connection error")
+        rahamin_proxy_state.update({
+            "state": proxy_state,
+            "last_success": datetime.now().isoformat(timespec="seconds") if area_counts else rahamin_proxy_state.get("last_success"),
+            "records": total_imported,
+            "error": "; ".join(errors) if errors else None,
+        })
+        if last_reported_state != proxy_state:
+            if area_counts:
+                summary = " · ".join(f"{MAP_AREAS[key]['name']} {count}" for key, count in area_counts.items())
+                log(f"✅ Rahamin AIS private area proxy {proxy_state.lower()}: {summary}")
+            else:
+                log(f"⚠️ Rahamin AIS private area proxy failed: {rahamin_proxy_state['error']}")
+        last_reported_state = proxy_state
         time.sleep(RAHAMIN_PROXY_INTERVAL)
 
 
@@ -1963,6 +2001,16 @@ def start_gps():
 
 def start_tracker():
     global last_purge_time, last_known_error, aishub_area_cursor
+    enabled_areas = [
+        area for area in MAP_AREAS.values()
+        if area["enabled"] and not (rahamin_proxy_state["enabled"] and RAHAMIN_PROXY_URL)
+    ]
+    if not enabled_areas:
+        aishub_state.update({"state": "Private proxy", "error": None})
+        if receiver_path_operational():
+            update_conn_status("Connected", new_error="")
+        time.sleep(AISHUB_POLL_INTERVAL)
+        return
     if not AISHUB_USERNAME:
         message = "Enter the AISHub username supplied after your contributor station is approved."
         already_reported = aishub_state.get("state") == "Setup required" and aishub_state.get("error") == message
@@ -1976,16 +2024,6 @@ def start_tracker():
         time.sleep(AISHUB_POLL_INTERVAL)
         return
 
-    enabled_areas = [
-        area for area in MAP_AREAS.values()
-        if area["enabled"] and not (area["id"] == "miami" and rahamin_proxy_state["enabled"] and RAHAMIN_PROXY_URL)
-    ]
-    if not enabled_areas:
-        message = "Enable at least one AISHub map area."
-        aishub_state.update({"state": "Setup required", "error": message})
-        update_conn_status("Setup required", new_error=message)
-        time.sleep(AISHUB_POLL_INTERVAL)
-        return
     area = enabled_areas[aishub_area_cursor % len(enabled_areas)]
     aishub_area_cursor = (aishub_area_cursor + 1) % len(enabled_areas)
     area_state = aishub_area_states[area["id"]]
