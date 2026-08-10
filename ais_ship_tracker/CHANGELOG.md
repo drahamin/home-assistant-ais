@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.7.10
+
+- Stabilizes the AIS TV map by retaining already-loaded base-map and radar tiles during the 10-second vessel refresh.
+- Makes the TV Home control return to the live AIS GPS/reference location for Baiamonte, or the configured area centre for other map areas.
+- Prevents touch-capable TV browsers from running duplicate pointer and legacy touch gestures, and throttles drag rendering for smoother Samsung TV operation.
+- Serializes `/tv` status refreshes so an older response cannot repaint a newer map state.
+- Returns the Overview and `/tv` maps Home after 30 seconds without map interaction and whenever the page resumes.
+- Discards stale RainViewer results on both map surfaces so weather remains aligned with the current view.
+- Keeps the map controls intact across data refreshes and refreshes cleanly after a TV browser resumes from sleep.
+
 ## 2.7.9
 
 - Removes the ten-vessel cap from the `/tv` target sidebar so every live vessel in the selected area is included.

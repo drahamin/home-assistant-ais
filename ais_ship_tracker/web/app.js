@@ -4,6 +4,7 @@ const fmt=value=>value===null||value===undefined||value===''?'—':value;
 const ago=value=>{if(!value)return'just now';const seconds=Math.max(0,(Date.now()-new Date(value).getTime())/1000);if(seconds<60)return`${Math.floor(seconds)}s ago`;if(seconds<3600)return`${Math.floor(seconds/60)}m ago`;return`${Math.floor(seconds/3600)}h ago`};
 let state=null,refreshRunning=false,refreshFailures=0,selectedMapMmsi=null,activeMapArea=null,mapVesselsVisible=null;
 let mapDisplayMode='labels';
+let dashboardWeatherGeneration=0;
 try{mapDisplayMode=localStorage.getItem('baiamonteAisMapDisplay')==='focus'?'focus':'labels';activeMapArea=localStorage.getItem('baiamonteAisArea')}catch(error){}
 
 function mapIsVisible(){return $('#overview').classList.contains('active')&&$('#sea-map').clientWidth>0&&$('#sea-map').clientHeight>0}
@@ -13,7 +14,7 @@ function vesselsForArea(vessels,area){return vessels.filter(v=>String(v.area_id|
 function rerenderVisibleMap(){if(!state||!mapIsVisible())return;const area=selectedArea(state.config);requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(vesselsForArea(state.vessels||[],area),area.bounds,state.config)))}
 function setMapArea(areaId){activeMapArea=areaId;selectedMapMmsi=null;resetOverviewMap();try{localStorage.setItem('baiamonteAisArea',areaId)}catch(error){}if(state)render(state)}
 function renderAreaSwitch(cfg){const areas=mapAreas(cfg),area=selectedArea(cfg);activeMapArea=area.id;$('#map-area-switch').innerHTML=areas.map(item=>`<button type="button" data-area="${esc(item.id)}" aria-pressed="${item.id===area.id}">${esc(item.name)}</button>`).join('');$$('#map-area-switch [data-area]').forEach(node=>node.onclick=()=>setMapArea(node.dataset.area));$('#map-area-title').textContent=`${area.name} vessel positions`;$('#tv-link').href=`tv?area=${encodeURIComponent(area.id)}`;return area}
-function showPage(id){const page=$(`#${id}`)?id:'overview';$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview')rerenderVisibleMap()}
+function showPage(id){const page=$(`#${id}`)?id:'overview';$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview'){resetOverviewMap();rerenderVisibleMap()}}
 $$('.nav').forEach(node=>node.onclick=()=>showPage(node.dataset.page));$$('[data-go]').forEach(node=>node.onclick=()=>showPage(node.dataset.go));
 
 const MAP_TILE=256;
@@ -23,7 +24,18 @@ function overviewVesselColor(v){const kind=String(v.vessel_type||v.vessel_class|
 function geoPoint(lat,lon,zoom){const scale=MAP_TILE*2**zoom,sine=Math.max(-.9999,Math.min(.9999,Math.sin(lat*Math.PI/180)));return{x:(lon+180)/360*scale,y:(.5-Math.log((1+sine)/(1-sine))/(4*Math.PI))*scale}}
 function dashboardView(bounds){const width=$('#sea-map').clientWidth,height=$('#sea-map').clientHeight,centerLat=(bounds.north+bounds.south)/2,centerLon=(bounds.east+bounds.west)/2;let zoom=2;for(let candidate=12;candidate>=2;candidate--){const nw=geoPoint(bounds.north,bounds.west,candidate),se=geoPoint(bounds.south,bounds.east,candidate);if(se.x-nw.x<=width*.86&&se.y-nw.y<=height*.82){zoom=candidate;break}}const center=geoPoint(centerLat,centerLon,zoom);return{zoom,width,height,left:center.x-width/2,top:center.y-height/2}}
 function renderDashboardTiles(view,style){const layer=$('#dashboard-tiles'),count=2**view.zoom;layer.innerHTML='';for(let y=Math.max(0,Math.floor(view.top/MAP_TILE));y<=Math.min(count-1,Math.floor((view.top+view.height)/MAP_TILE));y++){for(let x=Math.floor(view.left/MAP_TILE);x<=Math.floor((view.left+view.width)/MAP_TILE);x++){const image=document.createElement('img');image.alt='';image.src=`api/map-tile/${style}/${view.zoom}/${((x%count)+count)%count}/${y}.png`;image.style.left=`${x*MAP_TILE-view.left}px`;image.style.top=`${y*MAP_TILE-view.top}px`;layer.appendChild(image)}}}
-async function renderDashboardWeather(view,cfg){const layer=$('#dashboard-weather'),status=$('#dashboard-weather-status');layer.innerHTML='';status.hidden=true;if(!cfg.weather_overlay_dashboard)return;try{const response=await fetch('api/weather-maps',{cache:'no-store'});if(!response.ok)throw new Error(response.status);const metadata=await response.json(),frames=metadata&&metadata.radar&&metadata.radar.past||[],frame=frames[frames.length-1];if(!frame||!frame.path)throw new Error('no radar frame');const zoom=Math.min(view.zoom,7),scale=2**(view.zoom-zoom),size=MAP_TILE*scale,count=2**zoom;for(let y=Math.max(0,Math.floor(view.top/size));y<=Math.min(count-1,Math.floor((view.top+view.height)/size));y++){for(let x=Math.floor(view.left/size);x<=Math.floor((view.left+view.width)/size);x++){const image=document.createElement('img');image.alt='';image.src=`api/weather-tile${frame.path}/256/${zoom}/${((x%count)+count)%count}/${y}/2/1_1.png`;image.style.left=`${x*size-view.left}px`;image.style.top=`${y*size-view.top}px`;image.style.width=`${size}px`;image.style.height=`${size}px`;image.style.opacity=Math.max(.1,Math.min(1,Number(cfg.tv_weather_opacity||65)/100));layer.appendChild(image)}}status.textContent=`LIVE RAIN · ${new Date(frame.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;status.hidden=false}catch(error){status.textContent='RAIN RADAR UNAVAILABLE';status.hidden=false}}
+async function renderDashboardWeather(view,cfg){
+  const generation=++dashboardWeatherGeneration,layer=$('#dashboard-weather'),status=$('#dashboard-weather-status');
+  layer.innerHTML='';status.hidden=true;if(!cfg.weather_overlay_dashboard)return;
+  try{
+    const response=await fetch('api/weather-maps',{cache:'no-store'});if(!response.ok)throw new Error(response.status);
+    const metadata=await response.json();if(generation!==dashboardWeatherGeneration)return;
+    const frames=metadata&&metadata.radar&&metadata.radar.past||[],frame=frames[frames.length-1];if(!frame||!frame.path)throw new Error('no radar frame');
+    const zoom=Math.min(view.zoom,7),scale=2**(view.zoom-zoom),size=MAP_TILE*scale,count=2**zoom;
+    for(let y=Math.max(0,Math.floor(view.top/size));y<=Math.min(count-1,Math.floor((view.top+view.height)/size));y++){for(let x=Math.floor(view.left/size);x<=Math.floor((view.left+view.width)/size);x++){const image=document.createElement('img');image.alt='';image.src=`api/weather-tile${frame.path}/256/${zoom}/${((x%count)+count)%count}/${y}/2/1_1.png`;image.style.left=`${x*size-view.left}px`;image.style.top=`${y*size-view.top}px`;image.style.width=`${size}px`;image.style.height=`${size}px`;image.style.opacity=Math.max(.1,Math.min(1,Number(cfg.tv_weather_opacity||65)/100));layer.appendChild(image)}}
+    status.textContent=`LIVE RAIN · ${new Date(frame.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;status.hidden=false;
+  }catch(error){if(generation!==dashboardWeatherGeneration)return;status.textContent='RAIN RADAR UNAVAILABLE';status.hidden=false}
+}
 function mapVesselDetail(v){const info=vesselFlag(v.mmsi),status=v.area_status==='inbound'?'Inbound':v.area_status==='in_area'?'In area':'Nearby';return`<div class="map-detail-identity"><span>${info.flag}</span><div><small>${esc(info.country)} · MMSI ${esc(v.mmsi)}</small><b>${esc(v.name||'Unknown vessel')}</b><em>${esc(status)} · ${esc(v.station||v.source||'AIS')}</em></div></div><div class="map-detail-metrics"><span><small>SPEED</small><b>${esc(fmt(v.sog))} kn</b></span><span><small>COURSE</small><b>${esc(fmt(v.cog))}°</b></span><span><small>DESTINATION</small><b>${esc(v.destination||'Not broadcast')}</b></span><span><small>SIZE / DRAUGHT</small><b>${esc(v.ship_length?`${v.ship_length} × ${fmt(v.ship_width)} m`:'—')} · ${esc(v.draught?`${v.draught} m`:'—')}</b></span></div>`}
 function showMapVessel(v){selectedMapMmsi=String(v.mmsi);const detail=$('#map-vessel-detail');$('#map-detail-content').innerHTML=mapVesselDetail(v);detail.hidden=false;$$('.vessel-marker').forEach(node=>node.classList.toggle('selected',node.dataset.mmsi===selectedMapMmsi))}
 function hideMapVessel(){selectedMapMmsi=null;$('#map-vessel-detail').hidden=true;$$('.vessel-marker').forEach(node=>node.classList.remove('selected'))}
@@ -107,6 +119,7 @@ function render(data){
 const overviewMap=$('#sea-map'),overviewWorld=$('#map-world');
 const overviewView={x:0,y:0,scale:1};
 let mapDragging=false,mapPointerX=0,mapPointerY=0,mapPinchDistance=0;
+let overviewResetTimer=null;
 const mapPointers=new Map();
 function applyOverviewView(){
   const limitX=overviewMap.clientWidth*.75,limitY=overviewMap.clientHeight*.75;
@@ -114,16 +127,17 @@ function applyOverviewView(){
   overviewView.y=Math.max(-limitY,Math.min(limitY,overviewView.y));
   overviewWorld.style.transform=`translate(${overviewView.x}px,${overviewView.y}px) scale(${overviewView.scale})`;
 }
-function changeOverviewZoom(amount){overviewView.scale=Math.max(.7,Math.min(3,overviewView.scale+amount));applyOverviewView()}
+function scheduleOverviewReset(){clearTimeout(overviewResetTimer);overviewResetTimer=setTimeout(resetOverviewMap,30000)}
+function changeOverviewZoom(amount){overviewView.scale=Math.max(.7,Math.min(3,overviewView.scale+amount));applyOverviewView();scheduleOverviewReset()}
 function changeOverviewHeight(amount){const height=Math.max(260,Math.min(720,overviewMap.getBoundingClientRect().height+amount));overviewMap.style.height=`${Math.round(height)}px`;try{localStorage.setItem('baiamonteOverviewMapHeight',String(Math.round(height)))}catch(error){}applyOverviewView();rerenderVisibleMap()}
-function resetOverviewMap(){overviewView.x=0;overviewView.y=0;overviewView.scale=1;applyOverviewView()}
+function resetOverviewMap(){clearTimeout(overviewResetTimer);overviewResetTimer=null;overviewView.x=0;overviewView.y=0;overviewView.scale=1;applyOverviewView()}
 overviewMap.addEventListener('pointerdown',event=>{
   if(event.target.closest('.map-controls,.vessel-marker,.map-vessel-detail'))return;
   const bounds=overviewMap.getBoundingClientRect();
   if(event.clientX>bounds.right-30&&event.clientY>bounds.bottom-30)return;
   mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});mapDragging=true;mapPointerX=event.clientX;mapPointerY=event.clientY;overviewMap.classList.add('dragging');overviewMap.setPointerCapture(event.pointerId);if(mapPointers.size===2){const points=[...mapPointers.values()];mapPinchDistance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}
 });
-overviewMap.addEventListener('pointermove',event=>{if(!mapPointers.has(event.pointerId))return;mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});if(mapPointers.size===2){const points=[...mapPointers.values()],distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);if(mapPinchDistance)changeOverviewZoom((distance-mapPinchDistance)/220);mapPinchDistance=distance;return}if(!mapDragging)return;overviewView.x+=event.clientX-mapPointerX;overviewView.y+=event.clientY-mapPointerY;mapPointerX=event.clientX;mapPointerY=event.clientY;applyOverviewView()});
+overviewMap.addEventListener('pointermove',event=>{if(!mapPointers.has(event.pointerId))return;mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});if(mapPointers.size===2){const points=[...mapPointers.values()],distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);if(mapPinchDistance)changeOverviewZoom((distance-mapPinchDistance)/220);mapPinchDistance=distance;return}if(!mapDragging)return;overviewView.x+=event.clientX-mapPointerX;overviewView.y+=event.clientY-mapPointerY;mapPointerX=event.clientX;mapPointerY=event.clientY;applyOverviewView();scheduleOverviewReset()});
 function stopMapPointer(event){mapPointers.delete(event.pointerId);mapPinchDistance=0;mapDragging=mapPointers.size>0;overviewMap.classList.toggle('dragging',mapDragging);if(overviewMap.hasPointerCapture(event.pointerId))overviewMap.releasePointerCapture(event.pointerId)}
 overviewMap.addEventListener('pointerup',stopMapPointer);
 overviewMap.addEventListener('pointercancel',stopMapPointer);
@@ -144,4 +158,4 @@ try{
   new ResizeObserver(entries=>{const height=Math.round(entries[0].contentRect.height);if(height>=260&&height<=720)localStorage.setItem('baiamonteOverviewMapHeight',String(height));applyOverviewView();rerenderVisibleMap()}).observe(overviewMap);
 }catch(error){console.debug('Map size preference is unavailable',error)}
 async function refresh(){if(refreshRunning)return;refreshRunning=true;const button=$('#refresh');button.disabled=true;try{const response=await fetch('api/status',{cache:'no-store'});if(!response.ok)throw new Error(`Dashboard API ${response.status}`);const data=await response.json();refreshFailures=0;render(data)}catch(error){refreshFailures+=1;$('#last-check').textContent=state?'Update delayed · retrying':'Connecting to dashboard…';if(!state&&refreshFailures>=3){$('#receiver-status').textContent='Dashboard unavailable';$('#hero-status').textContent='Waiting for the Baiamonte AIS service'}console.error(error)}finally{refreshRunning=false;button.disabled=false}}
-$('#refresh').onclick=refresh;showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){rerenderVisibleMap();refresh()}});addEventListener('resize',rerenderVisibleMap);
+$('#refresh').onclick=refresh;showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){resetOverviewMap();rerenderVisibleMap();refresh()}});addEventListener('resize',rerenderVisibleMap);
