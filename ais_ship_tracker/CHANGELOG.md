@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.9
+
+- Removes the ten-vessel cap from the `/tv` target sidebar so every live vessel in the selected area is included.
+- Makes the complete compact list scrollable by wheel, touch, Samsung TV arrow keys, Page Up/Down, Home, and End while preserving position across feed refreshes.
+
 ## 2.7.8
 
 - Matches the AIS `/tv` vessel sidebar dimensions and target-row density to the Baiamonte ADS-B TV display.
