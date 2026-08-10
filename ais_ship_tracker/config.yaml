@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.6"
+version: "2.7.7"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -23,7 +23,7 @@ ports:
 ports_description:
   8099/tcp: "TV map on host port 8999 and optional direct web access"
   10110/udp: "Local AIS receiver NMEA input"
-panel_icon: "mdi:radar"
+panel_icon: "mdi:ferry"
 panel_title: "AIS"
 panel_admin: true
 options:

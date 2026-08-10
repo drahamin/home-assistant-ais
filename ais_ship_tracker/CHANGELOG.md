@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.7
+
+- Adds Baiamonte AIS favicons, Apple touch icons, Android/PWA icons, and an installable web manifest to the dashboard and TV map.
+- Replaces the generic Home Assistant radar/anchor-style sidebar glyph with a vessel icon while retaining the gold Baiamonte app artwork.
+
 ## 2.7.6
 
 - Keeps the Operations Journal scoped to the selected Baiamonte Sicily or Rahamin Miami map area.
