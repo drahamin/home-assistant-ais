@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.3
+
+- Separates receiver health from optional AISHub sharing, so a bad forwarding hostname can no longer label a working receiver as failed.
+- Adds an explicit, default-off AISHub sharing switch; receiving, local decoding, and the Rahamin private proxy continue without it.
+- Backs off and throttles optional forwarding failures instead of logging one error for every AIS packet.
+- Clarifies network receiver and empty-area labels in the dashboard.
+
 ## 2.7.2
 
 * Decodes raw single- and multipart AIS NMEA received through UDP, TCP, or serial network receiver modes so the private Rahamin Miami feed creates live map vessels.

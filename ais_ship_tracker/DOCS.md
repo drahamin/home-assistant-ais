@@ -21,7 +21,8 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 ## App settings
 
 - **AISHub Username:** the contributor username supplied by AISHub.
-- **AISHub Feed Host:** the destination hostname or IP supplied by AISHub.
+- **Share Receiver Data with AISHub:** off by default. Enable only after AISHub supplies the contributor feed destination.
+- **AISHub Feed Host:** the raw NMEA contribution hostname or IP supplied by AISHub. Do not enter the AISHub API URL or a ShipXplorer address.
 - **AISHub Feed Port:** your dedicated AISHub UDP port.
 - **AIS Receiver Name:** the label shown in logs and Home Assistant status.
 - **AIS Receiver Connection:** included AIS-catcher/RTL-SDR decoder, UDP listener, TCP client, or attached serial radio.
@@ -60,15 +61,15 @@ The **Watch Area** page includes the hardware receiver log, GPS/reference positi
 
 ## Troubleshooting
 
-- **Setup required:** add the AISHub username.
-- **Receiver ready · AISHub destination needed:** add the feed host and assigned UDP port.
+- **AISHub setup required:** add the approved contributor username only if aggregated Sicily coverage is wanted. Local and private AIS inputs continue without it.
+- **AISHub sharing not configured:** leave sharing disabled, or add the assigned raw NMEA host and UDP port before enabling it.
 - **No hardware detected:** confirm the receiver is sending UDP NMEA to the Home Assistant host on port `10110` and that the port is reachable on your network.
 - **AIS-catcher start failed / no supported devices:** confirm the RTL-SDR is attached to the Home Assistant host, no other add-on owns it, and the receiver mode is SDR.
 - **Decoder running but no boats:** use an antenna designed for approximately 162 MHz, move it higher or outdoors, and confirm vessels are within VHF range.
 - **Marine VHF device conflict:** select the second Nooelec or its unique serial; AIS and marine radio cannot share one dongle.
 - **Marine audio unavailable:** confirm Marine VHF is enabled, the second dongle is attached and not used elsewhere, and review the receiver log. Adjust squelch only after confirming the configured channels and antenna.
-- **Sharing error:** recheck the AISHub host and port supplied by email.
-- **AISHub connection error:** confirm the username is active and wait at least one minute between retries.
+- **Sharing error:** recheck the contributor feed host and port supplied by AISHub. Receiving and decoding remain active while sharing is unavailable.
+- **AISHub credentials rejected:** confirm the approved username. The app waits 15 minutes before another API request; restart it after correcting the username to retry immediately.
 - **Zero vessels:** verify the configured geographic bounds and maximum position age.
 
 AISHub limits API access to one request per minute. Baiamonte AIS enforces that limit automatically.

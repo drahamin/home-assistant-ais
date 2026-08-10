@@ -53,14 +53,16 @@ function render(data){
   const allVessels=data.vessels||[],cfg=data.config,area=renderAreaSwitch(cfg),vessels=vesselsForArea(allVessels,area),bounds=area.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},proxy=data.rahamin_proxy||{},proxyOperational=area.id==='miami'&&proxy.state==='Connected',operational=connected||proxyOperational||feed.received>0||decoder.state==='Running';
   $('#side-light').classList.toggle('online',operational);
   $('#hero-light').classList.toggle('online',operational);
-  $('#side-status').textContent=proxyOperational?'Rahamin Miami proxy online':decoder.state==='Running'?'Local AIS-catcher online':connected?'AISHub connected':data.connection;
-  $('#hero-status').textContent=proxyOperational?'Private Rahamin AIS Miami vessel feed is online':decoder.state==='Running'?'Local dual-channel AIS receiver is online':connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
-  $('#receiver-status').textContent=proxyOperational?'Rahamin proxy connected':data.connection;
+  const receiverOperational=feed.state==='Receiving'||decoder.state==='Running';
+  $('#side-status').textContent=proxyOperational?'Rahamin Miami proxy online':decoder.state==='Running'?'Local AIS-catcher online':receiverOperational?'AIS input receiving':connected?'AISHub connected':data.connection;
+  $('#hero-status').textContent=proxyOperational?'Private Rahamin AIS Miami vessel feed is online':decoder.state==='Running'?'Local dual-channel AIS receiver is online':receiverOperational?'AIS receiver data is being decoded':connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
+  $('#receiver-status').textContent=proxyOperational?'Rahamin proxy connected':receiverOperational?'Receiving AIS':data.connection;
   $('#vessel-count').textContent=`${vessels.length} active`;
   $('#nav-count').textContent=vessels.length;
   $('#fleet-badge').textContent=`${vessels.length} active`;
   $('#watch-mode').textContent=cfg.watchlist_count?`${cfg.watchlist_count} priority MMSI`:'All vessels';
   $('#map-mode').textContent=cfg.map_entities?'Enabled':'Overview only';
+  $('#receiver-card-label').textContent=['udp','tcp'].includes(String(cfg.receiver_mode).toLowerCase())?'NETWORK AIS INPUT':'LOCAL AIS RECEIVER';
   $('#link-card').textContent=feed.state||data.connection;
   $('#link-detail').textContent=feed.receiver_address?`${feed.receiver_name} · ${feed.received} messages received`:(data.last_error||'Waiting for AIS hardware').slice(0,70);
   $('#watchlist-count').textContent=cfg.watchlist_count?`${cfg.watchlist_count} priority vessels`:'Open watch';
@@ -71,7 +73,7 @@ function render(data){
   $('#bounds-label').textContent=`${bounds.south.toFixed(3)}, ${bounds.west.toFixed(3)} → ${bounds.north.toFixed(3)}, ${bounds.east.toFixed(3)}`;
   renderMap(vessels,bounds,cfg);
   $('#recent-vessels').innerHTML=vessels.length?vessels.slice(0,4).map(vesselRow).join(''):'<div class="empty">No vessel broadcasts received in this watch area yet.</div>';
-  $('#fleet-grid').innerHTML=vessels.length?vessels.map(vesselCard).join(''):'<article class="panel empty">AISHub is scanning. Vessels will appear here automatically.</article>';
+  $('#fleet-grid').innerHTML=vessels.length?vessels.map(vesselCard).join(''):'<article class="panel empty">No positioned AIS broadcasts have arrived for this watch area yet.</article>';
   const events=data.events||[];
   $('#events').innerHTML=events.length?events.slice(0,5).map(event=>`<div class="event-row"><div class="vessel-icon"><svg><use href="#i-radar"/></svg></div><span><b>${esc(event.message)}</b><small>${esc(ago(event.time))}</small></span></div>`).join(''):'<div class="empty">The operations journal is ready for the first contact.</div>';
   $('#north').textContent=bounds.north.toFixed(6);$('#south').textContent=bounds.south.toFixed(6);$('#east').textContent=bounds.east.toFixed(6);$('#west').textContent=bounds.west.toFixed(6);

@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.2"
+version: "2.7.3"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -30,6 +30,7 @@ options:
   aishub_username: ""
   aishub_feed_host: ""
   aishub_feed_port: 0
+  aishub_sharing_enabled: false
   baiamonte_api_enabled: true
   rahamin_miami_enabled: true
   rahamin_proxy_enabled: true
@@ -89,6 +90,7 @@ schema:
   aishub_username: "str"
   aishub_feed_host: "str?"
   aishub_feed_port: "int?"
+  aishub_sharing_enabled: "bool?"
   baiamonte_api_enabled: "bool?"
   rahamin_miami_enabled: "bool?"
   rahamin_proxy_enabled: "bool?"

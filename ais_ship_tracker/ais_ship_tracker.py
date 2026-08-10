@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.2"
+VERSION = "2.7.3"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -78,6 +78,7 @@ try:
     AISHUB_POLL_INTERVAL = max(60, get_safe_int('aishub_poll_interval', 60))
     AISHUB_FEED_HOST = str(config.get('aishub_feed_host', '')).strip()
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
+    AISHUB_SHARING_ENABLED = str(config.get('aishub_sharing_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
     BAIAMONTE_API_ENABLED = str(config.get('baiamonte_api_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
     RAHAMIN_MIAMI_ENABLED = str(config.get('rahamin_miami_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
     RAHAMIN_PROXY_ENABLED = str(config.get('rahamin_proxy_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
@@ -282,6 +283,7 @@ rahamin_proxy_state = {
 aishub_area_cursor = 0
 feed_state = {
     "state": "Waiting for receiver",
+    "sharing_state": "Disabled" if not AISHUB_SHARING_ENABLED else "Not configured",
     "received": 0,
     "forwarded": 0,
     "locally_decoded": 0,
@@ -292,6 +294,7 @@ feed_state = {
     "datagrams": 0,
     "ignored_lines": 0,
     "error": None,
+    "sharing_error": None,
 }
 decoder_state = {
     "enabled": RECEIVER_MODE == "sdr",
@@ -508,6 +511,15 @@ def marine_vhf_snapshot():
         snapshot["state"] = "Streaming"
     return snapshot
 
+
+def receiver_path_operational():
+    """Return whether a local/private AIS source is healthy without consulting AISHub."""
+    return (
+        feed_state.get("state") == "Receiving"
+        or decoder_state.get("state") == "Running"
+        or rahamin_proxy_state.get("state") == "Connected"
+    )
+
 def dashboard_snapshot():
     airport_weather = flightaware_weather()
     with dashboard_lock:
@@ -563,12 +575,13 @@ def dashboard_snapshot():
                 "include_class_b": INCLUDE_CLASS_B,
                 "timeout_minutes": MAP_TIMEOUT_MINUTES,
                 "watchlist_count": len(watchlist_mmsis),
-                "source": "Local AIS-catcher + AISHub" if RECEIVER_MODE == "sdr" else "AISHub + local receiver",
+                "source": "Local AIS-catcher + optional AISHub" if RECEIVER_MODE == "sdr" else "Network AIS input + optional AISHub",
                 "poll_interval": AISHUB_POLL_INTERVAL,
                 "receiver_mode": RECEIVER_MODE,
                 "receiver_port": RECEIVER_PORT,
                 "receiver_channel": RECEIVER_CHANNEL,
-                "sharing_configured": bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT),
+                "sharing_enabled": AISHUB_SHARING_ENABLED,
+                "sharing_configured": bool(AISHUB_SHARING_ENABLED and AISHUB_FEED_HOST and AISHUB_FEED_PORT),
                 "weather_overlay_dashboard": WEATHER_OVERLAY_DASHBOARD,
                 "tv_weather_overlay": TV_WEATHER_OVERLAY,
                 "tv_weather_opacity": TV_WEATHER_OPACITY,
@@ -1047,6 +1060,8 @@ def update_conn_status(status, new_error=None):
             sanitised_error = str(last_known_error).replace(AISHUB_USERNAME, "[REDACTED]")
         else:
             sanitised_error = str(last_known_error)
+    raw_aishub_error = aishub_state.get("error")
+    sanitised_aishub_error = str(raw_aishub_error).replace(AISHUB_USERNAME, "[REDACTED]") if raw_aishub_error and AISHUB_USERNAME else raw_aishub_error
 
     state_value = status
     if status == "Connected":
@@ -1058,9 +1073,11 @@ def update_conn_status(status, new_error=None):
 
     attributes = {
         "friendly_name": "Baiamonte AIS · Connection Status (Dev)" if DEV_MODE else "Baiamonte AIS · Connection Status",
-        "provider": "AISHub",
+        "provider": "AIS receiver + optional AISHub",
         "last_update_attempt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "last_api_success": aishub_state["last_success"],
+        "aishub_status": aishub_state["state"],
+        "aishub_error": sanitised_aishub_error,
         "vessels_received": aishub_state["records"],
         "receiver_feed_status": feed_state["state"],
         "receiver_messages_received": feed_state["received"],
@@ -1597,15 +1614,21 @@ def receiver_packets():
 def receiver_feed_worker():
     """Receive local AIS, update the UI, and forward original NMEA to AISHub."""
     forwarder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    configured = bool(AISHUB_FEED_HOST and AISHUB_FEED_PORT)
-    feed_state["state"] = "Waiting for receiver" if configured else "Receiver ready · AISHub destination needed"
+    configured = bool(AISHUB_SHARING_ENABLED and AISHUB_FEED_HOST and AISHUB_FEED_PORT)
+    feed_state.update({
+        "state": "Waiting for receiver",
+        "sharing_state": "Waiting for receiver" if configured else ("Not configured" if AISHUB_SHARING_ENABLED else "Disabled"),
+        "sharing_error": None,
+    })
     channel_label = {"dual": "AIS A+B (161.975/162.025 MHz)", "channel_a": "AIS A (161.975 MHz)", "channel_b": "AIS B (162.025 MHz)"}[RECEIVER_CHANNEL]
     mode_label = "AIS-catcher / RTL-SDR" if RECEIVER_MODE == "sdr" else RECEIVER_MODE.upper()
     log(f"📡 AIS hardware logger started for '{RECEIVER_NAME}' via {mode_label} · {channel_label}")
     if configured:
         log(f"🤝 AISHub sharing enabled to {AISHUB_FEED_HOST}:{AISHUB_FEED_PORT}")
+    elif AISHUB_SHARING_ENABLED:
+        log("ℹ️ AISHub sharing is enabled; add the assigned feed host and UDP port to begin sharing.")
     else:
-        log("ℹ️ Add the AISHub feed host and assigned UDP port to begin sharing.")
+        log("ℹ️ Optional AISHub NMEA sharing is disabled. Local receiving and private proxy decoding remain active.")
 
     last_source = None
     last_summary = time.monotonic()
@@ -1614,6 +1637,8 @@ def receiver_feed_worker():
     summary_ignored = 0
     last_hardware_message = None
     offline_logged = False
+    next_forward_attempt = 0.0
+    last_forward_error_log = 0.0
     for payload, source in receiver_packets():
         if shutdown_in_progress:
             break
@@ -1656,24 +1681,34 @@ def receiver_feed_worker():
         feed_state["received"] += len(valid_lines)
         summary_received += len(valid_lines)
         feed_state["last_received"] = now
-        if not configured:
-            feed_state["state"] = "Receiving · AISHub destination needed"
-        if configured:
+        feed_state["state"] = "Receiving"
+        feed_state["error"] = None
+        monotonic_now = time.monotonic()
+        if configured and monotonic_now >= next_forward_attempt:
             try:
                 outgoing = ("\r\n".join(valid_lines) + "\r\n").encode("ascii")
                 forwarder.sendto(outgoing, (AISHUB_FEED_HOST, AISHUB_FEED_PORT))
                 feed_state["forwarded"] += len(valid_lines)
                 summary_forwarded += len(valid_lines)
                 feed_state["last_forwarded"] = now
-                feed_state["state"] = "Sharing"
-                feed_state["error"] = None
+                feed_state["sharing_state"] = "Sharing"
+                feed_state["sharing_error"] = None
+                next_forward_attempt = 0.0
             except OSError as exc:
-                feed_state["state"] = "Sharing error"
-                feed_state["error"] = str(exc)
-                log(f"AISHub feed forwarding error: {exc}")
+                feed_state["sharing_state"] = "Sharing error"
+                feed_state["sharing_error"] = str(exc)
+                next_forward_attempt = monotonic_now + 60
+                if monotonic_now - last_forward_error_log >= 600:
+                    log(f"⚠️ Optional AISHub sharing unavailable: {exc}. AIS receiving and decoding continue normally.")
+                    last_forward_error_log = monotonic_now
 
         if time.monotonic() - last_summary >= 60:
-            sharing = f"{summary_forwarded} forwarded to AISHub" if configured else "AISHub destination not configured"
+            if configured:
+                sharing = f"{summary_forwarded} forwarded to AISHub · sharing {feed_state['sharing_state'].lower()}"
+            elif AISHUB_SHARING_ENABLED:
+                sharing = "AISHub sharing destination not configured"
+            else:
+                sharing = "optional AISHub sharing disabled"
             log(
                 f"📊 AIS hardware health · {RECEIVER_NAME} at {source_label} · "
                 f"{summary_received} valid NMEA messages · {summary_ignored} ignored · {sharing}"
@@ -1930,9 +1965,14 @@ def start_tracker():
     global last_purge_time, last_known_error, aishub_area_cursor
     if not AISHUB_USERNAME:
         message = "Enter the AISHub username supplied after your contributor station is approved."
+        already_reported = aishub_state.get("state") == "Setup required" and aishub_state.get("error") == message
         aishub_state.update({"state": "Setup required", "error": message})
-        update_conn_status("Setup required", new_error=message)
-        log(f"⚠️ {message}")
+        if receiver_path_operational():
+            update_conn_status("Connected", new_error="")
+        else:
+            update_conn_status("Setup required", new_error=message)
+        if not already_reported:
+            log(f"⚠️ Optional AISHub API setup: {message} Local and private AIS receiving remain available.")
         time.sleep(AISHUB_POLL_INTERVAL)
         return
 
@@ -1950,7 +1990,9 @@ def start_tracker():
     aishub_area_cursor = (aishub_area_cursor + 1) % len(enabled_areas)
     area_state = aishub_area_states[area["id"]]
     log(f"🌐 Baiamonte AIS {VERSION} polling {area['name']} through AISHub")
-    update_conn_status("Connecting")
+    if not receiver_path_operational():
+        update_conn_status("Connecting")
+    retry_delay = AISHUB_POLL_INTERVAL
     try:
         checked_at = datetime.now().isoformat(timespec="seconds")
         aishub_state["last_checked"] = checked_at
@@ -1975,15 +2017,23 @@ def start_tracker():
         log(f"✅ {area['name']} update complete: {len(records)} vessels including the approach area")
     except Exception as exc:
         message = f"AISHub request failed: {exc}"
-        aishub_state.update({"state": "Connection error", "error": str(exc)})
-        area_state.update({"state": "Connection error", "error": str(exc)})
-        update_conn_status("Connection error", new_error=message)
+        credential_error = "invalid username or password" in str(exc).lower()
+        failure_state = "Credentials rejected" if credential_error else "Connection error"
+        aishub_state.update({"state": failure_state, "error": str(exc)})
+        area_state.update({"state": failure_state, "error": str(exc)})
+        if receiver_path_operational():
+            update_conn_status("Connected", new_error="")
+        else:
+            update_conn_status(failure_state, new_error=message)
         log(f"⚠️ {message}")
+        if credential_error:
+            retry_delay = max(900, AISHUB_POLL_INTERVAL)
+            log("ℹ️ AISHub credentials were rejected; the next API retry is delayed for 15 minutes. Receiver and private proxy maps continue normally.")
 
     if (datetime.now() - last_purge_time).total_seconds() >= 60:
         purge_old_ships()
         last_purge_time = datetime.now()
-    time.sleep(AISHUB_POLL_INTERVAL)
+    time.sleep(retry_delay)
 
 def graceful_shutdown(signum, frame):
     global shutdown_in_progress

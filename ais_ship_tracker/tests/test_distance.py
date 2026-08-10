@@ -73,6 +73,23 @@ class DistanceTests(unittest.TestCase):
         self.assertTrue(snapshot["decoder"]["enabled"])
         self.assertIn("marine_vhf", snapshot)
         self.assertFalse(snapshot["marine_vhf"]["enabled"])
+        self.assertFalse(snapshot["config"]["sharing_enabled"])
+        self.assertEqual(snapshot["feed"]["sharing_state"], "Disabled")
+
+    def test_receiver_health_is_independent_from_aishub(self):
+        previous_feed = tracker.feed_state["state"]
+        previous_decoder = tracker.decoder_state["state"]
+        previous_proxy = tracker.rahamin_proxy_state["state"]
+        try:
+            tracker.feed_state["state"] = "Receiving"
+            tracker.decoder_state["state"] = "Error"
+            tracker.rahamin_proxy_state["state"] = "Proxy error"
+            tracker.aishub_state.update({"state": "Credentials rejected", "error": "Invalid username or password"})
+            self.assertTrue(tracker.receiver_path_operational())
+        finally:
+            tracker.feed_state["state"] = previous_feed
+            tracker.decoder_state["state"] = previous_decoder
+            tracker.rahamin_proxy_state["state"] = previous_proxy
 
 
 class AisCatcherTests(unittest.TestCase):
