@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.6
+
+- Keeps the Operations Journal scoped to the selected Baiamonte Sicily or Rahamin Miami map area.
+- Adds explicit area identity to every vessel-arrival event so Miami contacts cannot appear in Sicily summaries.
+
 ## 2.7.5
 
 - Replaces the dashboard's oversized center labels with compact, collision-aware edge callouts and leader lines.

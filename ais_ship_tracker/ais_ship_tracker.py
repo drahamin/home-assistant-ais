@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.5"
+VERSION = "2.7.6"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -432,6 +432,8 @@ def remember_dashboard_vessel(ship_data):
             dashboard_events.appendleft({
                 "kind": "arrival",
                 "message": f"{merged.get('name', 'Unknown vessel')} entered {merged.get('area_name', 'the AIS watch area')}",
+                "area_id": merged.get("area_id", "baiamonte"),
+                "area_name": merged.get("area_name", MAP_AREAS["baiamonte"]["name"]),
                 "time": merged["last_seen"],
             })
 
