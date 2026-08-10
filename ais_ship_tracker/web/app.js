@@ -87,7 +87,7 @@ function render(data){
   renderMap(vessels,bounds,cfg);
   $('#recent-vessels').innerHTML=vessels.length?vessels.slice(0,4).map(vesselRow).join(''):'<div class="empty">No vessel broadcasts received in this watch area yet.</div>';
   $('#fleet-grid').innerHTML=vessels.length?vessels.map(vesselCard).join(''):'<article class="panel empty">No positioned AIS broadcasts have arrived for this watch area yet.</article>';
-  const events=data.events||[];
+  const events=(data.events||[]).filter(event=>{const eventArea=event.area_id||(String(event.message||'').includes('Rahamin Miami')?'miami':'baiamonte');return String(eventArea)===area.id});
   $('#events').innerHTML=events.length?events.slice(0,5).map(event=>`<div class="event-row"><div class="vessel-icon"><svg><use href="#i-radar"/></svg></div><span><b>${esc(event.message)}</b><small>${esc(ago(event.time))}</small></span></div>`).join(''):'<div class="empty">The operations journal is ready for the first contact.</div>';
   $('#north').textContent=bounds.north.toFixed(6);$('#south').textContent=bounds.south.toFixed(6);$('#east').textContent=bounds.east.toFixed(6);$('#west').textContent=bounds.west.toFixed(6);
   $('#class-b').textContent=cfg.include_class_b?'Included':'Excluded';

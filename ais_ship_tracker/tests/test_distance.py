@@ -215,6 +215,8 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(vessel["station"], "Baiamonte AIS")
         self.assertEqual(vessel["source"], "Rahamin AIS private proxy · Baiamonte Sicily")
         self.assertEqual(vessel["destination"], "CATANIA")
+        self.assertEqual(tracker.dashboard_events[0]["area_id"], "baiamonte")
+        self.assertEqual(tracker.dashboard_events[0]["area_name"], "Baiamonte Sicily")
 
     def test_private_proxy_area_url_preserves_existing_query(self):
         previous_url = tracker.RAHAMIN_PROXY_URL
@@ -364,6 +366,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("map-label-leader", script)
         self.assertIn("overviewVesselIcon", script)
         self.assertIn("capacity=Math.max", script)
+        self.assertIn("event.area_id", script)
         self.assertIn("baiamonteAisMapDisplay", script)
         self.assertIn(".map-vessel-label", styles)
         self.assertIn(".vessel-symbol", styles)
