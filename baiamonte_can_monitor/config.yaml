@@ -1,5 +1,5 @@
 name: "Baiamonte CAN Monitor"
-version: "0.1.0"
+version: "0.1.1"
 slug: "baiamonte_can_monitor"
 description: "Receive-only Growatt and Felicity battery CAN monitoring"
 url: "https://github.com/drahamin/home-assistant-ais"
