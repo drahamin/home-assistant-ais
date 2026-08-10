@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.5
+
+- Replaces the dashboard's oversized center labels with compact, collision-aware edge callouts and leader lines.
+- Keeps every vessel marker visible while limiting labels to the cards that fit cleanly in the map.
+- Adds collision-aware label placement to the TV map, using the sidebar for the complete live vessel list.
+- Matches Rahamin AIS with heading-aware, type-specific vessel silhouettes for cargo, tanker, passenger, fishing, tug, sailing, rescue, and fixed AIS targets.
+
 ## 2.7.4
 
 - Proxies both `/api/status?area=miami` and `/api/status?area=baiamonte` from the private Rahamin AIS Pi.
