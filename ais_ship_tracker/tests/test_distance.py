@@ -353,6 +353,21 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("if(!mapIsVisible())return", script)
         self.assertIn("Update delayed · retrying", script)
 
+    def test_dashboard_and_tv_publish_baiamonte_browser_icons(self):
+        web = TRACKER.parent / "web"
+        dashboard = (web / "index.html").read_text()
+        television = (web / "tv.html").read_text()
+        manifest = json.loads((web / "manifest.webmanifest").read_text())
+        config = (TRACKER.parent / "config.yaml").read_text()
+        for markup in (dashboard, television):
+            self.assertIn('rel="icon"', markup)
+            self.assertIn('rel="apple-touch-icon"', markup)
+            self.assertIn('rel="manifest"', markup)
+        self.assertTrue((web / "favicon-32.png").exists())
+        self.assertTrue((web / "apple-touch-icon.png").exists())
+        self.assertEqual([icon["sizes"] for icon in manifest["icons"]], ["192x192", "512x512"])
+        self.assertIn('panel_icon: "mdi:ferry"', config)
+
     def test_dashboard_offers_labels_selected_and_tv_map_displays(self):
         web = TRACKER.parent / "web"
         dashboard = (web / "index.html").read_text()
