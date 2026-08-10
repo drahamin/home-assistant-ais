@@ -17,6 +17,7 @@ let manualCenter=null,manualZoom=null;
 const requestedArea=(new URLSearchParams(location.search).get('area')||'').toLowerCase();
 let activeArea=requestedArea;
 let tvVesselsVisible=null;
+let tvMapExplore=false;
 const tvPointers={};
 let tvDrag=null,tvPinch=0;
 let renderedTiles={};
@@ -25,6 +26,7 @@ let weatherRenderToken=0;
 let tvAreaSwitchKey='';
 let mapFrame=0;
 let tvRefreshRunning=false,tvRefreshQueued=false;
+const tvHomeViews={};
 
 const apiPath=location.pathname.replace(/\/tv\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
@@ -40,7 +42,22 @@ function tvHomeCenter(config,area){
   return{lat:(area.bounds.north+area.bounds.south)/2,lon:(area.bounds.east+area.bounds.west)/2};
 }
 
-function currentTvView(){const area=currentTvArea(latest.config);return fitView(area.bounds,map.clientWidth,map.clientHeight,tvHomeCenter(latest.config,area))}
+function fittedZoom(bounds,width,height){
+  let zoom=2;
+  for(let candidate=18;candidate>=2;candidate--){
+    const nw=project(bounds.north,bounds.west,candidate);
+    const se=project(bounds.south,bounds.east,candidate);
+    if(se.x-nw.x<=width*.82&&se.y-nw.y<=height*.78){zoom=candidate;break}
+  }
+  return zoom;
+}
+
+function tvHomeView(config,area,width,height){
+  if(!tvHomeViews[area.id])tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:fittedZoom(area.bounds,width,height)};
+  return tvHomeViews[area.id];
+}
+
+function currentTvView(){const area=currentTvArea(latest.config),home=tvHomeView(latest.config,area,map.clientWidth,map.clientHeight);return fitView(area.bounds,map.clientWidth,map.clientHeight,home.center,home.zoom)}
 
 function project(lat,lon,zoom){
   const scale=TILE*Math.pow(2,zoom);
@@ -51,16 +68,10 @@ function project(lat,lon,zoom){
   };
 }
 
-function fitView(bounds,width,height,homeCenter){
+function fitView(bounds,width,height,homeCenter,homeZoom){
   const centerLat=(bounds.north+bounds.south)/2;
   const centerLon=(bounds.east+bounds.west)/2;
-  let zoom=2;
-  for(let candidate=18;candidate>=2;candidate--){
-    const nw=project(bounds.north,bounds.west,candidate);
-    const se=project(bounds.south,bounds.east,candidate);
-    if(se.x-nw.x<=width*.82&&se.y-nw.y<=height*.78){zoom=candidate;break}
-  }
-  zoom=manualZoom===null?zoom:manualZoom;
+  const zoom=manualZoom===null?(homeZoom===undefined?fittedZoom(bounds,width,height):homeZoom):manualZoom;
   const chosen=manualCenter||homeCenter||{lat:centerLat,lon:centerLon};
   const center=project(chosen.lat,chosen.lon,zoom);
   return {zoom,center:chosen,originX:center.x-width/2,originY:center.y-height/2};
@@ -200,9 +211,13 @@ function render(data){
   const cfg=data.config;
   if(tvVesselsVisible===null)tvVesselsVisible=cfg.tv_map_vessels!==false;
   document.querySelector('#tv-vessels-toggle').setAttribute('aria-pressed',String(tvVesselsVisible));
+  const exploreButton=document.querySelector('#tv-map-explore');
+  exploreButton.setAttribute('aria-pressed',String(tvMapExplore));
+  exploreButton.textContent=tvMapExplore?'Lock':'Move';
   const area=renderTvAreaSwitch(cfg);
   const bounds=area.bounds;
-  const view=fitView(bounds,width,height,tvHomeCenter(cfg,area));
+  const home=tvHomeView(cfg,area,width,height);
+  const view=fitView(bounds,width,height,home.center,home.zoom);
   renderTiles(view,width,height,cfg.map_style||'standard');
   renderWeather(view,width,height,cfg);
   boats.innerHTML='';
@@ -216,9 +231,9 @@ function render(data){
   const previousListScroll=vesselList.scrollTop;
   vesselList.innerHTML=liveTraffic.length?liveTraffic.map(vesselRow).join(''):'<div class="list-empty">No live vessels inside this map view</div>';
   vesselList.scrollTop=Math.min(previousListScroll,Math.max(0,vesselList.scrollHeight-vesselList.clientHeight));
-  const proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyConnected=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),connected=data.connection==='Connected'||proxyConnected;
+  const proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyConnected=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),connected=data.connection==='Connected'||proxyConnected,version=data.version?`v${data.version} · `:'';
   feedLight.classList.toggle('online',connected);
-  feedStatus.textContent=connected?`${area.name} live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${String(proxyArea.state||data.connection).toLowerCase()}`;
+  feedStatus.textContent=connected?`${area.name} · ${version}live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${version}${String(proxyArea.state||data.connection).toLowerCase()}`;
 }
 
 function refresh(){
@@ -240,7 +255,8 @@ function refresh(){
 let resizeTimer;
 addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>latest&&render(latest),150)});
 function rerenderMap(){if(!latest||mapFrame)return;const schedule=window.requestAnimationFrame||function(callback){return setTimeout(callback,16)};mapFrame=schedule(function(){mapFrame=0;render(latest)})}
-function resetTvMap(){if(!latest)return;clearTvInteraction();const area=currentTvArea(latest.config);manualCenter=tvHomeCenter(latest.config,area);manualZoom=null;if(mapFrame){const cancel=window.cancelAnimationFrame||clearTimeout;cancel(mapFrame);mapFrame=0}render(latest)}
+function resetTvMap(){if(!latest)return;clearTvInteraction();tvMapExplore=false;const area=currentTvArea(latest.config),home=tvHomeView(latest.config,area,map.clientWidth,map.clientHeight);manualCenter={lat:home.center.lat,lon:home.center.lon};manualZoom=home.zoom;if(mapFrame){const cancel=window.cancelAnimationFrame||clearTimeout;cancel(mapFrame);mapFrame=0}render(latest)}
+document.querySelector('#tv-map-explore').onclick=function(event){event.stopPropagation();clearTvInteraction();tvMapExplore=!tvMapExplore;rerenderMap()};
 document.querySelector('#tv-map-in').onclick=function(){if(!latest)return;manualZoom=Math.min(13,(manualZoom===null?currentTvView().zoom:manualZoom)+1);rerenderMap()};
 document.querySelector('#tv-map-out').onclick=function(){if(!latest)return;manualZoom=Math.max(2,(manualZoom===null?currentTvView().zoom:manualZoom)-1);rerenderMap()};
 document.querySelector('#tv-map-reset').onclick=function(event){event.stopPropagation();resetTvMap()};
@@ -251,16 +267,17 @@ function moveTvDrag(x,y){if(!tvDrag)return;const scale=TILE*Math.pow(2,tvDrag.zo
 function changeTvPinch(distance){if(tvPinch&&Math.abs(distance-tvPinch)>35){manualZoom=Math.max(2,Math.min(13,(manualZoom===null?currentTvView().zoom:manualZoom)+(distance>tvPinch?1:-1)));tvPinch=distance;rerenderMap()}}
 function clearTvInteraction(){Object.keys(tvPointers).forEach(function(key){delete tvPointers[key]});tvDrag=null;tvPinch=0}
 if('PointerEvent' in window){
-  map.addEventListener('pointerdown',function(event){if(!latest||(event.target.closest&&event.target.closest('.tv-map-controls,.tv-area-switch,a')))return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};if(map.setPointerCapture)map.setPointerCapture(event.pointerId);if(Object.keys(tvPointers).length===1)beginTvDrag(event.clientX,event.clientY);else{const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});tvPinch=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}});
-  map.addEventListener('pointermove',function(event){if(!tvPointers[event.pointerId]||!latest)return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});if(points.length===2){changeTvPinch(Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y));return}moveTvDrag(event.clientX,event.clientY)});
+  map.addEventListener('pointerdown',function(event){if(!tvMapExplore||!latest||(event.target.closest&&event.target.closest('.tv-map-controls,.tv-area-switch,a'))||(event.pointerType==='mouse'&&event.button!==0))return;tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};if(event.pointerType!=='mouse'&&map.setPointerCapture)map.setPointerCapture(event.pointerId);if(Object.keys(tvPointers).length===1)beginTvDrag(event.clientX,event.clientY);else{const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});tvPinch=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)}});
+  map.addEventListener('pointermove',function(event){if(!tvPointers[event.pointerId]||!latest)return;if(event.pointerType==='mouse'&&event.buttons!==1){stopTvPointer(event);return}tvPointers[event.pointerId]={x:event.clientX,y:event.clientY};const points=Object.keys(tvPointers).map(function(key){return tvPointers[key]});if(points.length===2){changeTvPinch(Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y));return}moveTvDrag(event.clientX,event.clientY)});
   function stopTvPointer(event){delete tvPointers[event.pointerId];tvDrag=null;tvPinch=0;if(map.hasPointerCapture&&map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId)}
-  map.addEventListener('pointerup',stopTvPointer);map.addEventListener('pointercancel',stopTvPointer);
+  map.addEventListener('pointerup',stopTvPointer);map.addEventListener('pointercancel',stopTvPointer);map.addEventListener('lostpointercapture',stopTvPointer);
 }else{
-  map.addEventListener('touchstart',function(event){if(!latest||(event.target.closest&&event.target.closest('.tv-map-controls,.tv-area-switch,a')))return;const touches=event.touches;if(touches.length===1)beginTvDrag(touches[0].clientX,touches[0].clientY);else if(touches.length===2)tvPinch=Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY)},false);
+  map.addEventListener('touchstart',function(event){if(!tvMapExplore||!latest||(event.target.closest&&event.target.closest('.tv-map-controls,.tv-area-switch,a')))return;const touches=event.touches;if(touches.length===1)beginTvDrag(touches[0].clientX,touches[0].clientY);else if(touches.length===2)tvPinch=Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY)},false);
   map.addEventListener('touchmove',function(event){if(!latest)return;event.preventDefault();const touches=event.touches;if(touches.length===2){changeTvPinch(Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY));return}if(touches.length===1)moveTvDrag(touches[0].clientX,touches[0].clientY)},false);
   map.addEventListener('touchend',clearTvInteraction,false);
   map.addEventListener('touchcancel',clearTvInteraction,false);
 }
+addEventListener('blur',clearTvInteraction);
 document.addEventListener('visibilitychange',function(){if(!document.hidden){rerenderMap();refresh()}});
 addEventListener('pageshow',function(){rerenderMap()});
 refresh();
