@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.11"
+VERSION = "2.7.12"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -704,7 +704,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-cache")
+        tv_asset = relative in {"tv.html", "tv.js", "tv.css", "maritime-flags.js"}
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0" if tv_asset else "no-cache")
+        if tv_asset:
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)

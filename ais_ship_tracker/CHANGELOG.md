@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.12
+
+- Locks the `/tv` map at its cached home centre and zoom by default so Samsung remote pointer glitches cannot drag it away from vessel targets.
+- Adds an explicit Move/Lock control; pan and pinch are accepted only while Move mode is enabled.
+- Makes Reset return to the cached home view, cancel all pointer state, and lock movement immediately.
+- Guards against missing mouse-release and pointer-capture events that can otherwise leave TV browsers in a continuous drag.
+- Disables caching for the TV HTML, JavaScript, and CSS and displays the running AIS version in the TV status footer.
+
 ## 2.7.11
 
 - Fixes `/tv` map drift by using the fixed centre of the selected AIS watch area instead of following changing GPS snapshots.
