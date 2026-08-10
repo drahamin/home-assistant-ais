@@ -17,6 +17,7 @@ RUN git clone --branch "${RTL_AIRBAND_VERSION}" --depth 1 https://github.com/rtl
 FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
+RUN pip install --no-cache-dir pyais==3.2.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends icecast2 librtlsdr0 libsqlite3-0 libusb-1.0-0 libmp3lame0 libshout3 libconfig++9v5 libfftw3-double3 libfftw3-single3 \
     && rm -rf /var/lib/apt/lists/*

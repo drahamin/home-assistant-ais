@@ -8,7 +8,9 @@ For local reception, attach an RTL-SDR and an AIS/VHF antenna. For wider recipro
 
 ## Connect the AIS hardware
 
-Choose **SDR** for the included AIS-catcher decoder, or **UDP**, **TCP**, or **Serial** for an already decoded receiver. UDP receivers normally send raw NMEA to the Home Assistant host on port `10110`; TCP mode connects to the configured receiver host and port; serial mode reads an attached radio at the selected device and baud rate.
+Choose **SDR** for the included AIS-catcher decoder, or **UDP**, **TCP**, or **Serial** for an external receiver. UDP receivers normally send raw NMEA to the Home Assistant host on port `10110`; TCP mode connects to the configured receiver host and port; serial mode reads an attached radio at the selected device and baud rate. Raw single- and multipart AIS NMEA from these network modes is decoded locally into map vessels, so a private receiver such as Rahamin AIS Miami does not require working AISHub API credentials.
+
+For the full Miami map and inbound dataset, enable **Rahamin AIS Private Proxy**. The default endpoint is `http://192.168.86.196:8999/api/status` on the private routed network. This imports only vessels inside the configured Miami area and approach ring. The raw UDP stream remains useful as the direct radio path, while the private status proxy supplies the broader vessel view shown on the Rahamin AIS dashboard.
 
 For a Nooelec NESDR SMArt v5, start with device `0`, tuner gain `auto`, correction `0` PPM, RTL AGC enabled, bias tee disabled, and decoder bandwidth `192K`. AIS-catcher listens to both AIS A at 161.975 MHz and AIS B at 162.025 MHz. If several RTL-SDR devices are attached, use the dongle serial number instead of index `0`. Only one app can own a USB dongle at a time.
 

@@ -21,9 +21,11 @@ import glob
 import select
 import termios
 from datetime import datetime, timedelta
+from pyais import decode as decode_ais_nmea
+from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.1"
+VERSION = "2.7.2"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -78,6 +80,9 @@ try:
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
     BAIAMONTE_API_ENABLED = str(config.get('baiamonte_api_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
     RAHAMIN_MIAMI_ENABLED = str(config.get('rahamin_miami_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    RAHAMIN_PROXY_ENABLED = str(config.get('rahamin_proxy_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    RAHAMIN_PROXY_URL = str(config.get('rahamin_proxy_url', 'http://192.168.86.196:8999/api/status')).strip()
+    RAHAMIN_PROXY_INTERVAL = max(10, min(300, get_safe_int('rahamin_proxy_interval', 15)))
     MIAMI_APPROACH_KM = max(5, min(200, get_safe_int('miami_approach_km', 45)))
     BAIAMONTE_APPROACH_KM = max(5, min(200, get_safe_int('baiamonte_approach_km', 45)))
     DEFAULT_MAP_AREA = str(config.get('default_map_area', 'baiamonte')).strip().lower()
@@ -247,6 +252,7 @@ marine_vhf_process = None
 marine_icecast_process = None
 marine_vhf_lock = threading.Lock()
 receiver_ready = threading.Event()
+nmea_fragment_buffer = {}
 
 # Read-only state used by the Home Assistant ingress dashboard.
 dashboard_vessels = {}
@@ -263,6 +269,15 @@ aishub_state = {
 aishub_area_states = {
     area_id: {"state": "Waiting", "last_checked": None, "last_success": None, "records": 0, "error": None}
     for area_id, area in MAP_AREAS.items() if area["enabled"]
+}
+rahamin_proxy_state = {
+    "enabled": RAHAMIN_PROXY_ENABLED and RAHAMIN_MIAMI_ENABLED,
+    "state": "Waiting" if RAHAMIN_PROXY_ENABLED and RAHAMIN_MIAMI_ENABLED else "Disabled",
+    "url": RAHAMIN_PROXY_URL,
+    "last_checked": None,
+    "last_success": None,
+    "records": 0,
+    "error": None,
 }
 aishub_area_cursor = 0
 feed_state = {
@@ -541,6 +556,8 @@ def dashboard_snapshot():
                 "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
                 "tv_map_vessels": TV_MAP_VESSELS,
                 "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
+                "rahamin_proxy_enabled": RAHAMIN_PROXY_ENABLED,
+                "rahamin_proxy_interval": RAHAMIN_PROXY_INTERVAL,
                 "reference_location": location,
                 "map_entities": ENABLE_MAP_ENTITIES,
                 "include_class_b": INCLUDE_CLASS_B,
@@ -559,6 +576,7 @@ def dashboard_snapshot():
             },
             "feed": dict(feed_state),
             "area_feeds": {area_id: dict(area_state) for area_id, area_state in aishub_area_states.items()},
+            "rahamin_proxy": dict(rahamin_proxy_state),
             "decoder": dict(decoder_state),
             "marine_vhf": marine_vhf_snapshot(),
             "receiver_log": list(receiver_logs),
@@ -1161,6 +1179,91 @@ def process_aishub_record(record, area_id="baiamonte"):
         last_map_update[mmsi] = now
 
 
+def process_rahamin_proxy_record(record):
+    """Import one positioned vessel from the private Rahamin AIS status API."""
+    if not isinstance(record, dict):
+        return False
+    mmsi = str(record.get("mmsi") or "").strip()
+    if len(mmsi) != 9 or not mmsi.isdigit() or (watchlist_mmsis and mmsi not in watchlist_mmsis):
+        return False
+    latitude = clean_number(record.get("latitude"))
+    longitude = clean_number(record.get("longitude"))
+    area = MAP_AREAS["miami"]
+    if latitude is None or longitude is None or not point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
+        return False
+    sog = clean_number(record.get("sog"), 102.4)
+    cog = clean_number(record.get("cog"), 360.0)
+    ship_data = {
+        "name": str(record.get("name") or f"AIS {mmsi}").strip(" @"),
+        "mmsi": mmsi,
+        "latitude": latitude,
+        "longitude": longitude,
+        "sog": sog,
+        "cog": cog,
+        "heading": clean_number(record.get("heading"), 511),
+        "nav_status_string": str(record.get("nav_status_string") or "Not defined"),
+        "vessel_class": str(record.get("vessel_class") or "Rahamin AIS network"),
+        "source": "Rahamin AIS private proxy",
+        "station": area["station"],
+        "area_id": "miami",
+        "area_name": area["name"],
+        "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
+        "icon": str(record.get("icon") or "mdi:ferry"),
+    }
+    static = {
+        "destination": record.get("destination"),
+        "eta": record.get("eta"),
+        "ship_length": clean_number(record.get("ship_length")),
+        "ship_width": clean_number(record.get("ship_width")),
+        "draught": clean_number(record.get("draught")),
+        "imo_number": str(record.get("imo_number")) if record.get("imo_number") not in (None, "", 0, "0") else None,
+        "call_sign": str(record.get("call_sign") or "").strip() or None,
+        "vessel_type": record.get("vessel_type"),
+    }
+    static_ship_data.setdefault(mmsi, {}).update({key: value for key, value in static.items() if value not in (None, "")})
+    remember_dashboard_vessel(ship_data)
+    now = datetime.now()
+    seen_ships[mmsi] = now
+    last_updated = last_map_update.get(mmsi)
+    if last_updated is None or (now - last_updated).total_seconds() >= 60:
+        update_map_entity(ship_data)
+        last_map_update[mmsi] = now
+    return True
+
+
+def rahamin_proxy_worker():
+    """Poll the private Miami Pi API without exposing it outside the routed network."""
+    if not rahamin_proxy_state["enabled"] or not RAHAMIN_PROXY_URL:
+        return
+    last_reported_state = None
+    while not shutdown_in_progress:
+        checked_at = datetime.now().isoformat(timespec="seconds")
+        rahamin_proxy_state["last_checked"] = checked_at
+        try:
+            request = urllib.request.Request(RAHAMIN_PROXY_URL, headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
+            with urllib.request.urlopen(request, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            records = payload.get("vessels", []) if isinstance(payload, dict) else []
+            if not isinstance(records, list):
+                raise ValueError("Rahamin AIS proxy did not return a vessel list")
+            imported = sum(int(process_rahamin_proxy_record(record)) for record in records)
+            now = datetime.now().isoformat(timespec="seconds")
+            rahamin_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
+            if "miami" in aishub_area_states:
+                aishub_area_states["miami"].update({"state": "Private proxy", "last_checked": checked_at, "last_success": now, "records": imported, "error": None})
+            if last_reported_state != "Connected":
+                log(f"✅ Rahamin AIS private proxy connected: {imported} Miami-area vessels")
+            last_reported_state = "Connected"
+        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            rahamin_proxy_state.update({"state": "Connection error", "records": 0, "error": str(exc)})
+            if "miami" in aishub_area_states:
+                aishub_area_states["miami"].update({"state": "Proxy error", "last_checked": checked_at, "error": str(exc)})
+            if last_reported_state != "Connection error":
+                log(f"⚠️ Rahamin AIS private proxy failed: {exc}")
+            last_reported_state = "Connection error"
+        time.sleep(RAHAMIN_PROXY_INTERVAL)
+
+
 def parse_aishub_payload(payload):
     if isinstance(payload, dict):
         metadata = payload
@@ -1282,8 +1385,8 @@ def local_ais_vessel(message):
         "cog": clean_number(message.get("course"), 360),
         "heading": clean_number(message.get("heading"), 511),
         "nav_status_string": str(message.get("status_text") or NAV_STATUS_MAP.get(status_number, "Not defined")),
-        "vessel_class": "Local AIS · Class B" if message_type in {18, 19, 24} else "Local AIS · Class A",
-        "source": "Local AIS-catcher",
+        "vessel_class": str(message.get("_vessel_class") or ("Local AIS · Class B" if message_type in {18, 19, 24} else "Local AIS · Class A")),
+        "source": str(message.get("_source") or "Local AIS-catcher"),
         "icon": ICON_MAP.get(status_number, "mdi:ferry"),
     }
 
@@ -1298,7 +1401,7 @@ def process_local_ais_message(message):
     remember_dashboard_vessel(ship_data)
     now = datetime.now()
     if is_new:
-        log(f"🚢 NEW LOCAL SHIP: {ship_data['name']} (AIS-catcher | MMSI: {mmsi})")
+        log(f"🚢 NEW LOCAL SHIP: {ship_data['name']} ({ship_data['source']} | MMSI: {mmsi})")
         update_ha_entity(ship_data)
     seen_ships[mmsi] = now
     last_updated = last_map_update.get(mmsi)
@@ -1306,6 +1409,79 @@ def process_local_ais_message(message):
         update_map_entity(ship_data)
         last_map_update[mmsi] = now
     return True
+
+
+def pyais_to_local_message(decoded):
+    """Translate a pyais message into the existing AIS-catcher JSON shape."""
+    values = decoded.asdict()
+
+    def enum_number(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return value
+
+    message_type = int(values.get("msg_type") or 0)
+    return {
+        "class": "AIS",
+        "type": message_type,
+        "mmsi": values.get("mmsi"),
+        "lat": values.get("lat"),
+        "lon": values.get("lon"),
+        "speed": values.get("speed"),
+        "course": values.get("course"),
+        "heading": values.get("heading"),
+        "status": enum_number(values.get("status")),
+        "shipname": values.get("shipname") or values.get("name") or values.get("full_name"),
+        "destination": values.get("destination"),
+        "callsign": values.get("callsign"),
+        "imo": values.get("imo"),
+        "shiptype": enum_number(values.get("ship_type")),
+        "to_bow": values.get("to_bow"),
+        "to_stern": values.get("to_stern"),
+        "_source": f"Network AIS · {RECEIVER_NAME}",
+        "_vessel_class": "Network AIS · Class B" if message_type in {18, 19, 24} else "Network AIS · Class A",
+    }
+
+
+def decode_network_nmea(line):
+    """Decode one single- or multipart NMEA sentence received over the private feed."""
+    now = time.monotonic()
+    for key, entry in list(nmea_fragment_buffer.items()):
+        if now - entry["updated"] > 30:
+            nmea_fragment_buffer.pop(key, None)
+    fields = line.split(",")
+    if len(fields) < 7:
+        return False
+    try:
+        fragment_total = int(fields[1])
+        fragment_number = int(fields[2])
+    except ValueError:
+        return False
+    sentences = [line]
+    if fragment_total > 1:
+        sequence = fields[3] or "unsequenced"
+        channel = fields[4] or "none"
+        key = (fields[0], sequence, channel)
+        entry = nmea_fragment_buffer.setdefault(key, {"total": fragment_total, "parts": {}, "updated": now})
+        if entry["total"] != fragment_total or fragment_number == 1:
+            entry.update({"total": fragment_total, "parts": {}, "updated": now})
+        entry["parts"][fragment_number] = line
+        entry["updated"] = now
+        if len(entry["parts"]) < fragment_total:
+            return False
+        try:
+            sentences = [entry["parts"][number] for number in range(1, fragment_total + 1)]
+        except KeyError:
+            return False
+        finally:
+            if all(number in entry["parts"] for number in range(1, fragment_total + 1)):
+                nmea_fragment_buffer.pop(key, None)
+    try:
+        decoded = decode_ais_nmea(*(sentence.encode("ascii") for sentence in sentences))
+    except (AISBaseException, UnicodeEncodeError, ValueError):
+        return False
+    return process_local_ais_message(pyais_to_local_message(decoded))
 
 
 def decode_receiver_payload(payload):
@@ -1319,6 +1495,8 @@ def decode_receiver_payload(payload):
             continue
         if line.startswith(("!AIVDM", "!AIVDO", "!BSVDM", "!ABVDM")):
             valid_lines.append(line)
+            if RECEIVER_MODE != "sdr":
+                local_updates += int(decode_network_nmea(line))
             continue
         if line.startswith("{"):
             try:
@@ -1758,7 +1936,10 @@ def start_tracker():
         time.sleep(AISHUB_POLL_INTERVAL)
         return
 
-    enabled_areas = [area for area in MAP_AREAS.values() if area["enabled"]]
+    enabled_areas = [
+        area for area in MAP_AREAS.values()
+        if area["enabled"] and not (area["id"] == "miami" and rahamin_proxy_state["enabled"] and RAHAMIN_PROXY_URL)
+    ]
     if not enabled_areas:
         message = "Enable at least one AISHub map area."
         aishub_state.update({"state": "Setup required", "error": message})
@@ -1827,6 +2008,7 @@ if __name__ == "__main__":
     sync_state_on_startup()
     start_gps()
     start_receiver_feed()
+    threading.Thread(target=rahamin_proxy_worker, name="rahamin-ais-private-proxy", daemon=True).start()
     start_ais_catcher()
     start_marine_vhf()
         

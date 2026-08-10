@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.2
+
+* Decodes raw single- and multipart AIS NMEA received through UDP, TCP, or serial network receiver modes so the private Rahamin Miami feed creates live map vessels.
+* Adds a private Rahamin AIS status proxy, defaulting to the routed Miami Pi, for the same full local and inbound vessel dataset shown by the Miami dashboard.
+* Labels privately received contacts with their configured network receiver and keeps map updates independent of AISHub API credentials.
+* Pins pyais 3.2.1 in the Home Assistant image for standards-aware AIS message decoding.
+
 ## 2.7.1
 
 * Adds independent Home Assistant options for showing live vessel markers on the dashboard and TV maps, with matching temporary map-toolbar toggles.

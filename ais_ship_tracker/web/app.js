@@ -50,12 +50,12 @@ function renderMarineRadio(radio){
 
 function render(data){
   state=data;
-  const allVessels=data.vessels||[],cfg=data.config,area=renderAreaSwitch(cfg),vessels=vesselsForArea(allVessels,area),bounds=area.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},operational=connected||feed.received>0||decoder.state==='Running';
+  const allVessels=data.vessels||[],cfg=data.config,area=renderAreaSwitch(cfg),vessels=vesselsForArea(allVessels,area),bounds=area.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},proxy=data.rahamin_proxy||{},proxyOperational=area.id==='miami'&&proxy.state==='Connected',operational=connected||proxyOperational||feed.received>0||decoder.state==='Running';
   $('#side-light').classList.toggle('online',operational);
   $('#hero-light').classList.toggle('online',operational);
-  $('#side-status').textContent=decoder.state==='Running'?'Local AIS-catcher online':connected?'AISHub connected':data.connection;
-  $('#hero-status').textContent=decoder.state==='Running'?'Local dual-channel AIS receiver is online':connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
-  $('#receiver-status').textContent=data.connection;
+  $('#side-status').textContent=proxyOperational?'Rahamin Miami proxy online':decoder.state==='Running'?'Local AIS-catcher online':connected?'AISHub connected':data.connection;
+  $('#hero-status').textContent=proxyOperational?'Private Rahamin AIS Miami vessel feed is online':decoder.state==='Running'?'Local dual-channel AIS receiver is online':connected?'Reciprocal AIS network is online':`AISHub ${String(data.connection).toLowerCase()}`;
+  $('#receiver-status').textContent=proxyOperational?'Rahamin proxy connected':data.connection;
   $('#vessel-count').textContent=`${vessels.length} active`;
   $('#nav-count').textContent=vessels.length;
   $('#fleet-badge').textContent=`${vessels.length} active`;
