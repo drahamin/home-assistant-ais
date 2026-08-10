@@ -361,8 +361,12 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('href="tv"', dashboard)
         self.assertIn("mapVesselDetail", script)
         self.assertIn("layoutMapLabels", script)
+        self.assertIn("map-label-leader", script)
+        self.assertIn("overviewVesselIcon", script)
+        self.assertIn("capacity=Math.max", script)
         self.assertIn("baiamonteAisMapDisplay", script)
         self.assertIn(".map-vessel-label", styles)
+        self.assertIn(".vessel-symbol", styles)
         self.assertIn(".map-vessel-detail", styles)
 
     def test_dashboard_and_tv_offer_baiamonte_and_miami_api_areas(self):
@@ -388,6 +392,9 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("cfg.dashboard_map_vessels!==false", dashboard_script)
         self.assertIn('id="tv-vessels-toggle"', television)
         self.assertIn("config.tv_default_map_area||'baiamonte'", television_script)
+        self.assertIn("layoutTvLabels", television_script)
+        self.assertIn("function vesselIcon", television_script)
+        self.assertIn("boat-passenger", (web / "tv.css").read_text())
         self.assertIn("cfg.tv_live_traffic_only===false?nearest:visible", television_script)
         self.assertIn('tv_default_map_area: "baiamonte"', config)
         self.assertIn("dashboard_map_vessels: true", config)

@@ -127,17 +127,46 @@ function renderWeather(view,width,height,config){
   });
 }
 
+function vesselIcon(vessel){
+  const type=String(vessel.vessel_type||vessel.vessel_class||'').toLowerCase();
+  if(type.includes('aid to navigation')||type.includes('base station'))return{kind:'aton',svg:'<circle class="icon-outline" cx="20" cy="28" r="14"/><path class="icon-detail" d="M20 8 29 28 20 48 11 28Z"/><circle class="icon-light" cx="20" cy="28" r="4"/>'};
+  if(type.includes('sail')||type.includes('pleasure'))return{kind:'sail',svg:'<path class="icon-outline" d="M20 2 34 43 20 54 7 43Z"/><path class="icon-detail" d="M19 9 19 39 8 39Z"/><path class="icon-light" d="M21 13 31 39 21 39Z"/>'};
+  if(type.includes('tanker'))return{kind:'tanker',svg:'<path class="icon-outline" d="M20 2 33 14 31 48 20 55 9 48 7 14Z"/><circle class="icon-detail" cx="14" cy="27" r="4"/><circle class="icon-detail" cx="26" cy="27" r="4"/><path class="icon-light" d="M12 39h16v8H12z"/>'};
+  if(type.includes('cargo'))return{kind:'cargo',svg:'<path class="icon-outline" d="M20 2 34 15 32 49 20 55 8 49 6 15Z"/><path class="icon-detail" d="M10 17h20v9H10zm0 12h20v9H10z"/><path class="icon-light" d="M12 41h16v7H12z"/>'};
+  if(type.includes('passenger')||type.includes('ferry'))return{kind:'passenger',svg:'<path class="icon-outline" d="M20 1 33 13 31 49 20 55 9 49 7 13Z"/><path class="icon-light" d="M11 17h18v22H11z"/><path class="icon-windows" d="M14 20h3v3h-3zm6 0h3v3h-3zm6 0h3v3h-3zm-12 7h3v3h-3zm6 0h3v3h-3zm6 0h3v3h-3z"/>'};
+  if(type.includes('tug'))return{kind:'tug',svg:'<path class="icon-outline" d="M20 4 31 13 34 40 27 53H13L6 40l3-27Z"/><path class="icon-light" d="M12 16h16v20H12z"/><path class="icon-detail" d="M15 10h10v8H15z"/>'};
+  if(type.includes('fishing'))return{kind:'fishing',svg:'<path class="icon-outline" d="M20 2 30 14 29 50 20 55 11 50 10 14Z"/><path class="icon-detail" d="M13 18h14v21H13zM5 21l8 8M35 21l-8 8"/><path class="icon-light" d="M16 10h8v9h-8z"/>'};
+  if(type.includes('search and rescue')||type.includes('law enforcement')||type.includes('military'))return{kind:'rescue',svg:'<path class="icon-outline" d="M20 1 33 15 31 48 20 55 9 48 7 15Z"/><path class="icon-rescue" d="M17 16h6v8h8v6h-8v8h-6v-8H9v-6h8Z"/>'};
+  return{kind:'vessel',svg:'<path class="icon-outline" d="M20 1 34 16 31 48 20 55 9 48 6 16Z"/><path class="icon-light" d="M12 18h16v22H12z"/><path class="icon-detail" d="M15 11h10v9H15z"/>'};
+}
+
 function boatNode(vessel,view){
   const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
   const node=document.createElement('div');
   node.className='boat';
-  node.style.left=`${point.x-view.originX}px`;
-  node.style.top=`${point.y-view.originY}px`;
+  const x=point.x-view.originX,y=point.y-view.originY;
+  node.style.left=`${x}px`;
+  node.style.top=`${y}px`;
+  node.setAttribute('data-map-x',String(x));
+  node.setAttribute('data-map-y',String(y));
   const direction=Number(vessel.heading!==null&&vessel.heading!==undefined?vessel.heading:(vessel.cog!==null&&vessel.cog!==undefined?vessel.cog:0));
   const info=flagInfo(vessel.mmsi);
+  const icon=vesselIcon(vessel);
   const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
-  node.innerHTML=`<svg class="boat-icon" viewBox="0 0 24 34" style="transform:translate(-12px,-17px) rotate(${direction}deg)"><path d="M12 1.5 21 27l-9 5.5L3 27z"/></svg><span class="boat-label">${safeName}</span>`;
+  node.classList.add(`boat-${icon.kind}`);
+  node.innerHTML=`<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
   return node;
+}
+
+function layoutTvLabels(nodes,width,height){
+  const occupied=[],labelWidth=width>=1500?180:width<800?128:158,labelHeight=24,margin=8,maxLabels=width<800?6:12;
+  Array.prototype.forEach.call(nodes,function(node,index){
+    const label=node.querySelector('.boat-label'),x=Number(node.getAttribute('data-map-x')),y=Number(node.getAttribute('data-map-y'));
+    if(index>=maxLabels){node.classList.add('label-hidden');return}
+    const candidates=[{x:x+18,y:y-labelHeight/2},{x:x-labelWidth-18,y:y-labelHeight/2},{x:x-labelWidth/2,y:y+22},{x:x-labelWidth/2,y:y-labelHeight-22}],fits=function(rect){if(rect.x<margin||rect.y<margin||rect.x+rect.w>width-margin||rect.y+rect.h>height-margin)return false;return !occupied.some(function(other){return rect.x<other.x+other.w+6&&rect.x+rect.w+6>other.x&&rect.y<other.y+other.h+6&&rect.y+rect.h+6>other.y})},chosen=candidates.map(function(item){return{x:item.x,y:item.y,w:labelWidth,h:labelHeight}}).find(fits);
+    if(!chosen){node.classList.add('label-hidden');return}
+    occupied.push(chosen);label.style.left=`${chosen.x-x}px`;label.style.top=`${chosen.y-y}px`;label.style.width=`${labelWidth}px`;label.style.maxWidth=`${labelWidth}px`;label.style.transform='none'
+  })
 }
 
 function vesselRow(vessel){
@@ -164,7 +193,7 @@ function render(data){
   const areaVessels=(data.vessels||[]).filter(v=>String(v.area_id||'baiamonte')===area.id&&Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude)));
   const visible=areaVessels.filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   const nearest=areaVessels.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3},aRank=rank[a.area_status]===undefined?3:rank[a.area_status],bRank=rank[b.area_status]===undefined?3:rank[b.area_status];return aRank-bRank||Number(a.distance_km||99999)-Number(b.distance_km||99999)});
-  if(tvVesselsVisible)visible.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));
+  if(tvVesselsVisible){const mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
   empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);
   const liveTraffic=cfg.tv_live_traffic_only===false?nearest:visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
   fleetCount.textContent=liveTraffic.length;
