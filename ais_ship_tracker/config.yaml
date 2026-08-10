@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.1"
+version: "2.7.2"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -32,6 +32,9 @@ options:
   aishub_feed_port: 0
   baiamonte_api_enabled: true
   rahamin_miami_enabled: true
+  rahamin_proxy_enabled: true
+  rahamin_proxy_url: "http://192.168.86.196:8999/api/status"
+  rahamin_proxy_interval: 15
   default_map_area: "baiamonte"
   tv_default_map_area: "baiamonte"
   dashboard_map_vessels: true
@@ -88,6 +91,9 @@ schema:
   aishub_feed_port: "int?"
   baiamonte_api_enabled: "bool?"
   rahamin_miami_enabled: "bool?"
+  rahamin_proxy_enabled: "bool?"
+  rahamin_proxy_url: "str?"
+  rahamin_proxy_interval: "int?"
   default_map_area: "list(baiamonte|miami)?"
   tv_default_map_area: "list(baiamonte|miami)?"
   dashboard_map_vessels: "bool?"
@@ -154,6 +160,15 @@ configuration:
   rahamin_miami_enabled:
     name: Rahamin Miami API Area
     description: Fetch local and inbound Miami vessels from the same configured AISHub API.
+  rahamin_proxy_enabled:
+    name: Rahamin AIS Private Proxy
+    description: Import the Miami map and inbound vessel feed from the Rahamin AIS Pi over the private routed network.
+  rahamin_proxy_url:
+    name: Rahamin AIS Proxy URL
+    description: Private Rahamin AIS status endpoint. The standard Miami Pi endpoint is http://192.168.86.196:8999/api/status.
+  rahamin_proxy_interval:
+    name: Rahamin AIS Proxy Refresh
+    description: Seconds between private Miami vessel updates. Recommended value is 15.
   default_map_area:
     name: Default Map Area
     description: Choose whether dashboards open on Baiamonte Sicily or Rahamin Miami.

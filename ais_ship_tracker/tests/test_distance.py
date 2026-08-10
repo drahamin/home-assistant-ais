@@ -64,6 +64,9 @@ class DistanceTests(unittest.TestCase):
         self.assertTrue(snapshot["config"]["dashboard_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_live_traffic_only"])
+        self.assertTrue(snapshot["config"]["rahamin_proxy_enabled"])
+        self.assertEqual(snapshot["config"]["rahamin_proxy_interval"], 15)
+        self.assertIn("rahamin_proxy", snapshot)
         self.assertIn("reference_location", snapshot["config"])
         self.assertFalse(snapshot["flightaware_weather"]["enabled"])
         self.assertEqual(snapshot["receiver_log"][0]["message"], "AIS receiver test event")
@@ -76,6 +79,7 @@ class AisCatcherTests(unittest.TestCase):
     def setUp(self):
         tracker.dashboard_vessels.clear()
         tracker.static_ship_data.clear()
+        tracker.nmea_fragment_buffer.clear()
 
     def test_nooelec_safe_default_command(self):
         command = tracker.build_ais_catcher_command("/usr/local/bin/AIS-catcher")
@@ -125,6 +129,7 @@ class AisCatcherTests(unittest.TestCase):
     def test_container_build_pins_ais_catcher_and_rtlsdr_runtime(self):
         dockerfile = (TRACKER.parent / "Dockerfile").read_text()
         self.assertIn("AISCATCHER_VERSION=v0.70", dockerfile)
+        self.assertIn("pyais==3.2.1", dockerfile)
         self.assertIn("librtlsdr0", dockerfile)
         self.assertIn("/usr/local/bin/AIS-catcher", dockerfile)
         self.assertIn("RTL_AIRBAND_VERSION=v5.2.0", dockerfile)
@@ -132,6 +137,55 @@ class AisCatcherTests(unittest.TestCase):
         self.assertIn("icecast2", dockerfile)
         self.assertIn("libfftw3-single3", dockerfile)
         self.assertIn("/usr/local/bin/rtl_airband", dockerfile)
+
+    def test_udp_proxy_nmea_decodes_into_miami_map_vessel(self):
+        previous_mode = tracker.RECEIVER_MODE
+        previous_name = tracker.RECEIVER_NAME
+        tracker.RECEIVER_MODE = "udp"
+        tracker.RECEIVER_NAME = "Rahamin AIS Miami"
+        try:
+            payload = b"!AIVDM,1,1,,A,ENk`s@l973h9@6:@@@@@@@@@@@@=8UnD7MjBp00003vP000,2*26\r\n"
+            lines, ignored, local_updates = tracker.decode_receiver_payload(payload)
+        finally:
+            tracker.RECEIVER_MODE = previous_mode
+            tracker.RECEIVER_NAME = previous_name
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(ignored, 0)
+        self.assertEqual(local_updates, 1)
+        vessel = tracker.dashboard_vessels["993672003"]
+        self.assertEqual(vessel["name"], "RNG R LT")
+        self.assertEqual(vessel["area_id"], "miami")
+        self.assertEqual(vessel["station"], "Rahamin AIS Miami")
+        self.assertEqual(vessel["source"], "Network AIS · Rahamin AIS Miami")
+
+    def test_udp_proxy_reassembles_multipart_static_message(self):
+        previous_mode = tracker.RECEIVER_MODE
+        tracker.RECEIVER_MODE = "udp"
+        try:
+            first = b"!AIVDM,2,1,4,A,55O0W7`00001L@gCWGA2uItLth@DqtL5@F22220j1h742t0Ht0000000,0*08\r\n"
+            second = b"!AIVDM,2,2,4,A,000000000000000,2*20\r\n"
+            self.assertEqual(tracker.decode_receiver_payload(first)[2], 0)
+            self.assertEqual(tracker.decode_receiver_payload(second)[2], 0)
+        finally:
+            tracker.RECEIVER_MODE = previous_mode
+        static = tracker.static_ship_data["368060190"]
+        self.assertEqual(static["name"], "P/V_GOLDEN_GATE")
+        self.assertEqual(static["call_sign"], "WDK4954")
+
+    def test_private_status_proxy_imports_only_miami_approach_vessels(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "367123456", "name": "RAHAMIN PROXY", "latitude": 25.82, "longitude": -80.14,
+            "sog": 7.2, "cog": 95, "heading": 96, "destination": "MIAMI", "vessel_type": "Cargo",
+        })
+        outside = tracker.process_rahamin_proxy_record({
+            "mmsi": "367999999", "name": "OUTSIDE", "latitude": 40.0, "longitude": -70.0,
+        })
+        self.assertTrue(imported)
+        self.assertFalse(outside)
+        vessel = tracker.dashboard_vessels["367123456"]
+        self.assertEqual(vessel["area_id"], "miami")
+        self.assertEqual(vessel["source"], "Rahamin AIS private proxy")
+        self.assertEqual(vessel["destination"], "MIAMI")
 
 
 class MarineVhfTests(unittest.TestCase):
@@ -301,6 +355,13 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("dashboard_map_vessels: true", config)
         self.assertIn("tv_map_vessels: true", config)
         self.assertIn("tv_live_traffic_only: true", config)
+
+    def test_dashboard_and_tv_treat_private_miami_proxy_as_live(self):
+        dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()
+        television_script = (TRACKER.parent / "web" / "tv.js").read_text()
+        self.assertIn("proxyOperational=area.id==='miami'&&proxy.state==='Connected'", dashboard_script)
+        self.assertIn("Rahamin Miami proxy online", dashboard_script)
+        self.assertIn("area.id==='miami'&&proxy.state==='Connected'", television_script)
 
     def test_watch_area_shows_the_decoder_profile(self):
         web = TRACKER.parent / "web"
