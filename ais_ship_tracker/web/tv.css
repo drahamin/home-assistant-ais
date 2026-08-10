@@ -30,7 +30,9 @@ html,body,#tv-shell{width:100%;height:100%;margin:0;overflow:hidden}
 .fleet-head span{display:block;margin-bottom:3px;color:var(--gold);font-size:8px;font-weight:700;letter-spacing:.18em}
 .fleet-head h1{margin:0;color:var(--ivory);font-size:20px;font-weight:500;letter-spacing:.015em}
 #fleet-count{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--gold);border-radius:50%;color:var(--gold);font-size:14px;font-weight:500}
-#vessel-list{position:relative;flex:1;min-height:0;overflow:hidden;padding:4px 10px 6px}
+#vessel-list{position:relative;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;padding:4px 10px 6px;scrollbar-width:thin;scrollbar-color:rgba(212,175,55,.55) rgba(250,246,240,.05);outline:0}
+#vessel-list:focus-visible{box-shadow:inset 3px 0 rgba(212,175,55,.72)}
+#vessel-list::-webkit-scrollbar{width:6px}#vessel-list::-webkit-scrollbar-track{background:rgba(250,246,240,.04)}#vessel-list::-webkit-scrollbar-thumb{border-radius:6px;background:rgba(212,175,55,.5)}
 .vessel-row{display:flex;gap:9px;align-items:center;padding:8px 5px;border-bottom:1px solid rgba(250,246,240,.09)}
 .vessel-row:last-child{border-bottom:0}
 .flag{display:flex;flex:none;align-items:center;justify-content:center;width:32px;height:26px;border:1px solid rgba(212,175,55,.32);border-radius:4px;background:rgba(250,246,240,.06);font-size:18px;line-height:1;box-shadow:0 3px 9px rgba(0,0,0,.22)}
