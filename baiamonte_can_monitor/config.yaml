@@ -1,0 +1,48 @@
+name: "Baiamonte CAN Monitor"
+version: "0.1.0"
+slug: "baiamonte_can_monitor"
+description: "Receive-only Growatt and Felicity battery CAN monitoring"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch:
+  - "aarch64"
+  - "amd64"
+startup: "application"
+boot: "auto"
+init: false
+usb: true
+uart: true
+udev: true
+homeassistant_api: true
+options:
+  adapter: "auto"
+  bitrate: 500000
+  serial_device: "auto"
+  serial_baudrate: 115200
+  stale_after_seconds: 30
+  publish_interval_seconds: 2
+schema:
+  adapter: "list(auto|gs_usb|slcan)"
+  bitrate: "list(125000|250000|500000|1000000)"
+  serial_device: "str"
+  serial_baudrate: "list(115200|250000|500000|1000000|2000000)"
+  stale_after_seconds: "int"
+  publish_interval_seconds: "int"
+configuration:
+  adapter:
+    name: CAN adapter mode
+    description: Auto tries candleLight/gs_usb first, then a serial CANable. Both are opened in hardware listen-only mode.
+  bitrate:
+    name: CAN bus speed
+    description: Growatt BMS CAN v1.04 uses 500000 bit/s.
+  serial_device:
+    name: Serial CAN device
+    description: Keep auto unless the CANable appears as a tty device. The Growatt direct USB is not selected automatically.
+  serial_baudrate:
+    name: CANable USB serial speed
+    description: USB-side speed used only with slcan firmware.
+  stale_after_seconds:
+    name: Data timeout
+    description: Mark the connection offline when no CAN frame is received for this many seconds.
+  publish_interval_seconds:
+    name: Home Assistant update interval
+    description: Minimum number of seconds between state updates.
