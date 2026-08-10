@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.4
+
+- Proxies both `/api/status?area=miami` and `/api/status?area=baiamonte` from the private Rahamin AIS Pi.
+- Imports the Pi's separate cached Sicily vessels into the Baiamonte map with independent per-area health and record counts.
+- Stops duplicate direct AISHub polling in Home Assistant while the private area proxy is enabled, so the Miami Pi remains the single reciprocal API client.
+- Treats the private proxy as live on both the dashboard and TV area views.
+
 ## 2.7.3
 
 - Separates receiver health from optional AISHub sharing, so a bad forwarding hostname can no longer label a working receiver as failed.

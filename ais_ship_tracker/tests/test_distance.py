@@ -201,8 +201,29 @@ class AisCatcherTests(unittest.TestCase):
         self.assertFalse(outside)
         vessel = tracker.dashboard_vessels["367123456"]
         self.assertEqual(vessel["area_id"], "miami")
-        self.assertEqual(vessel["source"], "Rahamin AIS private proxy")
+        self.assertEqual(vessel["source"], "Rahamin AIS private proxy · Rahamin Miami")
         self.assertEqual(vessel["destination"], "MIAMI")
+
+    def test_private_status_proxy_imports_sicily_cache_into_baiamonte_map(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123456", "name": "SICILY PROXY", "latitude": 37.62, "longitude": 15.18,
+            "sog": 9.1, "cog": 210, "destination": "CATANIA", "vessel_type": "Cargo",
+        }, "baiamonte")
+        self.assertTrue(imported)
+        vessel = tracker.dashboard_vessels["247123456"]
+        self.assertEqual(vessel["area_id"], "baiamonte")
+        self.assertEqual(vessel["station"], "Baiamonte AIS")
+        self.assertEqual(vessel["source"], "Rahamin AIS private proxy · Baiamonte Sicily")
+        self.assertEqual(vessel["destination"], "CATANIA")
+
+    def test_private_proxy_area_url_preserves_existing_query(self):
+        previous_url = tracker.RAHAMIN_PROXY_URL
+        tracker.RAHAMIN_PROXY_URL = "http://192.168.86.196:8999/api/status?token=local&area=miami"
+        try:
+            url = tracker.rahamin_proxy_area_url("baiamonte")
+        finally:
+            tracker.RAHAMIN_PROXY_URL = previous_url
+        self.assertEqual(url, "http://192.168.86.196:8999/api/status?token=local&area=baiamonte")
 
 
 class MarineVhfTests(unittest.TestCase):
@@ -373,12 +394,13 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("tv_map_vessels: true", config)
         self.assertIn("tv_live_traffic_only: true", config)
 
-    def test_dashboard_and_tv_treat_private_miami_proxy_as_live(self):
+    def test_dashboard_and_tv_treat_each_private_area_proxy_as_live(self):
         dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()
         television_script = (TRACKER.parent / "web" / "tv.js").read_text()
-        self.assertIn("proxyOperational=area.id==='miami'&&proxy.state==='Connected'", dashboard_script)
-        self.assertIn("Rahamin Miami proxy online", dashboard_script)
-        self.assertIn("area.id==='miami'&&proxy.state==='Connected'", television_script)
+        self.assertIn("proxyArea=(proxy.areas||{})[area.id]", dashboard_script)
+        self.assertIn("proxyOperational=proxyArea.state==='Connected'", dashboard_script)
+        self.assertIn("proxyArea=(proxy.areas||{})[area.id]", television_script)
+        self.assertIn("proxyConnected=proxyArea.state==='Connected'", television_script)
 
     def test_watch_area_shows_the_decoder_profile(self):
         web = TRACKER.parent / "web"
