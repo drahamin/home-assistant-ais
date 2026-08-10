@@ -8,6 +8,9 @@ configuration:
   aishub_feed_port:
     name: AISHub Feed Port
     description: Dedicated UDP port supplied by AISHub.
+  aishub_sharing_enabled:
+    name: Share Receiver Data with AISHub
+    description: Enable only after AISHub supplies your contributor feed hostname and dedicated UDP port. Receiving and maps work without this option.
   baiamonte_api_enabled:
     name: Baiamonte Sicily API Area
     description: Fetch Baiamonte Sicily vessels and approaching traffic from the configured AISHub API.
