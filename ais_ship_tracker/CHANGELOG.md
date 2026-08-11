@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.13
+
+- Fixes the confirmed `/tv` layout jump where the complete vessel list expanded the map from the viewport height to more than 10,000 pixels after live targets loaded.
+- Constrains the TV grid row, map, fleet sidebar, and scrolling vessel list to the browser viewport at every target count.
+- Keeps the map at the same home centre and pixel dimensions when the live vessel list populates or refreshes.
+
 ## 2.7.12
 
 - Locks the `/tv` map at its cached home centre and zoom by default so Samsung remote pointer glitches cannot drag it away from vessel targets.
