@@ -173,12 +173,26 @@ def parse_mpp_json(output: str) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
     for raw_key, raw_value in parsed.items():
         key = normalize_key(raw_key)
-        if key.startswith("_") or key in {"raw_response", "error"}:
-            continue
         if isinstance(raw_value, dict) and "value" in raw_value:
-            result[key] = {"value": raw_value.get("value"), "unit": raw_value.get("unit") or None}
+            value = raw_value.get("value")
+            unit = raw_value.get("unit") or None
+        elif isinstance(raw_value, (list, tuple)):
+            value = raw_value[0] if raw_value else None
+            unit = raw_value[1] if len(raw_value) > 1 and raw_value[1] else None
         else:
-            result[key] = {"value": raw_value, "unit": None}
+            value = raw_value
+            unit = None
+
+        diagnostic = str(value or "").strip().lower()
+        if key in {"error", "_failed_status_commands"}:
+            raise ValueError(f"the inverter rejected the inquiry ({value})")
+        if key == "validity_check":
+            if any(marker in diagnostic for marker in ("error", "empty", "invalid", "nak", "fail", "timeout")):
+                raise ValueError(f"the inverter returned no valid response ({value})")
+            continue
+        if key.startswith("_") or key == "raw_response":
+            continue
+        result[key] = {"value": value, "unit": unit}
     if not result:
         raise ValueError("the inverter returned an empty or unsupported response")
     return result

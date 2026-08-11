@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+
+- Rejects mpp-solar empty-response and NAK diagnostics instead of reporting a false Online state.
+- Decodes the list-style value/unit JSON emitted by mpp-solar so live measurements populate correctly.
+
 ## 1.2.0
 
 - Adds installed CPU firmware version inquiries and periodic version refresh.

@@ -26,6 +26,19 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(parsed["device_mode"]["value"], "Line")
         self.assertEqual(parsed["pv_input_power"]["unit"], None)
 
+    def test_parse_mppsolar_list_values(self):
+        parsed = growatt.parse_mpp_json('{"AC Output Active Power":[823,"W"],"Battery Capacity":[76,"%"]}')
+        self.assertEqual(parsed["ac_output_active_power"], {"value": 823, "unit": "W"})
+        self.assertEqual(parsed["battery_capacity"], {"value": 76, "unit": "%"})
+
+    def test_parse_rejects_empty_response_diagnostic(self):
+        with self.assertRaisesRegex(ValueError, "no valid response"):
+            growatt.parse_mpp_json('{"Validity Check":["Error: Response was empty",""]}')
+
+    def test_parse_rejects_nak_error(self):
+        with self.assertRaisesRegex(ValueError, "rejected"):
+            growatt.parse_mpp_json('{"ERROR":["NAK",""]}')
+
     def test_parse_rejects_non_json(self):
         with self.assertRaises(ValueError):
             growatt.parse_mpp_json("timeout waiting for response")
