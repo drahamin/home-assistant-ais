@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.17
+
+- Fixes the marine receiver's solid-tone audio by explicitly selecting narrowband FM instead of RTLSDR-Airband's default AM demodulation.
+- Uses RTLSDR-Airband's adaptive per-channel squelch by default, preventing a fixed threshold from holding the scanner open on local noise or an RF spur.
+- Adds an Automatic Marine VHF Squelch option while retaining the manual dBFS threshold for unusual installations.
+- Clarifies that Marine radio is one scan feed that cycles through every configured channel and pauses on active traffic.
+
 ## 2.7.16
 
 - Supports two identical RTL-SDRs with independent AIS and marine VHF assignments by index, unique serial, automatic selection, or stable physical `port:<USB-port>` selector.

@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.16"
+version: "2.7.17"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -70,6 +70,7 @@ options:
   marine_vhf_labels: "Channel 16 Distress,Channel 9 Calling,Channel 12 Port Operations,Channel 14 Port Operations,Channel 72 Ship-to-Ship"
   marine_vhf_gain: 28
   marine_vhf_ppm: 0
+  marine_vhf_auto_squelch: true
   marine_vhf_squelch: -28
   GPS_USE_USB: true
   GPS_DEVICE: "auto"
@@ -134,6 +135,7 @@ schema:
   marine_vhf_labels: "str?"
   marine_vhf_gain: "float?"
   marine_vhf_ppm: "int?"
+  marine_vhf_auto_squelch: "bool?"
   marine_vhf_squelch: "int?"
   GPS_USE_USB: "bool?"
   GPS_DEVICE: "str?"
@@ -281,9 +283,12 @@ configuration:
   marine_vhf_ppm:
     name: Marine VHF Frequency Correction
     description: Frequency correction from -150 to 150 PPM. Start at 0 for a NESDR SMArt v5.
+  marine_vhf_auto_squelch:
+    name: Automatic Marine VHF Squelch
+    description: Recommended. Learns the noise floor on each channel and opens only for a signal. Turn off only to use the manual threshold below.
   marine_vhf_squelch:
     name: Marine VHF Squelch
-    description: Signal threshold from -100 to 0 dBFS. Start at -28; move toward 0 if noise opens the receiver.
+    description: Manual signal threshold from -100 to 0 dBFS, used only when automatic squelch is off.
   GPS_USE_USB:
     name: Use Attached USB GPS
     description: Use a recent NMEA GPS fix as the estate reference position for distance ranking and maps.

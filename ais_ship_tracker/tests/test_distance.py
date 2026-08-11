@@ -280,9 +280,28 @@ class MarineVhfTests(unittest.TestCase):
         rendered = tracker.build_marine_vhf_config("test-secret")
         self.assertIn("index = 1;", rendered)
         self.assertIn('mode = "scan";', rendered)
+        self.assertIn('modulation = "nfm";', rendered)
         self.assertIn("156.800", rendered)
         self.assertIn('mountpoint = "baiamonte-marine.mp3";', rendered)
         self.assertIn('password = "test-secret";', rendered)
+
+    def test_config_uses_adaptive_squelch_by_default(self):
+        previous = tracker.MARINE_VHF_AUTO_SQUELCH
+        tracker.MARINE_VHF_AUTO_SQUELCH = True
+        try:
+            rendered = tracker.build_marine_vhf_config("secret")
+            self.assertNotIn("squelch_threshold", rendered)
+        finally:
+            tracker.MARINE_VHF_AUTO_SQUELCH = previous
+
+    def test_manual_squelch_is_emitted_only_when_selected(self):
+        previous = tracker.MARINE_VHF_AUTO_SQUELCH
+        tracker.MARINE_VHF_AUTO_SQUELCH = False
+        try:
+            rendered = tracker.build_marine_vhf_config("secret")
+            self.assertIn(f"squelch_threshold = {tracker.MARINE_VHF_SQUELCH};", rendered)
+        finally:
+            tracker.MARINE_VHF_AUTO_SQUELCH = previous
 
     def test_serial_device_is_supported(self):
         previous = tracker.MARINE_VHF_DEVICE
