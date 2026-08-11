@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-ais:
     permissions:
       contents: read
       id-token: write
@@ -18,4 +18,22 @@ jobs:
     uses: ./.github/workflows/build-app.yaml
     with:
       publish: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      app_path: ./ais_ship_tracker
+      image_name: home-assistant-ais
+      app_name: Baiamonte AIS
+      app_description: Estate maritime watch and live AIS vessel operations
+    secrets: inherit
+
+  build-growatt-usb:
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      publish: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      app_path: ./baiamonte_growatt_usb
+      image_name: home-assistant-growatt-usb
+      app_name: Baiamonte Growatt USB
+      app_description: Local Growatt SPF USB telemetry and guided diagnostics
     secrets: inherit

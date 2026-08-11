@@ -1,0 +1,28 @@
+configuration:
+  device:
+    name: Dispositivo USB Growatt
+    description: Usa auto per trovare l'inverter oppure inserisci un percorso stabile come /dev/serial/by-id/... o /dev/ttyUSB0.
+  transport:
+    name: Trasporto USB
+    description: Auto seleziona seriale per i percorsi tty/by-id e USB HID per i percorsi hidraw.
+  protocol:
+    name: Protocollo inverter
+    description: Auto prova i protocolli Growatt SPF comuni senza modificare le impostazioni.
+  baud_rate:
+    name: Velocità seriale
+    description: La connessione USB diretta Growatt SPF normalmente usa 2400 baud.
+  poll_interval_seconds:
+    name: Intervallo aggiornamento
+    description: Secondi tra le letture. Dieci secondi è il valore consigliato.
+  stale_after_seconds:
+    name: Timeout dati
+    description: Segna la telemetria offline dopo questo tempo senza una risposta valida.
+  publish_to_home_assistant:
+    name: Crea sensori Home Assistant
+    description: Pubblica le letture come entità sensor.baiamonte_growatt_*.
+  read_only:
+    name: Blocco sicurezza sola lettura
+    description: Mantienilo attivo per il monitoraggio. Disattivalo solo insieme all'opzione modifiche durante la configurazione.
+  allow_setting_changes:
+    name: Consenti modifiche inverter
+    description: Abilita l'editor protetto quando la sola lettura è disattivata. Ogni comando richiede conferma e rilettura.

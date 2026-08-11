@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#171814">
+  <title>Baiamonte Growatt USB</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="touch.css">
+</head>
+<body>
+  <svg class="icons" aria-hidden="true">
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 24 24"><path d="M12 3v12m0-12-2 2m2-2 2 2m-2 6 4-4m0 0h3v-3m-7 8-4-4m0 0H5v3m7 4v3"/><circle cx="12" cy="20" r="1.5"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="3" y="7" width="17" height="10" rx="2"/><path d="M20 10h2v4h-2M7 12h4m-2-2v4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M9 22 12 2l3 20M7 8h10M6 13h12M4 22h16"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5m0 3h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8A7 7 0 0 1 18.8 7M17.9 16A7 7 0 0 1 5.2 17"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand"><img class="brand-mark" src="icon-192.png" alt="Baiamonte Growatt USB"><div><b>TENUTA BAIAMONTE</b><small>ESTATE ENERGY OPERATIONS</small></div></div>
+    <div class="top-state"><i id="top-light"></i><span><small>GROWATT USB</small><b id="top-status">Starting</b></span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-art"><div class="sun-ring"><svg><use href="#i-sun"/></svg></div><div class="usb-line"><svg><use href="#i-usb"/></svg></div></div>
+      <div class="hero-copy"><span>GROWATT SPF · LOCAL USB · GUARDED CONTROL</span><h1>Solar intelligence,<br>direct from the inverter.</h1><p>Private local telemetry and protected commissioning for the Baiamonte energy system—with automatic USB discovery, Home Assistant sensors, and guided fault finding.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Looking for the Growatt inverter…</b></div></div>
+      <div class="hero-actions"><button id="poll"><svg><use href="#i-refresh"/></svg>Refresh now</button><button class="secondary" id="rescan"><svg><use href="#i-usb"/></svg>Rescan USB</button></div>
+    </section>
+
+    <section class="safety" id="safety-banner"><svg><use href="#i-shield"/></svg><div><b id="safety-title">Read-only inverter access</b><span id="safety-detail">Monitoring is locked. Commissioning controls require two separate configuration changes and confirmation for every command.</span></div></section>
+
+    <section class="section">
+      <div class="section-head"><div><p>LIVE POWER FLOW</p><h2>Baiamonte solar plant</h2><span>Values update directly from the Growatt USB connection.</span></div><span class="badge" id="updated">Waiting</span></div>
+      <div class="power-flow">
+        <article class="source-card"><svg><use href="#i-sun"/></svg><small>PV ARRAY</small><b id="pv-power">— W</b><span id="pv-detail">Waiting for solar input</span></article>
+        <div class="flow-arrow"><i></i><span>DC</span><i></i></div>
+        <article class="source-card inverter"><span class="inverter-face">G</span><small>GROWATT INVERTER</small><b id="mode">Discovering</b><span id="temperature">Temperature —</span></article>
+        <div class="flow-split"><div><i></i><span>AC</span></div><div><i></i><span>BATTERY</span></div></div>
+        <div class="destinations"><article class="source-card"><svg><use href="#i-grid"/></svg><small>ESTATE LOAD</small><b id="load-power">— W</b><span id="load-detail">Load —</span></article><article class="source-card"><svg><use href="#i-battery"/></svg><small>FELICITY BANK</small><b id="battery">— %</b><span id="battery-detail">Voltage —</span></article></div>
+      </div>
+      <div class="metric-grid" id="metrics"></div>
+    </section>
+
+    <section class="section diagnostics">
+      <div class="section-head"><div><p>CONNECTION HEALTH</p><h2>USB status &amp; diagnosis</h2><span>The app identifies the failure stage and shows the next checks in order.</span></div><span class="badge" id="health-badge">Checking</span></div>
+      <div class="diagnostic-grid">
+        <article class="panel health-panel"><div class="panel-title"><svg><use href="#i-usb"/></svg><div><small>CURRENT DIAGNOSIS</small><h3 id="diagnosis-title">Scanning USB</h3></div></div><p id="diagnosis">Looking for the direct Growatt connection.</p><ol id="steps"></ol></article>
+        <article class="panel connection-panel"><div class="panel-title"><div><small>ACTIVE CONNECTION</small><h3>Device profile</h3></div></div><div class="detail-list">
+          <div><span>USB path</span><b id="device">Not connected</b></div><div><span>Protocol</span><b id="protocol">Auto</b></div><div><span>Baud rate</span><b id="baud">2400</b></div><div><span>Successful polls</span><b id="polls">0</b></div><div><span>Last response</span><b id="last-response">Never</b></div><div><span>Visible candidates</span><b id="candidates">0</b></div>
+        </div></article>
+      </div>
+    </section>
+
+    <section class="section settings-section" id="commissioning">
+      <div class="section-head"><div><p>GROWATT COMMISSIONING</p><h2>Configuration &amp; settings</h2><span>Read the current inverter profile and apply supported changes with confirmation and automatic read-back.</span></div><span class="badge neutral" id="settings-lock">Loading</span></div>
+      <div class="settings-warning"><svg><use href="#i-alert"/></svg><div><b>Settings can affect power availability and battery safety.</b><span>Verify battery voltages and charge-current limits against the approved Felicity configuration. Factory reset, calibration, time-setting, and raw commands are intentionally unavailable.</span></div></div>
+      <div class="settings-layout">
+        <article class="panel current-settings"><div class="panel-title"><div><small>INVERTER READ-BACK</small><h3>Current profile</h3></div><button class="secondary dark" id="refresh-settings"><svg><use href="#i-refresh"/></svg>Read settings</button></div><div class="settings-readback" id="settings-readback"><div class="empty">Waiting for the inverter settings inquiry.</div></div></article>
+        <article class="panel settings-editor"><div class="panel-title"><div><small>GUARDED EDITOR</small><h3>Apply one change</h3></div></div>
+          <form id="settings-form">
+            <label><span>Setting</span><select id="setting-key" required></select></label>
+            <div id="setting-control"></div>
+            <div class="risk-box"><small>IMPACT</small><p id="setting-risk">Select a setting to review its effect.</p></div>
+            <label><span>Confirmation</span><input id="setting-confirmation" autocomplete="off" placeholder="Type APPLY" required><small>Enter APPLY exactly. A successful command is followed by a settings read-back.</small></label>
+            <button class="danger-action" id="apply-setting" type="submit"><svg><use href="#i-shield"/></svg>Apply and verify</button>
+          </form>
+          <div class="setting-result" id="setting-result"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section firmware-section" id="firmware-maintenance">
+      <div class="section-head"><div><p>FIRMWARE MAINTENANCE</p><h2>Version, backup &amp; package validation</h2><span>Prepare an official Growatt update safely without sending undocumented bootloader commands.</span></div><span class="badge neutral" id="firmware-state">Checking</span></div>
+      <div class="firmware-grid">
+        <article class="panel firmware-current"><div class="panel-title"><div><small>INSTALLED FIRMWARE</small><h3>CPU versions</h3></div><button class="secondary dark" id="read-firmware"><svg><use href="#i-refresh"/></svg>Read versions</button></div><div id="firmware-versions" class="settings-readback"><div class="empty">Waiting for the firmware version inquiry.</div></div><a class="download-button" href="api/firmware/backup" download><svg><use href="#i-shield"/></svg>Download settings backup</a></article>
+        <article class="panel firmware-package"><div class="panel-title"><div><small>OFFICIAL PACKAGE</small><h3>Validate &amp; stage</h3></div></div>
+          <form id="firmware-form">
+            <label><span>Growatt firmware package</span><input id="firmware-file" type="file" accept=".bin,.hex,.fw,.zip" required><small>The package stays inside this Home Assistant app.</small></label>
+            <label><span>Expected SHA-256</span><input id="firmware-sha" spellcheck="false" autocomplete="off" placeholder="64-character verified checksum" minlength="64" maxlength="64" required></label>
+            <label><span>Target model confirmation</span><input id="firmware-model" autocomplete="off" placeholder="Type SPF 5000 ES" required></label>
+            <button id="stage-firmware" type="submit"><svg><use href="#i-shield"/></svg>Validate and stage package</button>
+          </form>
+          <div class="official-fetch"><span>OR FETCH FROM AN OFFICIAL GROWATT LINK</span><form id="firmware-fetch-form"><label><span>Growatt package URL</span><input id="firmware-url" type="url" inputmode="url" autocomplete="off" placeholder="https://…growatt.com/…/package.bin" required><small>Only HTTPS links on growatt.com are accepted. A SHA-256 and exact model confirmation are still required.</small></label><label><span>Expected SHA-256</span><input id="firmware-fetch-sha" spellcheck="false" autocomplete="off" placeholder="64-character verified checksum" minlength="64" maxlength="64" required></label><label><span>Target model confirmation</span><input id="firmware-fetch-model" autocomplete="off" placeholder="Type SPF 5000 ES" required></label><button id="fetch-firmware" type="submit"><svg><use href="#i-refresh"/></svg>Fetch, verify and stage</button></form><a id="growatt-downloads" href="https://en.growatt.com/support/download" target="_blank" rel="noopener noreferrer">Open Growatt’s official download center</a></div>
+          <div class="setting-result" id="firmware-result"></div>
+        </article>
+      </div>
+      <article class="firmware-boundary"><svg><use href="#i-alert"/></svg><div><b>Direct flashing is intentionally unavailable.</b><span id="firmware-boundary-text">No official SPF 5000 ES USB flashing protocol, signed-package specification, or recovery driver is bundled. A validated file is never executed or sent to the inverter.</span></div><button disabled>Awaiting official Growatt driver</button></article>
+      <div class="preflight-grid"><div><b>1 · Identify</b><span>Read CPU1/CPU2 versions and confirm the exact inverter model.</span></div><div><b>2 · Preserve</b><span>Download the current configuration and retain it off the Home Assistant host.</span></div><div><b>3 · Verify</b><span>Use only a Growatt-supplied file and independently confirm its SHA-256.</span></div><div><b>4 · Handoff</b><span>Apply it only through Growatt's approved updater and recovery procedure.</span></div></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><div><p>COMMISSIONING &amp; RECOVERY</p><h2>Complete troubleshooting guide</h2><span>Work from left to right; stop as soon as live values return.</span></div></div>
+      <div class="guide-grid">
+        <article class="guide"><span>01</span><h3>No USB device</h3><ul><li>Use a USB data cable, not a charge-only cable.</li><li>Connect directly to the Home Assistant host before trying a hub.</li><li>Power the inverter and reconnect both cable ends.</li><li>Confirm USB and UART access are enabled for this app.</li><li>Press Rescan USB after any cable change.</li></ul></article>
+        <article class="guide"><span>02</span><h3>Device but no reply</h3><ul><li>Stop the previous manual Growatt process or integration.</li><li>Only one program can own the serial/HID device.</li><li>Use Auto device and Auto protocol first.</li><li>Keep 2400 baud for the standard SPF connection.</li><li>Try the stable <code>/dev/serial/by-id/…</code> path if USB numbering changes.</li></ul></article>
+        <article class="guide"><span>03</span><h3>Intermittent data</h3><ul><li>Replace long or unshielded USB cables.</li><li>Avoid an unpowered USB hub.</li><li>Route USB away from inverter AC and PV wiring.</li><li>Increase the polling interval if the interface times out.</li><li>Check the event log for a repeating disconnect pattern.</li></ul></article>
+        <article class="guide"><span>04</span><h3>Wrong or missing values</h3><ul><li>Select PI30MAX only if Auto chooses the wrong profile.</li><li>Some firmware does not expose every optional field.</li><li>Compare voltage and mode with the Growatt front panel.</li><li>Battery CAN values belong to Baiamonte CAN Monitor, not this USB app.</li><li>Use the inverter USB app and CAN monitor on separate adapters.</li></ul></article>
+        <article class="guide"><span>05</span><h3>After a reboot</h3><ul><li>Use a by-id path to survive USB numbering changes.</li><li>Keep Start on boot and Watchdog enabled in Home Assistant.</li><li>Keep Automatic updates enabled on the app Info page.</li><li>Allow about one minute for USB discovery after host startup.</li><li>Rescan rather than reinstalling the manual configuration.</li></ul></article>
+        <article class="guide"><span>06</span><h3>Safe commissioning</h3><ul><li>Keep read-only mode enabled during initial migration.</li><li>Record current values before enabling changes.</li><li>Change only one setting at a time.</li><li>Confirm the read-back and Growatt display after each command.</li><li>Return the app to read-only mode when commissioning is complete.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="section events-section">
+      <div class="section-head"><div><p>SERVICE HISTORY</p><h2>Recent connection events</h2><span>Useful evidence for cable, protocol, and USB ownership problems.</span></div><span class="badge neutral" id="failure-count">0 failures</span></div>
+      <div class="panel event-log" id="events"><div class="empty">Waiting for the first event.</div></div>
+    </section>
+  </main>
+  <footer><span>TENUTA BAIAMONTE · ETNA ENERGY SYSTEMS</span><span id="server-time">Local, private, read-only</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

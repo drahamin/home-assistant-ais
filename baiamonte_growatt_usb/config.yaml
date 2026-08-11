@@ -1,0 +1,79 @@
+name: "Baiamonte Growatt USB"
+version: "1.2.0"
+slug: "baiamonte_growatt_usb"
+description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch:
+  - "aarch64"
+  - "amd64"
+image: "ghcr.io/drahamin/home-assistant-growatt-usb"
+startup: "application"
+boot: "auto"
+init: false
+usb: true
+uart: true
+udev: true
+homeassistant_api: true
+ingress: true
+ingress_port: 8097
+panel_icon: "mdi:solar-power-variant"
+panel_title: "Growatt USB"
+panel_admin: true
+options:
+  device: "auto"
+  transport: "auto"
+  protocol: "auto"
+  baud_rate: 2400
+  poll_interval_seconds: 10
+  stale_after_seconds: 45
+  publish_to_home_assistant: true
+  read_only: true
+  allow_setting_changes: false
+  firmware_tools_enabled: true
+  firmware_max_package_mb: 32
+schema:
+  device: "str"
+  transport: "list(auto|serial|usb)"
+  protocol: "list(auto|PI16|PI17|PI17INFINI|PI17M058|PI18|PI18LVX|PI18SV|PI30|PI30M044|PI30M045|PI30MAX|PI30MST|PI30REVO|PI41)"
+  baud_rate: "list(2400|9600|19200|115200)"
+  poll_interval_seconds: "int"
+  stale_after_seconds: "int"
+  publish_to_home_assistant: "bool"
+  read_only: "bool"
+  allow_setting_changes: "bool"
+  firmware_tools_enabled: "bool"
+  firmware_max_package_mb: "int"
+configuration:
+  device:
+    name: Growatt USB device
+    description: Use auto to find the inverter, or enter a stable path such as /dev/serial/by-id/... or /dev/ttyUSB0.
+  transport:
+    name: USB transport
+    description: Auto selects serial for tty/by-id paths and USB HID for hidraw paths. Override only for unusual adapters.
+  protocol:
+    name: Inverter protocol
+    description: Auto tests the common Growatt SPF protocols without changing inverter settings.
+  baud_rate:
+    name: Serial speed
+    description: Growatt SPF direct USB normally uses 2400 baud. Change this only when the cable or inverter requires it.
+  poll_interval_seconds:
+    name: Update interval
+    description: Seconds between live inverter readings. Ten seconds is recommended.
+  stale_after_seconds:
+    name: Offline timeout
+    description: Mark telemetry offline after this many seconds without a valid response.
+  publish_to_home_assistant:
+    name: Create Home Assistant sensors
+    description: Publish local inverter readings as sensor.baiamonte_growatt_* entities.
+  read_only:
+    name: Read-only safety lock
+    description: Keep enabled for monitoring only. Disable this and separately enable setting changes to use the commissioning controls.
+  allow_setting_changes:
+    name: Allow inverter setting changes
+    description: Enables the guarded commissioning editor when read-only mode is off. Every change still requires confirmation and read-back verification.
+  firmware_tools_enabled:
+    name: Enable firmware maintenance tools
+    description: Allows version checks, configuration backup, and local validation/staging of an official Growatt firmware package. It does not enable undocumented flashing.
+  firmware_max_package_mb:
+    name: Maximum firmware package size
+    description: Reject staged firmware files larger than this many megabytes.

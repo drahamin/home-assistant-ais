@@ -1,5 +1,11 @@
 # Baiamonte Home Assistant Apps
 
+## Baiamonte Growatt USB
+
+**Baiamonte Growatt USB** replaces the manually installed direct USB reader for the Growatt SPF 5000 ES. It provides local inverter telemetry, Home Assistant entities, automatic USB and protocol discovery, a guarded commissioning editor, a branded ingress dashboard, and guided troubleshooting. Monitoring remains read-only by default.
+
+Install it from this repository, stop the old manual process so it releases the USB device, and enable **Automatic updates** on the app Info page. See [baiamonte_growatt_usb/DOCS.md](baiamonte_growatt_usb/DOCS.md) for migration and commissioning.
+
 ## Baiamonte CAN Monitor
 
 **Baiamonte CAN Monitor** is a receive-only Growatt and Felicity battery communications app. Version 0.2.0 adds a Tenuta Baiamonte-styled Home Assistant sidebar interface with live adapter health, decoded battery values, alarms and protections, guided wiring diagnostics, and a dedicated CAN Traffic view showing frame rate, active identifiers, raw payloads, decoded fields, and recent activity.
