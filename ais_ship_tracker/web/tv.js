@@ -35,7 +35,7 @@ const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
 function tvAreas(config){const fallback=[{id:'baiamonte',name:'Baiamonte Sicily',bounds:config.bounds,enabled:true}],areas=(config.map_areas||fallback).filter(function(area){return area.enabled!==false});return areas.length?areas:fallback}
 function currentTvArea(config){const areas=tvAreas(config),preferred=requestedArea||config.tv_default_map_area||'baiamonte';return areas.find(function(area){return area.id===activeArea})||areas.find(function(area){return area.id===preferred})||areas.find(function(area){return area.id==='baiamonte'})||areas[0]}
 function currentTvBounds(){return currentTvArea(latest.config).bounds}
-function chooseTvArea(areaId){activeArea=areaId;manualCenter=null;manualZoom=null;const url=new URL(location.href);url.searchParams.set('area',areaId);history.replaceState(null,'',url.pathname+url.search);if(latest)render(latest)}
+function chooseTvArea(areaId){activeArea=areaId;manualCenter=null;manualZoom=null;const url=new URL(location.href);url.searchParams.set('area',areaId);history.replaceState(null,'',url.pathname+url.search);if(latest)render(latest);refresh()}
 function renderTvAreaSwitch(config){const area=currentTvArea(config),switcher=document.querySelector('#tv-area-switch'),key=tvAreas(config).map(function(item){return `${item.id}:${item.name}:${item.id===area.id}`}).join('|');activeArea=area.id;if(key!==tvAreaSwitchKey){tvAreaSwitchKey=key;switcher.innerHTML=tvAreas(config).map(function(item){return `<button type="button" data-area="${escapeHtml(item.id)}" aria-pressed="${item.id===area.id}">${escapeHtml(item.name)}</button>`}).join('');Array.prototype.forEach.call(switcher.querySelectorAll('[data-area]'),function(button){button.onclick=function(){chooseTvArea(button.getAttribute('data-area'))}})}return area}
 
 function tvHomeCenter(config,area){
@@ -239,10 +239,11 @@ function render(data){
 function refresh(){
   if(tvRefreshRunning){tvRefreshQueued=true;return}
   tvRefreshRunning=true;
-  fetch(apiPath,{cache:'no-store'}).then(function(response){
+  const requestedStatusArea=(activeArea||requestedArea||'baiamonte').toLowerCase();
+  fetch(`${apiPath}?view=tv&area=${encodeURIComponent(requestedStatusArea)}`,{cache:'no-store'}).then(function(response){
     if(!response.ok)throw new Error(`TV feed ${response.status}`);
     return response.json();
-  }).then(render).catch(function(error){
+  }).then(function(data){if(requestedStatusArea===(activeArea||requestedArea||'baiamonte').toLowerCase())render(data)}).catch(function(error){
     empty.textContent='Waiting for AIS feed';
     empty.classList.add('show');
     console.error(error);
@@ -281,4 +282,4 @@ addEventListener('blur',clearTvInteraction);
 document.addEventListener('visibilitychange',function(){if(!document.hidden){rerenderMap();refresh()}});
 addEventListener('pageshow',function(){rerenderMap()});
 refresh();
-setInterval(refresh,10000);
+setInterval(function(){if(!document.hidden)refresh()},10000);

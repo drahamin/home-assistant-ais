@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.14
+
+- Adds an area-filtered compact `/api/status?view=tv&area=...` response so the Sicily TV no longer downloads and parses the complete Miami vessel dataset and unused dashboard logs every ten seconds.
+- Stops `/tv` polling while its browser tab is hidden and rejects a late response after the user switches map areas.
+- Reduces base-map and radar tile memory caches from 256+256 entries to 128+64 entries while retaining ample capacity for normal TV pan and zoom.
+- Preserves the full unfiltered dashboard API response and all visible TV targets.
+
 ## 2.7.13
 
 - Fixes the confirmed `/tv` layout jump where the complete vessel list expanded the map from the viewport height to more than 10,000 pixels after live targets loaded.
