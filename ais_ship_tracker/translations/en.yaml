@@ -1,7 +1,10 @@
 configuration:
+  aishub_data_source:
+    name: AIS Network Data Source
+    description: Use Rahamin Miami single-key proxy so this app never polls AISHub directly, or choose Direct AISHub only as a deliberate standalone fallback.
   aishub_username:
     name: AISHub Username
-    description: Supplied by AISHub after your contributor station is approved.
+    description: Used only in Direct AISHub fallback mode. Leave blank when Rahamin Miami single-key proxy is selected.
   aishub_feed_host:
     name: AISHub Feed Host
     description: Destination host supplied by AISHub for sharing raw NMEA data.
@@ -18,8 +21,8 @@ configuration:
     name: Rahamin Miami API Area
     description: Fetch local and inbound Miami vessels from the same configured AISHub API.
   rahamin_proxy_enabled:
-    name: Rahamin AIS Private Proxy
-    description: Import the separate Miami and Sicily cached vessel feeds from the Rahamin AIS Pi over the private routed network.
+    name: Legacy Rahamin Proxy Switch
+    description: Retained for older configurations. AIS Network Data Source now controls whether the private proxy or direct AISHub client is used.
   rahamin_proxy_url:
     name: Rahamin AIS Proxy URL
     description: Private Rahamin AIS status endpoint. The standard Miami Pi endpoint is http://192.168.86.196:8999/api/status.

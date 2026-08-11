@@ -10,14 +10,16 @@ from pathlib import Path
 TRACKER = Path(__file__).parents[1] / "ais_ship_tracker.py"
 
 
-def load_tracker():
+def load_tracker(overrides=None):
     options = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
-    json.dump({
+    config = {
         "latitude_south": 37.70,
         "longitude_west": 15.00,
         "latitude_north": 37.80,
         "longitude_east": 15.10,
-    }, options)
+    }
+    config.update(overrides or {})
+    json.dump(config, options)
     options.close()
     previous = os.environ.get("BAIAMONTE_AIS_OPTIONS")
     os.environ["BAIAMONTE_AIS_OPTIONS"] = options.name
@@ -78,6 +80,8 @@ class DistanceTests(unittest.TestCase):
         self.assertTrue(snapshot["config"]["tv_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_live_traffic_only"])
         self.assertTrue(snapshot["config"]["rahamin_proxy_enabled"])
+        self.assertEqual(snapshot["config"]["aishub_data_source"], "rahamin_proxy")
+        self.assertFalse(snapshot["config"]["aishub_username_in_use"])
         self.assertEqual(snapshot["config"]["rahamin_proxy_interval"], 15)
         self.assertIn("rahamin_proxy", snapshot)
         self.assertIn("reference_location", snapshot["config"])
@@ -103,6 +107,17 @@ class DistanceTests(unittest.TestCase):
             tracker.feed_state["state"] = previous_feed
             tracker.decoder_state["state"] = previous_decoder
             tracker.rahamin_proxy_state["state"] = previous_proxy
+
+    def test_network_data_source_is_authoritative(self):
+        direct = load_tracker({
+            "aishub_data_source": "direct_aishub",
+            "aishub_username": "TEST_ONLY",
+            "rahamin_proxy_enabled": True,
+        })
+        snapshot = direct.dashboard_snapshot()
+        self.assertFalse(snapshot["config"]["rahamin_proxy_enabled"])
+        self.assertEqual(snapshot["config"]["aishub_data_source"], "direct_aishub")
+        self.assertTrue(snapshot["config"]["aishub_username_in_use"])
 
 
 class AisCatcherTests(unittest.TestCase):

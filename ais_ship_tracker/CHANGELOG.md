@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.15
+
+- Adds an explicit AIS Network Data Source setting that defaults to the Rahamin Miami single-key private proxy.
+- Makes the selected data source authoritative, preventing the Baiamonte app from polling AISHub while proxy mode is active even if an older username remains stored.
+- Keeps Direct AISHub as a deliberate standalone fallback and reports whether its credential is actually in use without exposing it.
+- Continues importing independent Miami and Baiamonte caches from `http://192.168.86.196:8999/api/status` while raw receiver NMEA remains separate on UDP port 10110.
+
 ## 2.7.14
 
 - Adds an area-filtered compact `/api/status?view=tv&area=...` response so the Sicily TV no longer downloads and parses the complete Miami vessel dataset and unused dashboard logs every ten seconds.

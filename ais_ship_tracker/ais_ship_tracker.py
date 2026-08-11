@@ -73,6 +73,9 @@ try:
 
     # AISHub is reciprocal: contributors send raw NMEA data and receive access
     # to the aggregated vessel API.
+    AISHUB_DATA_SOURCE = str(config.get('aishub_data_source', 'rahamin_proxy')).strip().lower()
+    if AISHUB_DATA_SOURCE not in {'rahamin_proxy', 'direct_aishub'}:
+        AISHUB_DATA_SOURCE = 'rahamin_proxy'
     AISHUB_USERNAME = str(config.get('aishub_username', '')).strip()
     AISHUB_API_URL = str(config.get('aishub_api_url', 'https://data.aishub.net/ws.php')).strip()
     AISHUB_POLL_INTERVAL = max(60, get_safe_int('aishub_poll_interval', 60))
@@ -81,7 +84,7 @@ try:
     AISHUB_SHARING_ENABLED = str(config.get('aishub_sharing_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
     BAIAMONTE_API_ENABLED = str(config.get('baiamonte_api_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
     RAHAMIN_MIAMI_ENABLED = str(config.get('rahamin_miami_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
-    RAHAMIN_PROXY_ENABLED = str(config.get('rahamin_proxy_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    RAHAMIN_PROXY_ENABLED = AISHUB_DATA_SOURCE == 'rahamin_proxy'
     RAHAMIN_PROXY_URL = str(config.get('rahamin_proxy_url', 'http://192.168.86.196:8999/api/status')).strip()
     RAHAMIN_PROXY_INTERVAL = max(10, min(300, get_safe_int('rahamin_proxy_interval', 15)))
     MIAMI_APPROACH_KM = max(5, min(200, get_safe_int('miami_approach_km', 45)))
@@ -581,13 +584,23 @@ def dashboard_snapshot(area_id=None, compact=False):
             "tv_map_vessels": TV_MAP_VESSELS,
             "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
             "rahamin_proxy_enabled": RAHAMIN_PROXY_ENABLED,
+            "aishub_data_source": AISHUB_DATA_SOURCE,
+            "aishub_username_in_use": bool(AISHUB_DATA_SOURCE == 'direct_aishub' and AISHUB_USERNAME),
             "rahamin_proxy_interval": RAHAMIN_PROXY_INTERVAL,
             "reference_location": location,
             "map_entities": ENABLE_MAP_ENTITIES,
             "include_class_b": INCLUDE_CLASS_B,
             "timeout_minutes": MAP_TIMEOUT_MINUTES,
             "watchlist_count": len(watchlist_mmsis),
-            "source": "Local AIS-catcher + optional AISHub" if RECEIVER_MODE == "sdr" else "Network AIS input + optional AISHub",
+            "source": (
+                "Local AIS-catcher + Rahamin single-key proxy"
+                if RECEIVER_MODE == "sdr" and RAHAMIN_PROXY_ENABLED
+                else "Network AIS input + Rahamin single-key proxy"
+                if RAHAMIN_PROXY_ENABLED
+                else "Local AIS-catcher + optional AISHub"
+                if RECEIVER_MODE == "sdr"
+                else "Network AIS input + optional AISHub"
+            ),
             "poll_interval": AISHUB_POLL_INTERVAL,
             "receiver_mode": RECEIVER_MODE,
             "receiver_port": RECEIVER_PORT,
