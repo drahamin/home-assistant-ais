@@ -2,14 +2,14 @@
 
 ## What this replaces
 
-This app owns the direct USB connection between Home Assistant and the Growatt SPF inverter. It replaces the manually installed Growatt USB reader or service. It does **not** replace Baiamonte CAN Monitor: the CAN app reads the separate Growatt-to-Felicity battery communication link through its own CANable adapter.
+This app owns the local connection between Home Assistant and the Growatt SPF inverter. It replaces the manually installed Growatt reader or service. It supports the Growatt RJ45 RS485-to-USB cable shown in commissioning, plus direct USB interfaces. It does **not** replace Baiamonte CAN Monitor: the CAN app reads the separate Growatt-to-Felicity battery communication link through its own CANable adapter.
 
 Only one process can use the Growatt USB device at a time. Stop the manual reader before starting this app.
 
 ## Safe migration
 
 1. Install **Baiamonte Growatt USB** from the Baiamonte Home Assistant Apps repository.
-2. Leave **Growatt USB device** and **Inverter protocol** set to `auto`, keep 2400 baud, and keep **Read-only safety lock** enabled.
+2. Leave **Growatt USB device**, **Connection transport**, and **Inverter protocol** set to `auto`. Keep RS485 at 9600 baud/address 1 and keep **Read-only safety lock** enabled.
 3. Stop the old manual Growatt USB process, container, shell command, or integration. Do not remove its dashboard configuration yet.
 4. Connect the inverter USB cable and start this app.
 5. Open **Growatt USB** in the Home Assistant sidebar. Wait for **Online** and verify PV power, output power, battery voltage, and inverter mode against the Growatt display.
@@ -24,6 +24,8 @@ device: auto
 protocol: auto
 transport: auto
 baud_rate: 2400
+modbus_baud_rate: 9600
+modbus_slave_id: 1
 poll_interval_seconds: 10
 stale_after_seconds: 45
 publish_to_home_assistant: true
@@ -35,15 +37,15 @@ firmware_max_package_mb: 32
 
 Use a stable `/dev/serial/by-id/...` path after commissioning if several serial USB adapters are connected. A by-id path is safer than `/dev/ttyUSB0` because numeric device names may change after a reboot.
 
-## USB transports and inverter protocols
+## RS485, USB transports, and inverter protocols
 
-The app automatically treats `/dev/ttyUSB*`, `/dev/ttyACM*`, and `/dev/serial/by-id/*` as serial connections and `/dev/hidraw*` as USB HID. The transport can be overridden for an unusual adapter.
+The app automatically treats `/dev/ttyUSB*`, `/dev/ttyACM*`, and `/dev/serial/by-id/*` as serial connections and `/dev/hidraw*` as USB HID. On serial adapters it first tries Growatt Off-Grid Modbus RTU v0.14 at 9600 baud/address 1. This is the correct mode for the SPF 5000 ES RJ45 RS485-to-USB cable. It then tries the direct-USB PI profiles when Auto is selected.
 
-Auto discovery prioritizes the Growatt SPF-compatible PI30 family: PI30, PI30MAX, PI30M044, PI30M045, PI30REVO, and PI41. Manual configuration also exposes PI16, PI17, PI17INFINI, PI17M058, PI18, PI18LVX, PI18SV, PI30MST, and the other PI30 variants supported by the bundled communication library. Use a manual protocol only when Auto cannot decode the inverter correctly.
+Auto discovery supports Modbus v0.14 plus the Growatt SPF-compatible PI30 family: PI30, PI30MAX, PI30M044, PI30M045, PI30REVO, and PI41. Use a manual protocol only when Auto cannot decode the inverter correctly.
 
 ## Reading and changing settings
 
-The dashboard reads the current inverter profile periodically and on demand. Setting changes are disabled by default. To commission the inverter from the app:
+The dashboard reads the current inverter profile periodically and on demand. Modbus configuration read-back includes priorities, input/output mode, battery profile, voltage thresholds, charge-current limits, communication address, and protocol version. Modbus register writes remain locked until the exact installed inverter revision is verified on hardware. Direct-USB PI setting changes are disabled by default and use the guarded process below.
 
 1. Record the current Growatt display and dashboard values.
 2. In the app Configuration page, set `read_only: false` and `allow_setting_changes: true`, then restart the app.
@@ -100,23 +102,24 @@ The daily energy value is a local estimate integrated from the inverter's live P
 
 ## Troubleshooting
 
-### No USB device visible
+### No RS485/USB adapter visible
 
 - Confirm the Growatt is powered.
-- Use a USB data cable. A charge-only cable will not create a device.
+- Reconnect the Growatt RJ45 RS485 plug and the USB plug.
 - Connect directly to the Home Assistant host while commissioning; temporarily remove unpowered hubs.
-- Reconnect both ends and press **Rescan USB**.
+- Reconnect both ends and press **Rescan connection**.
 - Confirm the app configuration still grants USB, UART, and udev access.
 - Try a different host port and a short, shielded cable.
 
-### USB visible, but the inverter does not reply
+### Adapter visible, but the inverter does not reply
 
 - Stop the old manual Growatt service. Two processes cannot share the device reliably.
 - Stop any other inverter app that may open the same `/dev/ttyUSB*` or `/dev/hidraw*` path.
-- Return device and protocol to `auto` and baud rate to 2400.
+- For the RJ45 RS485 cable, use Modbus v0.14, address 1, and 9600 baud.
+- Confirm the RJ45 plug is in the inverter **RS485** port, not its BMS/CAN port.
 - Check the Growatt display to confirm the inverter is operating.
 - Select the exact stable device path if multiple serial adapters are present.
-- If Auto cannot identify unusual firmware, try `PI30`, then `PI30MAX`, then `PI41` explicitly.
+- If using a direct USB interface instead, try `PI30`, then `PI30MAX`, then `PI41` explicitly.
 
 ### Values update and then stop
 

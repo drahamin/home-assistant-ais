@@ -3,14 +3,20 @@ configuration:
     name: Growatt USB device
     description: Use auto to find the inverter, or enter a stable path such as /dev/serial/by-id/... or /dev/ttyUSB0.
   transport:
-    name: USB transport
-    description: Auto selects serial for tty/by-id paths and USB HID for hidraw paths.
+    name: Connection transport
+    description: Auto tries Growatt RS485 Modbus on serial adapters, then direct USB protocols.
   protocol:
     name: Inverter protocol
-    description: Auto tests the common Growatt SPF protocols without changing inverter settings.
+    description: Auto tests Growatt Modbus RTU v0.14 and common SPF direct USB protocols.
   baud_rate:
     name: Serial speed
     description: Growatt SPF direct USB normally uses 2400 baud.
+  modbus_baud_rate:
+    name: RS485 speed
+    description: The SPF 5000 ES RS485 connection normally uses 9600 baud.
+  modbus_slave_id:
+    name: RS485 inverter address
+    description: Growatt uses Modbus address 1 by default.
   poll_interval_seconds:
     name: Update interval
     description: Seconds between live inverter readings. Ten seconds is recommended.

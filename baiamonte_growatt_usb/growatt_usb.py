@@ -1,4 +1,4 @@
-"""Baiamonte Home Assistant app for read-only Growatt SPF USB telemetry."""
+"""Baiamonte Home Assistant app for local Growatt SPF telemetry."""
 
 from __future__ import annotations
 
@@ -72,6 +72,172 @@ PROTOCOL_PROFILES = {
     "PI41": {"identity": "QDI", "live": "QPIGS", "mode": "QMOD", "warnings": "QPIWS", "settings": "QPIRI"},
 }
 AUTO_PROTOCOLS = ["PI30", "PI30MAX", "PI30M044", "PI30M045", "PI30REVO", "PI41"]
+
+MODBUS_PROTOCOL = "GROWATT_MODBUS_V014"
+MODBUS_STATUS = {
+    0: "Standby", 1: "PV and grid combined discharge", 2: "Discharge", 3: "Fault",
+    4: "Firmware update", 5: "PV charge", 6: "AC charge", 7: "Combined charge",
+    8: "Combined charge and bypass", 9: "PV charge and bypass",
+    10: "AC charge and bypass", 11: "Bypass", 12: "PV charge and discharge",
+}
+MODBUS_WARNING_BITS = {
+    0: "fan_lock_warning", 1: "over_charge", 2: "battery_voltage_low",
+    3: "over_load", 4: "output_power_derating", 5: "solar_stopped_battery_low",
+    6: "solar_stopped_pv_high", 7: "solar_stopped_over_load", 8: "grid_different",
+    9: "grid_phase_error", 10: "output_phase_loss", 11: "over_temperature",
+    12: "buck_current_over", 13: "battery_disconnected", 14: "bms_communication_error",
+    15: "pv_power_insufficient",
+}
+
+
+def _reading(value: object, unit: str | None = None) -> dict[str, object]:
+    return {"value": value, "unit": unit}
+
+
+def _u32(registers: list[int], high: int) -> int:
+    return (int(registers[high]) << 16) | int(registers[high + 1])
+
+
+def _s32(registers: list[int], high: int) -> int:
+    value = _u32(registers, high)
+    return value - 0x100000000 if value & 0x80000000 else value
+
+
+def decode_modbus_input(registers: list[int]) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    """Decode Growatt Off-Grid Modbus RTU v0.14 input registers 0-90."""
+    if len(registers) < 84:
+        raise ValueError(f"short Growatt Modbus response ({len(registers)} registers)")
+    pv1_power = _u32(registers, 3) / 10
+    pv2_power = _u32(registers, 5) / 10
+    battery_watts = _s32(registers, 77) / 10
+    battery_voltage = registers[17] / 100
+    readings = {
+        "pv_input_voltage": _reading(registers[1] / 10, "V"),
+        "pv2_input_voltage": _reading(registers[2] / 10, "V"),
+        "pv_input_power": _reading(round(pv1_power + pv2_power, 1), "W"),
+        "pv1_input_power": _reading(pv1_power, "W"),
+        "pv2_input_power": _reading(pv2_power, "W"),
+        "pv_input_current_for_battery": _reading((registers[7] + registers[8]) / 10, "A"),
+        "ac_output_active_power": _reading(_u32(registers, 9) / 10, "W"),
+        "ac_output_apparent_power": _reading(_u32(registers, 11) / 10, "VA"),
+        "battery_voltage": _reading(battery_voltage, "V"),
+        "battery_capacity": _reading(registers[18], "%"),
+        "bus_voltage": _reading(registers[19] / 10, "V"),
+        "ac_input_voltage": _reading(registers[20] / 10, "V"),
+        "ac_input_frequency": _reading(registers[21] / 100, "Hz"),
+        "ac_output_voltage": _reading(registers[22] / 10, "V"),
+        "ac_output_frequency": _reading(registers[23] / 100, "Hz"),
+        "inverter_heat_sink_temperature": _reading(registers[25] / 10, "°C"),
+        "dc_dc_temperature": _reading(registers[26] / 10, "°C"),
+        "ac_output_load": _reading(registers[27] / 10, "%"),
+        "battery_charging_current": _reading(registers[83] / 10, "A"),
+        "battery_discharge_current": _reading(round(max(0.0, battery_watts) / battery_voltage, 1) if battery_voltage else 0, "A"),
+        "battery_power": _reading(battery_watts, "W"),
+        "pv_energy_today": _reading((_u32(registers, 48) + _u32(registers, 52)) / 10, "kWh"),
+    }
+    status_code = int(registers[0])
+    mode = MODBUS_STATUS.get(status_code, f"Status {status_code}")
+    warning_word = int(registers[41])
+    warnings = {name: _reading(bool(warning_word & (1 << bit))) for bit, name in MODBUS_WARNING_BITS.items()}
+    if int(registers[40]):
+        warnings["inverter_fault_code"] = _reading(int(registers[40]))
+    return readings, mode, warnings
+
+
+def _modbus_read(client: object, method: str, address: int, count: int, slave_id: int):
+    call = getattr(client, method)
+    try:
+        return call(address=address, count=count, slave=slave_id)
+    except TypeError:
+        try:
+            return call(address=address, count=count, device_id=slave_id)
+        except TypeError:
+            return call(address=address, count=count, unit=slave_id)
+
+
+def run_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    from pymodbus.client import ModbusSerialClient
+
+    client = ModbusSerialClient(port=device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=2)
+    with DEVICE_IO_LOCK:
+        if not client.connect():
+            raise ConnectionError("the RS485 adapter could not be opened")
+        try:
+            response = _modbus_read(client, "read_input_registers", 0, 91, slave_id)
+        finally:
+            client.close()
+    if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+        raise ConnectionError(f"no valid Modbus reply from inverter address {slave_id}")
+    return decode_modbus_input(list(response.registers))
+
+
+def decode_modbus_holding(registers: list[int]) -> dict[str, dict[str, object]]:
+    if len(registers) < 114:
+        raise ValueError(f"short Growatt settings response ({len(registers)} registers)")
+    output_sources = {0: "Battery first", 1: "PV first", 2: "Utility first", 3: "PV and utility first"}
+    charge_sources = {0: "PV first", 1: "PV and utility", 2: "PV only"}
+    battery_types = {0: "AGM", 1: "Flooded", 2: "User", 3: "Lithium", 4: "User 2"}
+    return {
+        "output_source_priority": _reading(output_sources.get(registers[1], registers[1])),
+        "charger_source_priority": _reading(charge_sources.get(registers[2], registers[2])),
+        "ac_input_mode": _reading({0: "Appliance", 1: "UPS", 2: "Generator"}.get(registers[8], registers[8])),
+        "output_voltage": _reading({0: 208, 1: 230, 2: 240, 3: 220, 4: 100, 5: 110, 6: 120}.get(registers[18], registers[18]), "V"),
+        "output_frequency": _reading(50 if registers[19] == 0 else 60, "Hz"),
+        "max_charging_current": _reading(registers[34], "A"),
+        "battery_bulk_charge_voltage": _reading(registers[35] / 10, "V"),
+        "battery_float_charge_voltage": _reading(registers[36] / 10, "V"),
+        "battery_low_to_utility": _reading(registers[37] / 10, "V"),
+        "max_utility_charging_current": _reading(registers[38], "A"),
+        "battery_type": _reading(battery_types.get(registers[39], registers[39])),
+        "battery_cutoff_voltage": _reading(registers[82] / 10, "V"),
+        "battery_return_voltage": _reading(registers[95] / 10, "V"),
+        "modbus_version": _reading(registers[73] / 100),
+        "communication_address": _reading(registers[30]),
+    }
+
+
+def run_modbus_settings(device: str, baud: int = 9600, slave_id: int = 1) -> dict[str, dict[str, object]]:
+    from pymodbus.client import ModbusSerialClient
+
+    client = ModbusSerialClient(port=device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=2)
+    with DEVICE_IO_LOCK:
+        if not client.connect():
+            raise ConnectionError("the RS485 adapter could not be opened")
+        try:
+            response = _modbus_read(client, "read_holding_registers", 0, 114, slave_id)
+        finally:
+            client.close()
+    if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+        raise ConnectionError(f"no valid settings reply from inverter address {slave_id}")
+    return decode_modbus_holding(list(response.registers))
+
+
+def _register_ascii(registers: list[int]) -> str:
+    payload = b"".join(int(value).to_bytes(2, "big") for value in registers)
+    return payload.replace(b"\x00", b"").replace(b"\xff", b"").decode("ascii", errors="replace").strip()
+
+
+def run_modbus_firmware(device: str, baud: int = 9600, slave_id: int = 1) -> dict[str, dict[str, object]]:
+    from pymodbus.client import ModbusSerialClient
+
+    client = ModbusSerialClient(port=device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=2)
+    with DEVICE_IO_LOCK:
+        if not client.connect():
+            raise ConnectionError("the RS485 adapter could not be opened")
+        try:
+            version_response = _modbus_read(client, "read_holding_registers", 9, 6, slave_id)
+            serial_response = _modbus_read(client, "read_holding_registers", 23, 5, slave_id)
+        finally:
+            client.close()
+    for response in (version_response, serial_response):
+        if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+            raise ConnectionError(f"no valid identity reply from inverter address {slave_id}")
+    versions = list(version_response.registers)
+    return {
+        "firmware_version": _reading(_register_ascii(versions[:3])),
+        "control_firmware_version": _reading(_register_ascii(versions[3:6])),
+        "serial_number": _reading(_register_ascii(list(serial_response.registers))),
+    }
 
 SETTING_SPECS: dict[str, dict[str, object]] = {
     "output_source_priority": {"label": "Output source priority", "kind": "select", "values": {"utility_first": "POP00", "solar_first": "POP01", "sbu_first": "POP02"}, "risk": "Changes which source powers estate loads."},
@@ -230,10 +396,28 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
     if not candidates:
         raise FileNotFoundError("no serial or HID USB device is visible")
     baud = int(options.get("baud_rate", 2400))
+    modbus_baud = int(options.get("modbus_baud_rate", 9600))
+    slave_id = int(options.get("modbus_slave_id", 1))
+    selected_protocol = str(options.get("protocol", "auto"))
+    selected_transport = str(options.get("transport", "auto"))
     failures = []
     for device in candidates:
         if not Path(device).exists():
             failures.append(f"{device}: path does not exist")
+            continue
+        if "hidraw" not in device.lower() and selected_protocol in {"auto", MODBUS_PROTOCOL} and selected_transport in {"auto", "serial", "modbus_rtu"}:
+            try:
+                readings, mode, _warnings = run_modbus_read(device, modbus_baud, slave_id)
+                identity = {
+                    "connection": _reading("Growatt RS485 Modbus RTU v0.14"),
+                    "inverter_address": _reading(slave_id),
+                    "initial_mode": _reading(mode),
+                    "registers_received": _reading(len(readings)),
+                }
+                return device, MODBUS_PROTOCOL, identity
+            except Exception as exc:
+                failures.append(f"{device} / Growatt Modbus RTU address {slave_id}: {exc}")
+        if selected_protocol == MODBUS_PROTOCOL or selected_transport == "modbus_rtu":
             continue
         for protocol in protocols(str(options.get("protocol", "auto"))):
             profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
@@ -259,7 +443,7 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
             except Exception as live_exc:
                 failures.append(f"{device} / {protocol}: identity {identity_error}; live status {live_exc}")
     summary = failures[-1] if failures else "no candidates responded"
-    raise ConnectionError(f"USB devices were found, but no Growatt response was received ({summary})")
+    raise ConnectionError(f"USB/RS485 devices were found, but no Growatt response was received ({summary})")
 
 
 def publish_state(entity_id: str, value: object, attributes: dict[str, object]) -> None:
@@ -316,9 +500,16 @@ def publish_all(readings: dict[str, dict[str, object]], status: dict[str, object
 
 def setting_catalog(options: dict[str, object]) -> dict[str, object]:
     writable = not bool(options.get("read_only", True)) and bool(options.get("allow_setting_changes", False))
+    with STATUS_LOCK:
+        active_protocol = STATUS.get("protocol")
+    if active_protocol == MODBUS_PROTOCOL:
+        writable = False
+        locked_reason = "RS485 configuration read-back is supported. Register writes remain safety-locked until the exact inverter revision is verified."
+    else:
+        locked_reason = None if writable else "Disable read-only mode and enable setting changes in the app Configuration page."
     return {
         "writable": writable,
-        "locked_reason": None if writable else "Disable read-only mode and enable setting changes in the app Configuration page.",
+        "locked_reason": locked_reason,
         "confirmation": "APPLY",
         "items": SETTING_SPECS,
     }
@@ -408,6 +599,14 @@ def read_settings_now() -> dict[str, dict[str, object]]:
         protocol = STATUS.get("protocol")
     if not device or not protocol:
         raise ConnectionError("The Growatt USB connection must be online before reading settings")
+    if str(protocol) == MODBUS_PROTOCOL:
+        settings = run_modbus_settings(
+            str(device), int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+        )
+        with STATUS_LOCK:
+            STATUS.update({"settings": settings, "settings_updated_at": now_iso()})
+        log("Growatt RS485 settings profile refreshed")
+        return settings
     profile = PROTOCOL_PROFILES.get(str(protocol))
     if not profile or not profile.get("settings"):
         raise ValueError(f"A settings inquiry is not defined for protocol {protocol}")
@@ -428,6 +627,14 @@ def read_firmware_now() -> dict[str, dict[str, object]]:
         protocol = STATUS.get("protocol")
     if not device or not protocol:
         raise ConnectionError("The Growatt USB connection must be online before reading firmware versions")
+    if str(protocol) == MODBUS_PROTOCOL:
+        firmware = run_modbus_firmware(
+            str(device), int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+        )
+        with STATUS_LOCK:
+            STATUS.update({"firmware": firmware, "firmware_updated_at": now_iso()})
+        log("Growatt RS485 firmware versions refreshed")
+        return firmware
     commands = ["QVFW", "QVFW2"] if str(protocol).startswith(("PI30", "PI41")) else ["VFW"]
     firmware: dict[str, dict[str, object]] = {}
     errors = []
@@ -588,16 +795,16 @@ def update_energy(energy: dict[str, object], readings: dict[str, dict[str, objec
 def classify_health(status: dict[str, object], options: dict[str, object]) -> tuple[str, str, list[str]]:
     devices = candidate_devices(str(options.get("device", "auto")))
     if not devices:
-        return "usb_missing", "No compatible USB path is visible to the app.", [
-            "Connect the USB-B cable between the Growatt and Home Assistant host.",
-            "Try a known data-capable cable; charge-only cables do not create a device.",
-            "Reconnect the cable, then press Rescan USB or restart the app.",
+        return "usb_missing", "No compatible USB or RS485 adapter is visible to the app.", [
+            "Reconnect the Growatt RJ45-to-USB RS485 cable at both ends.",
+            "The USB end should appear as a CP2102, CH340, FTDI, Exar, or similar serial adapter.",
+            "Reconnect the cable, then press Rescan connection or restart the app.",
         ]
     if not status.get("connected"):
-        return "no_response", "A USB device is visible, but the inverter is not answering.", [
+        return "no_response", "A USB/RS485 device is visible, but the inverter is not answering.", [
             "Stop the old manual Growatt service or integration so only this app owns the USB port.",
-            "Leave device and protocol on Auto; the app tests the common SPF PI30-family variants.",
-            "Confirm the Growatt is powered, then test another USB port and cable.",
+            "For the Growatt RJ45 RS485 cable, use Growatt Modbus RTU v0.14, address 1, and 9600 baud.",
+            "Confirm the RJ45 plug is in the inverter RS485 port, not the BMS/CAN port.",
             "If several USB devices exist, select the stable /dev/serial/by-id path in Configuration.",
         ]
     age = time.time() - float(status.get("last_success_epoch") or 0)
@@ -620,8 +827,8 @@ def classify_health(status: dict[str, object], options: dict[str, object]) -> tu
             "Resolve active inverter warnings before applying commissioning changes.",
         ]
     safety_status = "Guarded commissioning changes are enabled." if setting_catalog(options)["writable"] else "The read-only safety lock is active."
-    return "healthy", "Local Growatt USB telemetry is live and updating normally.", [
-        "The USB device is connected and responding.",
+    return "healthy", "Local Growatt telemetry is live and updating normally.", [
+        "The Growatt connection is responding.",
         "Live inverter values are updating in Home Assistant.",
         safety_status,
     ]
@@ -641,7 +848,8 @@ def dashboard_status() -> dict[str, object]:
         "configured_device": options.get("device", "auto"),
         "configured_transport": options.get("transport", "auto"),
         "configured_protocol": options.get("protocol", "auto"),
-        "baud_rate": int(options.get("baud_rate", 2400)),
+        "baud_rate": int(options.get("modbus_baud_rate", 9600)) if result.get("protocol") == MODBUS_PROTOCOL else int(options.get("baud_rate", 2400)),
+        "modbus_slave_id": int(options.get("modbus_slave_id", 1)),
         "poll_interval_seconds": int(options.get("poll_interval_seconds", 10)),
         "events": list(EVENTS), "server_time": now_iso(),
         "setting_catalog": setting_catalog(options),
@@ -796,43 +1004,60 @@ def poll_loop() -> None:
         try:
             if not device or not Path(device).exists():
                 device, protocol, last_identity = discover(options)
-                log(f"Connected to Growatt on {device} using {protocol}")
+                connection_name = "Growatt RS485 Modbus RTU" if protocol == MODBUS_PROTOCOL else protocol
+                log(f"Connected to Growatt on {device} using {connection_name}")
             profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
-            readings = run_query(
-                device, protocol, int(options.get("baud_rate", 2400)), str(profile["live"]),
-                transport=str(options.get("transport", "auto")),
-            )
-            mode_data: dict[str, dict[str, object]] = {}
-            if profile.get("mode"):
-                mode_data = run_query(
-                    device, protocol, int(options.get("baud_rate", 2400)), str(profile["mode"]), timeout=8,
+            warnings: dict[str, dict[str, object]] = {}
+            if protocol == MODBUS_PROTOCOL:
+                readings, mode, warnings = run_modbus_read(
+                    device, int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+                )
+                last_slow_poll = time.time()
+            else:
+                readings = run_query(
+                    device, protocol, int(options.get("baud_rate", 2400)), str(profile["live"]),
                     transport=str(options.get("transport", "auto")),
                 )
-            mode = str(mode_data.get("device_mode", {}).get("value") or mode_data.get("mode", {}).get("value") or "Unknown")
-            warnings: dict[str, dict[str, object]] = {}
-            if profile.get("warnings") and time.time() - last_slow_poll >= 60:
-                try:
-                    warnings = run_query(
-                        device, protocol, int(options.get("baud_rate", 2400)), str(profile["warnings"]), timeout=8,
+                mode_data: dict[str, dict[str, object]] = {}
+                if profile.get("mode"):
+                    mode_data = run_query(
+                        device, protocol, int(options.get("baud_rate", 2400)), str(profile["mode"]), timeout=8,
                         transport=str(options.get("transport", "auto")),
                     )
-                    last_slow_poll = time.time()
-                except Exception as exc:
-                    log(f"Optional warning inquiry was not accepted: {exc}", "warning")
+                mode = str(mode_data.get("device_mode", {}).get("value") or mode_data.get("mode", {}).get("value") or "Unknown")
+                if profile.get("warnings") and time.time() - last_slow_poll >= 60:
+                    try:
+                        warnings = run_query(
+                            device, protocol, int(options.get("baud_rate", 2400)), str(profile["warnings"]), timeout=8,
+                            transport=str(options.get("transport", "auto")),
+                        )
+                        last_slow_poll = time.time()
+                    except Exception as exc:
+                        log(f"Optional warning inquiry was not accepted: {exc}", "warning")
             current_settings: dict[str, dict[str, object]] = {}
-            if profile.get("settings") and time.time() - last_settings_poll >= 300:
+            if (protocol == MODBUS_PROTOCOL or profile.get("settings")) and time.time() - last_settings_poll >= 300:
                 try:
-                    current_settings = run_query(
-                        device, protocol, int(options.get("baud_rate", 2400)), str(profile["settings"]), timeout=12,
-                        transport=str(options.get("transport", "auto")),
-                    )
+                    if protocol == MODBUS_PROTOCOL:
+                        current_settings = run_modbus_settings(
+                            device, int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+                        )
+                    else:
+                        current_settings = run_query(
+                            device, protocol, int(options.get("baud_rate", 2400)), str(profile["settings"]), timeout=12,
+                            transport=str(options.get("transport", "auto")),
+                        )
                     last_settings_poll = time.time()
                 except Exception as exc:
                     log(f"Optional settings inquiry was not accepted: {exc}", "warning")
             current_firmware: dict[str, dict[str, object]] = {}
             if time.time() - last_firmware_poll >= 300:
                 try:
-                    current_firmware = read_firmware_now()
+                    if protocol == MODBUS_PROTOCOL:
+                        current_firmware = run_modbus_firmware(
+                            device, int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+                        )
+                    else:
+                        current_firmware = read_firmware_now()
                     last_firmware_poll = time.time()
                 except Exception as exc:
                     log(f"Optional firmware version inquiry was not accepted: {exc}", "warning")

@@ -30,8 +30,8 @@
   <main>
     <section class="hero">
       <div class="hero-art"><div class="sun-ring"><svg><use href="#i-sun"/></svg></div><div class="usb-line"><svg><use href="#i-usb"/></svg></div></div>
-      <div class="hero-copy"><span>GROWATT SPF · LOCAL USB · GUARDED CONTROL</span><h1>Solar intelligence,<br>direct from the inverter.</h1><p>Private local telemetry and protected commissioning for the Baiamonte energy system—with automatic USB discovery, Home Assistant sensors, and guided fault finding.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Looking for the Growatt inverter…</b></div></div>
-      <div class="hero-actions"><button id="poll"><svg><use href="#i-refresh"/></svg>Refresh now</button><button class="secondary" id="rescan"><svg><use href="#i-usb"/></svg>Rescan USB</button></div>
+      <div class="hero-copy"><span>GROWATT SPF · LOCAL RS485 / USB · GUARDED CONTROL</span><h1>Solar intelligence,<br>direct from the inverter.</h1><p>Private local telemetry and protected commissioning for the Baiamonte energy system—with automatic cable discovery, Home Assistant sensors, and guided fault finding.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Looking for the Growatt inverter…</b></div></div>
+      <div class="hero-actions"><button id="poll"><svg><use href="#i-refresh"/></svg>Refresh now</button><button class="secondary" id="rescan"><svg><use href="#i-usb"/></svg>Rescan connection</button></div>
     </section>
 
     <section class="safety" id="safety-banner"><svg><use href="#i-shield"/></svg><div><b id="safety-title">Read-only inverter access</b><span id="safety-detail">Monitoring is locked. Commissioning controls require two separate configuration changes and confirmation for every command.</span></div></section>
@@ -49,11 +49,11 @@
     </section>
 
     <section class="section diagnostics">
-      <div class="section-head"><div><p>CONNECTION HEALTH</p><h2>USB status &amp; diagnosis</h2><span>The app identifies the failure stage and shows the next checks in order.</span></div><span class="badge" id="health-badge">Checking</span></div>
+      <div class="section-head"><div><p>CONNECTION HEALTH</p><h2>RS485 / USB status &amp; diagnosis</h2><span>The app identifies the failure stage and shows the next checks in order.</span></div><span class="badge" id="health-badge">Checking</span></div>
       <div class="diagnostic-grid">
         <article class="panel health-panel"><div class="panel-title"><svg><use href="#i-usb"/></svg><div><small>CURRENT DIAGNOSIS</small><h3 id="diagnosis-title">Scanning USB</h3></div></div><p id="diagnosis">Looking for the direct Growatt connection.</p><ol id="steps"></ol></article>
         <article class="panel connection-panel"><div class="panel-title"><div><small>ACTIVE CONNECTION</small><h3>Device profile</h3></div></div><div class="detail-list">
-          <div><span>USB path</span><b id="device">Not connected</b></div><div><span>Protocol</span><b id="protocol">Auto</b></div><div><span>Baud rate</span><b id="baud">2400</b></div><div><span>Successful polls</span><b id="polls">0</b></div><div><span>Last response</span><b id="last-response">Never</b></div><div><span>Visible candidates</span><b id="candidates">0</b></div>
+          <div><span>Adapter path</span><b id="device">Not connected</b></div><div><span>Protocol</span><b id="protocol">Auto</b></div><div><span>Baud rate</span><b id="baud">Auto</b></div><div><span>Successful polls</span><b id="polls">0</b></div><div><span>Last response</span><b id="last-response">Never</b></div><div><span>Visible candidates</span><b id="candidates">0</b></div>
         </div></article>
       </div>
     </section>
@@ -98,10 +98,10 @@
     <section class="section">
       <div class="section-head"><div><p>COMMISSIONING &amp; RECOVERY</p><h2>Complete troubleshooting guide</h2><span>Work from left to right; stop as soon as live values return.</span></div></div>
       <div class="guide-grid">
-        <article class="guide"><span>01</span><h3>No USB device</h3><ul><li>Use a USB data cable, not a charge-only cable.</li><li>Connect directly to the Home Assistant host before trying a hub.</li><li>Power the inverter and reconnect both cable ends.</li><li>Confirm USB and UART access are enabled for this app.</li><li>Press Rescan USB after any cable change.</li></ul></article>
-        <article class="guide"><span>02</span><h3>Device but no reply</h3><ul><li>Stop the previous manual Growatt process or integration.</li><li>Only one program can own the serial/HID device.</li><li>Use Auto device and Auto protocol first.</li><li>Keep 2400 baud for the standard SPF connection.</li><li>Try the stable <code>/dev/serial/by-id/…</code> path if USB numbering changes.</li></ul></article>
+        <article class="guide"><span>01</span><h3>No adapter detected</h3><ul><li>Reconnect the RJ45 plug at the inverter and USB plug at the Home Assistant host.</li><li>Connect directly before trying a USB hub.</li><li>Power the inverter and reconnect both cable ends.</li><li>Confirm USB and UART access are enabled for this app.</li><li>Press Rescan connection after any cable change.</li></ul></article>
+        <article class="guide"><span>02</span><h3>Adapter but no reply</h3><ul><li>Stop the previous manual Growatt process or integration.</li><li>Only one program can own the serial adapter.</li><li>Confirm the RJ45 end is in the inverter RS485 port—not BMS or CAN.</li><li>Use Growatt Modbus RTU v0.14, address 1, and 9600 baud.</li><li>Try the stable <code>/dev/serial/by-id/…</code> path if USB numbering changes.</li></ul></article>
         <article class="guide"><span>03</span><h3>Intermittent data</h3><ul><li>Replace long or unshielded USB cables.</li><li>Avoid an unpowered USB hub.</li><li>Route USB away from inverter AC and PV wiring.</li><li>Increase the polling interval if the interface times out.</li><li>Check the event log for a repeating disconnect pattern.</li></ul></article>
-        <article class="guide"><span>04</span><h3>Wrong or missing values</h3><ul><li>Select PI30MAX only if Auto chooses the wrong profile.</li><li>Some firmware does not expose every optional field.</li><li>Compare voltage and mode with the Growatt front panel.</li><li>Battery CAN values belong to Baiamonte CAN Monitor, not this USB app.</li><li>Use the inverter USB app and CAN monitor on separate adapters.</li></ul></article>
+        <article class="guide"><span>04</span><h3>Wrong or missing values</h3><ul><li>For the photographed RJ45 cable, select Growatt Modbus RTU v0.14 if Auto chooses incorrectly.</li><li>Some firmware does not expose every optional field.</li><li>Compare voltage and mode with the Growatt front panel.</li><li>Battery CAN values belong to Baiamonte CAN Monitor, not this app.</li><li>Keep the inverter RS485 adapter and battery CAN adapter separate.</li></ul></article>
         <article class="guide"><span>05</span><h3>After a reboot</h3><ul><li>Use a by-id path to survive USB numbering changes.</li><li>Keep Start on boot and Watchdog enabled in Home Assistant.</li><li>Keep Automatic updates enabled on the app Info page.</li><li>Allow about one minute for USB discovery after host startup.</li><li>Rescan rather than reinstalling the manual configuration.</li></ul></article>
         <article class="guide"><span>06</span><h3>Safe commissioning</h3><ul><li>Keep read-only mode enabled during initial migration.</li><li>Record current values before enabling changes.</li><li>Change only one setting at a time.</li><li>Confirm the read-back and Growatt display after each command.</li><li>Return the app to read-only mode when commissioning is complete.</li></ul></article>
       </div>

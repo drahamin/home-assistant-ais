@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- Adds native Growatt Off-Grid Modbus RTU v0.14 support for the SPF 5000 ES RJ45 RS485-to-USB cable.
+- Automatically tries address 1 at Growatt's documented 9600-baud RS485 speed before direct-USB PI protocols.
+- Decodes PV, grid, load, battery, temperature, mode, fault, warning, and inverter energy registers.
+- Reads the Modbus inverter configuration, communication version/address, firmware versions, and serial number.
+- Adds RS485-specific status, configuration choices, and troubleshooting while retaining direct USB compatibility.
+- Keeps Modbus writes safety-locked until the installed inverter revision and read-back behavior are verified on hardware.
+
 ## 1.2.3
 
 - Exclude u-blox GPS and CANable interfaces from Growatt automatic discovery, including their generic `ttyACM` aliases.

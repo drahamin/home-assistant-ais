@@ -56,6 +56,75 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertIn("PI30M044", discovered)
         self.assertIn("PI41", discovered)
 
+    def test_growatt_modbus_v014_decoder(self):
+        registers = [0] * 91
+        registers[0] = 12
+        registers[1] = 1825
+        registers[2] = 1760
+        registers[4] = 12345
+        registers[6] = 2345
+        registers[7] = 42
+        registers[8] = 11
+        registers[10] = 9876
+        registers[12] = 11000
+        registers[17] = 5234
+        registers[18] = 76
+        registers[19] = 3850
+        registers[20] = 2301
+        registers[21] = 6001
+        registers[22] = 2298
+        registers[23] = 5999
+        registers[25] = 431
+        registers[26] = 398
+        registers[27] = 197
+        registers[41] = (1 << 2) | (1 << 14)
+        registers[49] = 15
+        registers[53] = 5
+        registers[78] = 5234
+        registers[83] = 127
+        readings, mode, warnings = growatt.decode_modbus_input(registers)
+        self.assertEqual(mode, "PV charge and discharge")
+        self.assertEqual(readings["pv_input_power"]["value"], 1469.0)
+        self.assertEqual(readings["battery_voltage"]["value"], 52.34)
+        self.assertEqual(readings["ac_output_active_power"]["value"], 987.6)
+        self.assertEqual(readings["battery_discharge_current"]["value"], 10.0)
+        self.assertTrue(warnings["battery_voltage_low"]["value"])
+        self.assertTrue(warnings["bms_communication_error"]["value"])
+
+    def test_growatt_modbus_holding_decoder(self):
+        registers = [0] * 114
+        registers[1] = 2
+        registers[2] = 1
+        registers[8] = 1
+        registers[18] = 2
+        registers[19] = 1
+        registers[30] = 1
+        registers[34] = 80
+        registers[35] = 564
+        registers[36] = 540
+        registers[37] = 480
+        registers[38] = 30
+        registers[39] = 3
+        registers[73] = 207
+        registers[82] = 440
+        registers[95] = 520
+        settings = growatt.decode_modbus_holding(registers)
+        self.assertEqual(settings["output_source_priority"]["value"], "Utility first")
+        self.assertEqual(settings["battery_type"]["value"], "Lithium")
+        self.assertEqual(settings["battery_bulk_charge_voltage"]["value"], 56.4)
+        self.assertEqual(settings["modbus_version"]["value"], 2.07)
+
+    @patch.object(growatt.Path, "exists", return_value=True)
+    @patch.object(growatt, "candidate_devices", return_value=["/dev/serial/by-id/usb-Silicon_Labs_CP2102N"])
+    @patch.object(growatt, "run_modbus_read")
+    def test_auto_discovery_prefers_modbus_for_cp2102_serial_adapter(self, modbus_read, _candidates, _exists):
+        modbus_read.return_value = ({"battery_voltage": {"value": 52.4, "unit": "V"}}, "PV charge", {})
+        device, protocol, identity = growatt.discover({"device": "auto", "protocol": "auto", "transport": "auto"})
+        self.assertEqual(device, "/dev/serial/by-id/usb-Silicon_Labs_CP2102N")
+        self.assertEqual(protocol, growatt.MODBUS_PROTOCOL)
+        self.assertEqual(identity["inverter_address"]["value"], 1)
+        modbus_read.assert_called_once_with(device, 9600, 1)
+
     @patch.object(growatt.Path, "exists", return_value=True)
     @patch.object(growatt, "candidate_devices", return_value=["/dev/ttyUSB0"])
     @patch.object(growatt, "run_query")

@@ -6,7 +6,8 @@ let refreshing=false,settingCatalog={},catalogSignature='',firmwareTools={};
 const title=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,char=>char.toUpperCase());
 function reading(data,key,fallback='—'){const item=(data.readings||{})[key];if(!item||item.value===null||item.value===undefined)return fallback;return `${item.value}${item.unit?` ${item.unit}`:''}`}
 function age(iso){if(!iso)return'Never';const sec=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));if(sec<5)return'Just now';if(sec<60)return`${sec}s ago`;if(sec<3600)return`${Math.floor(sec/60)}m ago`;return new Date(iso).toLocaleString()}
-function healthLabel(health){return({healthy:'Online',usb_missing:'USB missing',no_response:'No response',stale:'Data stale',warning:'Inverter warning',searching:'Searching'})[health]||'Checking'}
+function healthLabel(health){return({healthy:'Online',usb_missing:'Adapter missing',no_response:'No response',stale:'Data stale',warning:'Inverter warning',searching:'Searching'})[health]||'Checking'}
+function protocolLabel(protocol){return protocol==='GROWATT_MODBUS_V014'?'Growatt Modbus RTU v0.14':protocol}
 function render(data){
   const healthy=data.health==='healthy', warning=data.health==='warning', offline=['usb_missing','no_response','stale'].includes(data.health);
   ['#top-light','#hero-light'].forEach(sel=>{$(sel).className=healthy?'healthy':offline?'offline':''});
@@ -18,7 +19,7 @@ function render(data){
   $('#battery').textContent=reading(data,'battery_capacity','— %');$('#battery-detail').textContent=`${reading(data,'battery_voltage','— V')} · charge ${reading(data,'battery_charging_current','— A')}`;
   const available=metricOrder.filter(key=>(data.readings||{})[key]);$('#metrics').innerHTML=available.map(key=>`<article class="metric"><small>${esc(labels[key]||key)}</small><b>${esc(reading(data,key))}</b></article>`).join('')||'<div class="empty">Live electrical measurements will appear after the inverter answers.</div>';
   $('#diagnosis-title').textContent=healthLabel(data.health);$('#diagnosis').textContent=data.diagnosis;$('#steps').innerHTML=(data.troubleshooting||[]).map(step=>`<li>${esc(step)}</li>`).join('');
-  $('#device').textContent=data.device||data.configured_device||'Auto';$('#protocol').textContent=data.protocol||data.configured_protocol||'Auto';$('#baud').textContent=data.baud_rate;$('#polls').textContent=data.successful_polls||0;$('#last-response').textContent=age(data.last_success_at);$('#candidates').textContent=(data.detected_devices||[]).length;
+  $('#device').textContent=data.device||data.configured_device||'Auto';$('#protocol').textContent=protocolLabel(data.protocol||data.configured_protocol||'Auto');$('#baud').textContent=data.baud_rate;$('#polls').textContent=data.successful_polls||0;$('#last-response').textContent=age(data.last_success_at);$('#candidates').textContent=(data.detected_devices||[]).length;
   $('#failure-count').textContent=`${data.consecutive_failures||0} consecutive failures`;$('#server-time').textContent=`App time ${new Date(data.server_time).toLocaleTimeString()} · local and private`;
   const events=data.events||[];$('#events').innerHTML=events.length?events.slice(0,30).map(item=>`<div class="event ${esc(item.level)}"><time>${new Date(item.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time><strong>${esc(item.level)}</strong><span>${esc(item.message)}</span></div>`).join(''):'<div class="empty">No connection events yet.</div>';
   renderSettings(data);

@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.2.3"
+version: "1.3.0"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -24,6 +24,8 @@ options:
   transport: "auto"
   protocol: "auto"
   baud_rate: 2400
+  modbus_baud_rate: 9600
+  modbus_slave_id: 1
   poll_interval_seconds: 10
   stale_after_seconds: 45
   publish_to_home_assistant: true
@@ -33,9 +35,11 @@ options:
   firmware_max_package_mb: 32
 schema:
   device: "str"
-  transport: "list(auto|serial|usb)"
-  protocol: "list(auto|PI16|PI17|PI17INFINI|PI17M058|PI18|PI18LVX|PI18SV|PI30|PI30M044|PI30M045|PI30MAX|PI30MST|PI30REVO|PI41)"
+  transport: "list(auto|serial|usb|modbus_rtu)"
+  protocol: "list(auto|GROWATT_MODBUS_V014|PI16|PI17|PI17INFINI|PI17M058|PI18|PI18LVX|PI18SV|PI30|PI30M044|PI30M045|PI30MAX|PI30MST|PI30REVO|PI41)"
   baud_rate: "list(2400|9600|19200|115200)"
+  modbus_baud_rate: "list(9600|19200)"
+  modbus_slave_id: "int"
   poll_interval_seconds: "int"
   stale_after_seconds: "int"
   publish_to_home_assistant: "bool"
@@ -48,14 +52,20 @@ configuration:
     name: Growatt USB device
     description: Use auto to find the inverter, or enter a stable path such as /dev/serial/by-id/... or /dev/ttyUSB0.
   transport:
-    name: USB transport
-    description: Auto selects serial for tty/by-id paths and USB HID for hidraw paths. Override only for unusual adapters.
+    name: Connection transport
+    description: Auto tries Growatt RS485 Modbus first on serial adapters, then direct USB protocols. Choose Modbus RTU for the RJ45-to-USB Growatt cable.
   protocol:
     name: Inverter protocol
-    description: Auto tests the common Growatt SPF protocols without changing inverter settings.
+    description: Auto tests Growatt Off-Grid Modbus RTU v0.14 and the common SPF direct-USB protocols without changing inverter settings.
   baud_rate:
     name: Serial speed
     description: Growatt SPF direct USB normally uses 2400 baud. Change this only when the cable or inverter requires it.
+  modbus_baud_rate:
+    name: RS485 speed
+    description: The SPF 5000 ES RS485 protocol uses 9600 baud. Keep this value for the Growatt RJ45-to-USB cable.
+  modbus_slave_id:
+    name: RS485 inverter address
+    description: Growatt uses Modbus address 1 by default. Valid addresses are 1 through 254.
   poll_interval_seconds:
     name: Update interval
     description: Seconds between live inverter readings. Ten seconds is recommended.

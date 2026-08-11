@@ -1,12 +1,12 @@
 # Baiamonte Growatt USB
 
-Baiamonte Growatt USB replaces a manual Home Assistant USB setup for a Growatt SPF inverter with one managed Home Assistant app. It automatically discovers the local inverter connection, publishes Home Assistant entities, reads the inverter configuration, and provides a guarded commissioning editor plus branded troubleshooting dashboard through ingress.
+Baiamonte Growatt USB replaces a manual Home Assistant connection for a Growatt SPF inverter with one managed Home Assistant app. It automatically discovers the local inverter connection, publishes Home Assistant entities, reads the inverter configuration, and provides a guarded commissioning editor plus branded troubleshooting dashboard through ingress.
 
-The first release is designed for the installed Growatt SPF 5000 ES and common PI30-family USB interfaces. It supports serial paths such as `/dev/ttyUSB0` and `/dev/serial/by-id/...`, plus HID paths exposed to the app by the Home Assistant host.
+It is designed for the installed Growatt SPF 5000 ES. It natively supports the Growatt RJ45 RS485-to-USB cable using Off-Grid Modbus RTU v0.14 at 9600 baud/address 1, as well as common PI30-family direct USB interfaces.
 
 ## Features
 
-- Automatic serial/HID transport and PI protocol discovery
+- Automatic RS485 Modbus RTU, serial, HID, and PI protocol discovery
 - Explicit read-only safety lock enabled by default
 - Guarded, whitelisted commissioning changes with confirmation and read-back
 - Firmware maintenance with CPU version inquiry, settings backup, and SHA-256/model validation of official packages
