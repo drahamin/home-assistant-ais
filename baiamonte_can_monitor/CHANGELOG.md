@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- Added a CANable V2.0 Pro device-light panel to the Overview.
+- Mirrors red PWR and blue STATE when the adapter is connected.
+- Pulses green WORK while valid CAN frames are arriving.
+- Clearly labels the display as a software inference rather than direct LED telemetry.
+
 ## 0.2.0
 
 - Added a Baiamonte-branded Home Assistant ingress dashboard.

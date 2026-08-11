@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="device-lights.css">
 </head>
 <body>
   <svg class="sprite" aria-hidden="true"><defs>
@@ -63,6 +64,17 @@
             <article class="metric-card gold"><span><svg><use href="#i-battery"/></svg></span><div><small>STATE OF CHARGE</small><h3 id="soc">—</h3><p id="battery-state">Waiting for frame 0x313</p></div></article>
             <article class="metric-card brown"><span><svg><use href="#i-pulse"/></svg></span><div><small>BATTERY POWER</small><h3 id="power">—</h3><p><span id="voltage">—</span> · <span id="current">—</span></p></div></article>
             <article class="metric-card green"><span><svg><use href="#i-shield"/></svg></span><div><small>BATTERY SAFETY</small><h3 id="safety">Unknown</h3><p id="safety-detail">Waiting for protection flags</p></div></article>
+            <article class="device-lights-card" aria-label="CANable indicator light software mirror">
+              <div class="device-lights-copy"><small>CANABLE V2.0 PRO</small><h3>Device lights</h3><p id="device-lights-status">Checking adapter indicators</p></div>
+              <div class="canable-face" id="canable-face">
+                <span class="usb-cap" aria-hidden="true"></span>
+                <div class="led-row"><i class="device-led pwr" id="led-pwr" aria-hidden="true"></i><b>PWR</b><em id="led-pwr-state">Off</em></div>
+                <div class="led-row"><i class="device-led state" id="led-state" aria-hidden="true"></i><b>STATE</b><em id="led-state-state">Idle</em></div>
+                <div class="led-row"><i class="device-led work" id="led-work" aria-hidden="true"></i><b>WORK</b><em id="led-work-state">Waiting</em></div>
+                <span class="terminal-block" aria-hidden="true"><i></i><i></i><i></i></span>
+              </div>
+              <span class="mirror-note">Software mirror · inferred from adapter and CAN traffic status</span>
+            </article>
           </div>
         </div>
       </section>
