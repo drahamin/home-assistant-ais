@@ -20,12 +20,13 @@ import secrets
 import glob
 import select
 import termios
+import fcntl
 from datetime import datetime, timedelta
 from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.14"
+VERSION = "2.7.16"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -125,6 +126,9 @@ try:
         SDR_BANDWIDTH = '192K'
     MARINE_VHF_ENABLED = str(config.get('marine_vhf_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
     MARINE_VHF_DEVICE = str(config.get('marine_vhf_device', '1')).strip() or '1'
+    MARINE_VHF_USB_RESET_ENABLED = str(config.get('marine_vhf_usb_reset_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
+    MARINE_VHF_AUTO_USB_RESET = str(config.get('marine_vhf_auto_usb_reset', False)).lower() in ['true', '1', 't', 'y', 'yes']
+    MARINE_VHF_USB_RESET_ATTEMPTS = max(0, min(5, get_safe_int('marine_vhf_usb_reset_attempts', 2)))
     try:
         MARINE_VHF_GAIN = max(0.0, min(50.0, float(config.get('marine_vhf_gain', 28))))
     except (TypeError, ValueError):
@@ -308,6 +312,7 @@ decoder_state = {
     "state": "Waiting" if RECEIVER_MODE == "sdr" else "Not enabled",
     "version": None,
     "device": SDR_DEVICE,
+    "configured_device": SDR_DEVICE,
     "gain": SDR_GAIN,
     "ppm": SDR_PPM,
     "rtl_agc": SDR_RTL_AGC,
@@ -322,19 +327,112 @@ marine_vhf_state = {
     "state": "Waiting" if MARINE_VHF_ENABLED else "Disabled",
     "ready": False,
     "device": MARINE_VHF_DEVICE,
+    "configured_device": MARINE_VHF_DEVICE,
     "gain": MARINE_VHF_GAIN,
     "ppm": MARINE_VHF_PPM,
     "squelch": MARINE_VHF_SQUELCH,
     "channels": MARINE_VHF_CHANNELS,
     "restarts": 0,
+    "usb_reset_enabled": MARINE_VHF_USB_RESET_ENABLED,
+    "auto_usb_reset": MARINE_VHF_AUTO_USB_RESET,
+    "usb_reset_attempts": MARINE_VHF_USB_RESET_ATTEMPTS,
+    "usb_resets": 0,
+    "last_usb_reset": None,
+    "usb_reset_error": None,
     "last_log": None,
     "error": None,
 }
 MARINE_VHF_MOUNT = "baiamonte-marine.mp3"
 MARINE_VHF_PORT = 8000
 MARINE_VHF_PASSWORD = secrets.token_urlsafe(24)
+marine_vhf_recovery_requested = threading.Event()
 GPS_LOCATION_FILE = Path(os.environ.get("BAIAMONTE_GPS_JSON", "/run/baiamonte/gps.json"))
 flightaware_weather_cache = {"payload": None, "expires": 0.0, "error": None}
+rtl_inventory_cache = {"expires": 0.0, "devices": []}
+RTL_USB_IDS = {("0bda", "2832"), ("0bda", "2838")}
+USBDEVFS_RESET = 21780
+
+
+def rtl_sdr_inventory(refresh=False):
+    """List RTL-SDRs in libusb order, including a stable physical USB-port selector."""
+    now = time.monotonic()
+    if not refresh and rtl_inventory_cache["expires"] > now:
+        return [dict(item) for item in rtl_inventory_cache["devices"]]
+    devices = []
+    for entry in Path("/sys/bus/usb/devices").glob("*"):
+        try:
+            vendor = (entry / "idVendor").read_text(encoding="ascii").strip().lower()
+            product = (entry / "idProduct").read_text(encoding="ascii").strip().lower()
+            if (vendor, product) not in RTL_USB_IDS:
+                continue
+            bus = int((entry / "busnum").read_text(encoding="ascii").strip())
+            address = int((entry / "devnum").read_text(encoding="ascii").strip())
+            serial_file = entry / "serial"
+            serial = serial_file.read_text(encoding="utf-8").strip() if serial_file.exists() else ""
+            devices.append({
+                "port": entry.name,
+                "serial": serial,
+                "bus": bus,
+                "address": address,
+                "device_node": f"/dev/bus/usb/{bus:03d}/{address:03d}",
+            })
+        except (OSError, ValueError):
+            continue
+    devices.sort(key=lambda item: (item["bus"], item["address"], item["port"]))
+    for index, device in enumerate(devices):
+        device["index"] = index
+        device["selector"] = f"port:{device['port']}"
+    rtl_inventory_cache.update({"expires": now + 20.0, "devices": devices})
+    return [dict(item) for item in devices]
+
+
+def resolve_rtl_sdr_selector(selector, role="ais", inventory=None, excluded_index=None):
+    """Resolve auto, index, unique serial, or stable port:X selectors to an RTL index."""
+    configured = str(selector or "auto").strip()
+    devices = rtl_sdr_inventory() if inventory is None else inventory
+    if not devices:
+        if configured.lower() == "auto":
+            return "1" if role == "marine" and excluded_index == "0" else "0"
+        if configured.lower().startswith("serial:"):
+            return configured.split(":", 1)[1]
+        if configured.lower().startswith("port:"):
+            raise ValueError(f"RTL-SDR physical port {configured!r} is unavailable")
+        return str(int(configured)) if configured.isdigit() else configured
+    if configured.lower() == "auto":
+        for device in devices:
+            if str(device["index"]) != str(excluded_index):
+                return str(device["index"])
+        raise ValueError(f"No separate RTL-SDR is available for {role}")
+    if configured.isdigit():
+        index = int(configured)
+        if index >= len(devices):
+            raise ValueError(f"RTL-SDR index {index} is not attached")
+        return str(index)
+    if configured.lower().startswith("port:"):
+        port = configured.split(":", 1)[1]
+        matches = [item for item in devices if item["port"] == port]
+    else:
+        serial = configured.split(":", 1)[1] if configured.lower().startswith("serial:") else configured
+        matches = [item for item in devices if item["serial"] == serial]
+    if len(matches) == 1:
+        return str(matches[0]["index"])
+    if len(matches) > 1:
+        raise ValueError(f"RTL-SDR selector {configured!r} is duplicated; use port:<USB-port> or different serials")
+    raise ValueError(f"RTL-SDR selector {configured!r} was not found")
+
+
+def resolved_radio_devices(refresh=False):
+    devices = rtl_sdr_inventory(refresh=refresh)
+    ais = resolve_rtl_sdr_selector(SDR_DEVICE, "AIS", devices)
+    marine = resolve_rtl_sdr_selector(MARINE_VHF_DEVICE, "marine VHF", devices, ais)
+    return ais, marine, devices
+
+
+def public_rtl_sdr_inventory():
+    return [
+        {key: value for key, value in device.items() if key in {"index", "port", "serial", "selector"}}
+        for device in rtl_sdr_inventory()
+    ]
 
 
 def current_location():
@@ -516,6 +614,7 @@ def marine_vhf_snapshot():
     snapshot = dict(marine_vhf_state)
     snapshot["ready"] = marine_stream_ready()
     snapshot["stream_url"] = "api/marine-radio" if snapshot["ready"] else None
+    snapshot["recovery_allowed"] = bool(MARINE_VHF_ENABLED and MARINE_VHF_USB_RESET_ENABLED)
     if snapshot["ready"]:
         snapshot["state"] = "Streaming"
     return snapshot
@@ -605,6 +704,8 @@ def dashboard_snapshot(area_id=None, compact=False):
             "receiver_mode": RECEIVER_MODE,
             "receiver_port": RECEIVER_PORT,
             "receiver_channel": RECEIVER_CHANNEL,
+            "sdr_device": SDR_DEVICE,
+            "marine_vhf_device": MARINE_VHF_DEVICE,
             "sharing_enabled": AISHUB_SHARING_ENABLED,
             "sharing_configured": bool(AISHUB_SHARING_ENABLED and AISHUB_FEED_HOST and AISHUB_FEED_PORT),
             "weather_overlay_dashboard": WEATHER_OVERLAY_DASHBOARD,
@@ -648,12 +749,27 @@ def dashboard_snapshot(area_id=None, compact=False):
             "area_feeds": {area_id: dict(area_state) for area_id, area_state in aishub_area_states.items()},
             "decoder": dict(decoder_state),
             "marine_vhf": marine_vhf_snapshot(),
+            "rtl_sdr_devices": public_rtl_sdr_inventory(),
             "receiver_log": list(receiver_logs),
             "flightaware_weather": airport_weather,
         })
         return snapshot
 
 class DashboardHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        request_path = self.path.split("?", 1)[0].rstrip("/")
+        if request_path == "/api/marine-radio/recover":
+            accepted, message = request_marine_vhf_recovery()
+            payload = json.dumps({"accepted": accepted, "message": message}, separators=(",", ":")).encode("utf-8")
+            self.send_response(202 if accepted else 409)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        self.send_error(404)
+
     def do_GET(self):
         request_path = self.path.split("?", 1)[0]
         if request_path.rstrip("/") == "/api/marine-radio":
@@ -1427,11 +1543,13 @@ def build_aishub_url(area_id="baiamonte"):
 
 def build_ais_catcher_command(binary="AIS-catcher"):
     """Build a validated AIS-catcher command for the attached RTL-SDR."""
+    resolved_device = resolve_rtl_sdr_selector(SDR_DEVICE, "AIS")
+    decoder_state["device"] = resolved_device
     command = [binary]
-    if SDR_DEVICE.isdigit():
-        command.append(f"-d:{int(SDR_DEVICE)}")
+    if resolved_device.isdigit():
+        command.append(f"-d:{int(resolved_device)}")
     else:
-        command.extend(["-d", SDR_DEVICE])
+        command.extend(["-d", resolved_device])
     command.extend([
         "-gr", "RTLAGC", "on" if SDR_RTL_AGC else "off",
         "TUNER", SDR_GAIN,
@@ -1825,14 +1943,15 @@ def ais_catcher_worker():
     global ais_catcher_process
     receiver_ready.wait(timeout=5)
     while not shutdown_in_progress:
-        command = build_ais_catcher_command()
-        decoder_state.update({"state": "Starting", "error": None})
-        log(
-            "📻 Starting AIS-catcher for RTL-SDR device "
-            f"{SDR_DEVICE} · gain {SDR_GAIN} · PPM {SDR_PPM} · bandwidth {SDR_BANDWIDTH} · "
-            f"RTL AGC {'on' if SDR_RTL_AGC else 'off'} · bias tee {'on' if SDR_BIAS_TEE else 'off'}"
-        )
         try:
+            command = build_ais_catcher_command()
+            decoder_state.update({"state": "Starting", "error": None})
+            log(
+                "📻 Starting AIS-catcher for RTL-SDR device "
+                f"{decoder_state['device']} (configured {SDR_DEVICE}) · gain {SDR_GAIN} · PPM {SDR_PPM} · "
+                f"bandwidth {SDR_BANDWIDTH} · RTL AGC {'on' if SDR_RTL_AGC else 'off'} · "
+                f"bias tee {'on' if SDR_BIAS_TEE else 'off'}"
+            )
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -1860,7 +1979,7 @@ def ais_catcher_worker():
             decoder_state["restarts"] += 1
             feed_state.update({"state": "Decoder restarting", "error": decoder_state["error"]})
             log(f"⚠️ {decoder_state['error']}; retrying in 5 seconds")
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             decoder_state.update({"state": "Start failed", "error": str(exc)})
             decoder_state["restarts"] += 1
             feed_state.update({"state": "Decoder unavailable", "error": str(exc)})
@@ -1889,11 +2008,11 @@ def config_string(value):
 def build_marine_vhf_config(source_password):
     frequency_block = ", ".join(item["frequency"] for item in MARINE_VHF_CHANNELS)
     label_block = ", ".join(config_string(item["label"]) for item in MARINE_VHF_CHANNELS)
-    selector = (
-        f"index = {int(MARINE_VHF_DEVICE)};"
-        if MARINE_VHF_DEVICE.isdigit()
-        else f"serial = {config_string(MARINE_VHF_DEVICE)};"
-    )
+    ais_device, resolved_device, _ = resolved_radio_devices()
+    if resolved_device == ais_device:
+        raise ValueError("AIS and marine VHF resolved to the same RTL-SDR")
+    marine_vhf_state["device"] = resolved_device
+    selector = f"index = {int(resolved_device)};" if resolved_device.isdigit() else f"serial = {config_string(resolved_device)};"
     return f'''# Generated by Baiamonte AIS. Configure this in Home Assistant.
 devices: ({{
   type = "rtlsdr";
@@ -1962,34 +2081,88 @@ def terminate_process(process):
 
 
 def marine_vhf_device_conflict():
-    return MARINE_VHF_ENABLED and RECEIVER_MODE == "sdr" and MARINE_VHF_DEVICE == SDR_DEVICE
+    if not (MARINE_VHF_ENABLED and RECEIVER_MODE == "sdr"):
+        return False
+    try:
+        ais_device, marine_device, _ = resolved_radio_devices()
+        return ais_device == marine_device
+    except ValueError:
+        return MARINE_VHF_DEVICE == SDR_DEVICE
+
+
+def reset_marine_vhf_usb():
+    """Reset only the resolved marine RTL-SDR through Linux USBDEVFS_RESET."""
+    if not MARINE_VHF_USB_RESET_ENABLED:
+        raise PermissionError("Marine VHF USB reset is disabled in app configuration")
+    _, resolved_device, devices = resolved_radio_devices(refresh=True)
+    matches = [item for item in devices if str(item["index"]) == resolved_device]
+    if len(matches) != 1:
+        raise OSError("The marine VHF RTL-SDR USB device could not be identified safely")
+    device = matches[0]
+    descriptor = f"RTL-SDR {resolved_device} on USB port {device['port']}"
+    fd = os.open(device["device_node"], os.O_WRONLY)
+    try:
+        fcntl.ioctl(fd, USBDEVFS_RESET, 0)
+    finally:
+        os.close(fd)
+    marine_vhf_state.update({
+        "usb_resets": marine_vhf_state["usb_resets"] + 1,
+        "last_usb_reset": datetime.now().isoformat(timespec="seconds"),
+        "usb_reset_error": None,
+    })
+    rtl_inventory_cache["expires"] = 0.0
+    log(f"🔌 Reset {descriptor}; AIS RTL-SDR {decoder_state.get('device')} was not touched")
+    return descriptor
+
+
+def request_marine_vhf_recovery():
+    if not MARINE_VHF_ENABLED:
+        return False, "Marine VHF is disabled"
+    if not MARINE_VHF_USB_RESET_ENABLED:
+        return False, "Enable Marine VHF USB reset in the app configuration first"
+    if marine_vhf_recovery_requested.is_set():
+        return False, "Marine VHF recovery is already queued"
+    marine_vhf_recovery_requested.set()
+    marine_vhf_state.update({"state": "Recovery requested", "ready": False, "error": None})
+    with marine_vhf_lock:
+        terminate_process(marine_vhf_process)
+    log("🔌 Manual marine VHF recovery requested; stopping the scanner before resetting its USB device")
+    return True, "Marine VHF recovery queued"
 
 
 def marine_vhf_worker():
     """Supervise the second Nooelec, NFM scanner, and private audio server."""
     global marine_vhf_process, marine_icecast_process
-    if marine_vhf_device_conflict():
-        message = "AIS and marine VHF cannot use the same RTL-SDR device; assign the second Nooelec to marine VHF"
-        marine_vhf_state.update({"state": "Device conflict", "ready": False, "error": message})
-        log(f"🔴 {message}")
-        return
     runtime = Path("/run/baiamonte")
     runtime.mkdir(parents=True, exist_ok=True)
     radio_config = runtime / "rtl-marine-vhf.conf"
     icecast_config = runtime / "marine-icecast.xml"
-    radio_config.write_text(build_marine_vhf_config(MARINE_VHF_PASSWORD), encoding="utf-8")
     icecast_config.write_text(build_marine_icecast_config(MARINE_VHF_PASSWORD), encoding="utf-8")
-    os.chmod(radio_config, 0o600)
     os.chmod(icecast_config, 0o600)
+    automatic_resets = 0
 
     while not shutdown_in_progress:
-        marine_vhf_state.update({"state": "Starting", "ready": False, "error": None})
-        labels = ", ".join(f"{item['label']} {item['frequency']} MHz" for item in MARINE_VHF_CHANNELS)
-        log(
-            f"📻 Starting marine VHF on RTL-SDR {MARINE_VHF_DEVICE} · gain {MARINE_VHF_GAIN:g} · "
-            f"PPM {MARINE_VHF_PPM} · squelch {MARINE_VHF_SQUELCH} · {labels}"
-        )
+        if marine_vhf_recovery_requested.is_set():
+            marine_vhf_recovery_requested.clear()
+            try:
+                marine_vhf_state["state"] = "Resetting USB"
+                reset_marine_vhf_usb()
+                time.sleep(2)
+            except (OSError, ValueError, PermissionError) as exc:
+                marine_vhf_state.update({"usb_reset_error": str(exc), "error": str(exc)})
+                log(f"⚠️ Manual marine VHF USB reset failed: {exc}")
         try:
+            if marine_vhf_device_conflict():
+                raise ValueError("AIS and marine VHF cannot use the same RTL-SDR; use device 0/1, unique serials, or port:<USB-port>")
+            radio_config.write_text(build_marine_vhf_config(MARINE_VHF_PASSWORD), encoding="utf-8")
+            os.chmod(radio_config, 0o600)
+            marine_vhf_state.update({"state": "Starting", "ready": False, "error": None})
+            labels = ", ".join(f"{item['label']} {item['frequency']} MHz" for item in MARINE_VHF_CHANNELS)
+            log(
+                f"📻 Starting marine VHF on RTL-SDR {marine_vhf_state['device']} "
+                f"(configured {MARINE_VHF_DEVICE}) · gain {MARINE_VHF_GAIN:g} · "
+                f"PPM {MARINE_VHF_PPM} · squelch {MARINE_VHF_SQUELCH} · {labels}"
+            )
             icecast = subprocess.Popen(
                 ["icecast2", "-c", str(icecast_config)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -2021,7 +2194,7 @@ def marine_vhf_worker():
             if not shutdown_in_progress:
                 failure = radio.returncode if radio.poll() is not None else icecast.returncode
                 raise OSError(f"marine radio service exited with code {failure}")
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             if not shutdown_in_progress:
                 marine_vhf_state.update({"state": "Restarting", "ready": False, "error": str(exc)})
                 marine_vhf_state["restarts"] += 1
@@ -2033,6 +2206,31 @@ def marine_vhf_worker():
                 marine_icecast_process = None
             terminate_process(radio)
             terminate_process(icecast)
+        manual_reset = marine_vhf_recovery_requested.is_set()
+        if manual_reset:
+            marine_vhf_recovery_requested.clear()
+            try:
+                marine_vhf_state["state"] = "Resetting USB"
+                reset_marine_vhf_usb()
+                time.sleep(2)
+            except (OSError, ValueError, PermissionError) as exc:
+                marine_vhf_state.update({"usb_reset_error": str(exc), "error": str(exc)})
+                log(f"⚠️ Manual marine VHF USB reset failed: {exc}")
+        elif (
+            not shutdown_in_progress
+            and MARINE_VHF_USB_RESET_ENABLED
+            and MARINE_VHF_AUTO_USB_RESET
+            and automatic_resets < MARINE_VHF_USB_RESET_ATTEMPTS
+        ):
+            try:
+                marine_vhf_state["state"] = "Resetting USB"
+                reset_marine_vhf_usb()
+                automatic_resets += 1
+                time.sleep(2)
+            except (OSError, ValueError, PermissionError) as exc:
+                marine_vhf_state.update({"usb_reset_error": str(exc), "error": str(exc)})
+                automatic_resets += 1
+                log(f"⚠️ Automatic marine VHF USB reset failed: {exc}")
         for _ in range(10):
             if shutdown_in_progress:
                 break

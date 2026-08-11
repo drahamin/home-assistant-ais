@@ -14,10 +14,11 @@
   <link rel="manifest" href="manifest.webmanifest?v=277">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="decoder.css?v=240">
-  <link rel="stylesheet" href="marine-radio.css?v=250">
+  <link rel="stylesheet" href="marine-radio.css?v=2716">
   <link rel="stylesheet" href="overview-map.css?v=275">
   <link rel="stylesheet" href="traffic-cards.css?v=232">
   <link rel="stylesheet" href="theme.css?v=260">
+  <style>.marine-recovery{display:flex;align-items:center;gap:12px;margin-top:12px}.marine-recovery button{border:1px solid #d4af37;border-radius:9px;background:#d4af37;color:#15110b;padding:9px 12px;font-size:10px;font-weight:900;cursor:pointer}.marine-recovery button:disabled{opacity:.42;cursor:not-allowed}.marine-recovery span{color:#bdb2a5;font-size:9px;line-height:1.4}</style>
 </head>
 <body>
   <svg class="sprite" aria-hidden="true"><defs>
@@ -93,6 +94,7 @@
             <div class="marine-player-emblem"><img src="brand-icon.png" alt=""><span><small>SECOND RTL-SDR</small><b id="marine-player-device">Nooelec device 1</b></span></div>
             <audio id="marine-player" controls preload="none"></audio>
             <p class="marine-player-help" id="marine-player-help">Enable Marine VHF after connecting the second Nooelec, then press Play to listen.</p>
+            <div class="marine-recovery"><button id="marine-recover" type="button" disabled>Recover VHF radio</button><span id="marine-recovery-detail">USB recovery is disabled in configuration.</span></div>
           </article>
           <article class="panel marine-profile-card"><p>RADIO PROFILE</p><h3>Marine NFM scanner</h3><div class="marine-profile"><div><small>DEVICE</small><b id="marine-device">—</b></div><div><small>GAIN</small><b id="marine-gain">—</b></div><div><small>PPM</small><b id="marine-ppm">—</b></div><div><small>SQUELCH</small><b id="marine-squelch">—</b></div></div><div class="marine-warning"><b>Receive only</b><span>Never transmit, rebroadcast, or rely on this stream for navigation, distress response, or safety-of-life decisions.</span></div></article>
         </div>
@@ -115,6 +117,6 @@
     </main>
   </div>
   <script src="maritime-flags.js?v=240"></script>
-  <script src="app.js?v=2710"></script>
+  <script src="app.js?v=2716"></script>
 </body>
 </html>

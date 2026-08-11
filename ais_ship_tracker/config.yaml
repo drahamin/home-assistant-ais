@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.15"
+version: "2.7.16"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -63,6 +63,9 @@ options:
   sdr_bandwidth: "192K"
   marine_vhf_enabled: false
   marine_vhf_device: "1"
+  marine_vhf_usb_reset_enabled: false
+  marine_vhf_auto_usb_reset: false
+  marine_vhf_usb_reset_attempts: 2
   marine_vhf_frequencies: "156.800,156.450,156.600,156.700,156.625"
   marine_vhf_labels: "Channel 16 Distress,Channel 9 Calling,Channel 12 Port Operations,Channel 14 Port Operations,Channel 72 Ship-to-Ship"
   marine_vhf_gain: 28
@@ -124,6 +127,9 @@ schema:
   sdr_bandwidth: "list(OFF|192K|288K)?"
   marine_vhf_enabled: "bool?"
   marine_vhf_device: "str?"
+  marine_vhf_usb_reset_enabled: "bool?"
+  marine_vhf_auto_usb_reset: "bool?"
+  marine_vhf_usb_reset_attempts: "int?"
   marine_vhf_frequencies: "str?"
   marine_vhf_labels: "str?"
   marine_vhf_gain: "float?"
@@ -232,7 +238,7 @@ configuration:
     description: Document whether the attached radio receives both AIS channels, channel A 161.975 MHz, or channel B 162.025 MHz.
   sdr_device:
     name: RTL-SDR Device
-    description: Device index such as 0, or the dongle serial number when more than one RTL-SDR is attached.
+    description: Use 0 for the first radio, serial:AIS001 for a unique serial, or port:1-2.3 for a stable physical USB socket when identical RTL-SDRs are attached.
   sdr_gain:
     name: RTL-SDR Tuner Gain
     description: Use auto for the recommended starting point, or enter a manual gain from 0 to 50 dB.
@@ -253,7 +259,16 @@ configuration:
     description: Use a second RTL-SDR as a receive-only marine VHF scanner with live dashboard audio.
   marine_vhf_device:
     name: Marine VHF RTL-SDR Device
-    description: Use device index 1 for the second Nooelec, or enter its unique serial number. It must differ from the AIS device.
+    description: Use 1 for the second radio, auto, serial:VHF001, or port:1-2.4. It must resolve to a different radio from AIS.
+  marine_vhf_usb_reset_enabled:
+    name: Allow Marine VHF USB Recovery
+    description: Allows the app's Recover button to reset only the selected marine RTL-SDR after stopping its scanner. Leave off unless recovery is needed.
+  marine_vhf_auto_usb_reset:
+    name: Automatically Reset Failed Marine VHF USB
+    description: After a scanner failure, reset only the marine RTL-SDR before retrying. Requires USB recovery to be allowed.
+  marine_vhf_usb_reset_attempts:
+    name: Automatic Marine VHF USB Reset Limit
+    description: Maximum automatic USB resets after failures, from 0 to 5. Two is recommended; normal process restarts continue afterward.
   marine_vhf_frequencies:
     name: Marine VHF Frequencies
     description: Comma-separated receive frequencies in MHz. Confirm the channels used in your local waters.

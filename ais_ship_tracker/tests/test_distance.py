@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import urllib.parse
 from pathlib import Path
+from unittest.mock import patch
 
 
 TRACKER = Path(__file__).parents[1] / "ais_ship_tracker.py"
@@ -135,6 +136,24 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(command[command.index("BIASTEE") + 1], "off")
         self.assertEqual(command[command.index("-a") + 1], "192K")
         self.assertEqual(command[-3:], ["10110", "JSON_FULL", "on"])
+
+    def test_identical_sdrs_can_be_assigned_by_stable_usb_port(self):
+        inventory = [
+            {"index": 0, "port": "1-2.3", "serial": "00000001"},
+            {"index": 1, "port": "1-2.4", "serial": "00000001"},
+        ]
+        self.assertEqual(tracker.resolve_rtl_sdr_selector("port:1-2.3", "AIS", inventory), "0")
+        self.assertEqual(tracker.resolve_rtl_sdr_selector("port:1-2.4", "marine VHF", inventory, "0"), "1")
+        with self.assertRaisesRegex(ValueError, "duplicated"):
+            tracker.resolve_rtl_sdr_selector("serial:00000001", "AIS", inventory)
+
+    def test_auto_marine_assignment_avoids_ais_radio(self):
+        inventory = [
+            {"index": 0, "port": "1-2.3", "serial": "AIS001"},
+            {"index": 1, "port": "1-2.4", "serial": "VHF001"},
+        ]
+        self.assertEqual(tracker.resolve_rtl_sdr_selector("auto", "AIS", inventory), "0")
+        self.assertEqual(tracker.resolve_rtl_sdr_selector("auto", "marine VHF", inventory, "0"), "1")
 
     def test_json_full_updates_local_vessel_and_preserves_nmea(self):
         payload = json.dumps({
@@ -287,6 +306,36 @@ class MarineVhfTests(unittest.TestCase):
             self.assertFalse(tracker.marine_vhf_device_conflict())
         finally:
             tracker.MARINE_VHF_ENABLED, tracker.RECEIVER_MODE, tracker.MARINE_VHF_DEVICE, tracker.SDR_DEVICE = previous
+
+    def test_manual_usb_recovery_requires_explicit_configuration(self):
+        previous = (tracker.MARINE_VHF_ENABLED, tracker.MARINE_VHF_USB_RESET_ENABLED)
+        tracker.MARINE_VHF_ENABLED = True
+        tracker.MARINE_VHF_USB_RESET_ENABLED = False
+        try:
+            accepted, message = tracker.request_marine_vhf_recovery()
+            self.assertFalse(accepted)
+            self.assertIn("configuration", message)
+            self.assertFalse(tracker.marine_vhf_recovery_requested.is_set())
+        finally:
+            tracker.MARINE_VHF_ENABLED, tracker.MARINE_VHF_USB_RESET_ENABLED = previous
+
+    def test_usb_recovery_resets_only_resolved_marine_device(self):
+        previous_enabled = tracker.MARINE_VHF_USB_RESET_ENABLED
+        previous_resets = tracker.marine_vhf_state["usb_resets"]
+        tracker.MARINE_VHF_USB_RESET_ENABLED = True
+        inventory = [{"index": 1, "port": "1-2.4", "device_node": "/dev/bus/usb/001/009"}]
+        try:
+            with patch.object(tracker, "resolved_radio_devices", return_value=("0", "1", inventory)), \
+                    patch.object(tracker.os, "open", return_value=71) as open_device, \
+                    patch.object(tracker.os, "close") as close_device, \
+                    patch.object(tracker.fcntl, "ioctl") as reset_device:
+                tracker.reset_marine_vhf_usb()
+            open_device.assert_called_once_with("/dev/bus/usb/001/009", tracker.os.O_WRONLY)
+            reset_device.assert_called_once_with(71, tracker.USBDEVFS_RESET, 0)
+            close_device.assert_called_once_with(71)
+        finally:
+            tracker.MARINE_VHF_USB_RESET_ENABLED = previous_enabled
+            tracker.marine_vhf_state["usb_resets"] = previous_resets
 
     def test_snapshot_never_exposes_audio_password(self):
         snapshot = tracker.marine_vhf_snapshot()
@@ -488,7 +537,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2710', dashboard)
+        self.assertIn('app.js?v=2716', dashboard)
 
     def test_dashboard_and_tv_treat_each_private_area_proxy_as_live(self):
         dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()
@@ -515,7 +564,9 @@ class DashboardAssetTests(unittest.TestCase):
         styles = (web / "marine-radio.css").read_text()
         self.assertIn('data-page="radio"', dashboard)
         self.assertIn('id="marine-player"', dashboard)
+        self.assertIn('id="marine-recover"', dashboard)
         self.assertIn("renderMarineRadio", script)
+        self.assertIn("api/marine-radio/recover", script)
         self.assertIn("marine-radio-grid", styles)
 
 
