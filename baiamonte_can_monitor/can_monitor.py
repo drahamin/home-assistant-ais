@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import glob
 import json
+import mimetypes
 import os
 import signal
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from collections import Counter, deque
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import can
 
@@ -21,10 +27,117 @@ ENTITY_PREFIX = "baiamonte_can"
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
 RUNNING = True
+WEB_ROOT = Path("/web")
+STARTED_AT = time.time()
+STATUS_LOCK = threading.Lock()
+STATUS: dict[str, object] = {
+    "service": "starting",
+    "adapter_connected": False,
+    "bus_active": False,
+    "adapter": "searching",
+    "bitrate": 500000,
+    "frames_received": 0,
+    "last_id": None,
+    "last_frame_at": None,
+    "last_error": None,
+    "readings": {},
+}
+RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
+FRAME_TIMES: deque[float] = deque(maxlen=4000)
+ID_COUNTS: Counter[str] = Counter()
 
 
 def log(message: str) -> None:
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
+
+
+def iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def update_status(**values: object) -> None:
+    with STATUS_LOCK:
+        STATUS.update(values)
+
+
+def dashboard_status() -> dict[str, object]:
+    now = time.time()
+    with STATUS_LOCK:
+        status = dict(STATUS)
+        status["readings"] = dict(STATUS.get("readings", {}))
+        recent_frames = list(RECENT_FRAMES)
+        while FRAME_TIMES and now - FRAME_TIMES[0] > 60:
+            FRAME_TIMES.popleft()
+        last_five = sum(1 for timestamp in FRAME_TIMES if now - timestamp <= 5)
+        traffic_ids = [{"id": can_id, "count": count} for can_id, count in ID_COUNTS.most_common()]
+    frames = int(status.get("frames_received", 0) or 0)
+    adapter_connected = bool(status.get("adapter_connected"))
+    bus_active = bool(status.get("bus_active"))
+    if not adapter_connected:
+        health = "adapter_missing"
+        diagnosis = "The CAN adapter is not available. Check USB, the selected adapter mode, and the serial device."
+    elif frames == 0:
+        health = "no_traffic"
+        diagnosis = "The adapter is ready but no valid CAN frames have arrived. Check CAN-H/CAN-L, equipment power, 500 kbit/s, and termination."
+    elif not bus_active:
+        health = "stale"
+        diagnosis = "CAN traffic was seen but has stopped. Check the inverter, battery master, cable, and connectors."
+    else:
+        health = "healthy"
+        diagnosis = "Live receive-only CAN traffic is being decoded normally."
+    status.update({
+        "health": health,
+        "diagnosis": diagnosis,
+        "receive_only": True,
+        "uptime_seconds": max(0, int(time.time() - STARTED_AT)),
+        "recent_frames": recent_frames,
+        "frames_per_second": round(last_five / 5, 1),
+        "frames_last_minute": len(FRAME_TIMES),
+        "traffic_ids": traffic_ids,
+        "server_time": iso_now(),
+    })
+    return status
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        request_path = urlparse(self.path).path
+        if request_path.rstrip("/").endswith("/api/status"):
+            payload = json.dumps(dashboard_status(), separators=(",", ":")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        relative = request_path.rstrip("/").rsplit("/", 1)[-1] if "." in request_path.rsplit("/", 1)[-1] else "index.html"
+        target = (WEB_ROOT / relative).resolve()
+        if WEB_ROOT not in target.parents or not target.is_file():
+            self.send_error(404)
+            return
+        payload = target.read_bytes()
+        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_POST(self) -> None:
+        self.send_error(405, "This dashboard is receive-only")
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+def start_dashboard(port: int = 8098) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    threading.Thread(target=server.serve_forever, name="baiamonte-can-dashboard", daemon=True).start()
+    log(f"Baiamonte CAN status dashboard ready on port {port}")
+    return server
 
 
 def load_options() -> dict:
@@ -66,6 +179,7 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
             pass
     except (urllib.error.URLError, TimeoutError) as exc:
         log(f"Home Assistant state update failed: {exc}")
+        update_status(last_error=f"Home Assistant state update failed: {exc}")
 
 
 def publish_connection(connected: bool, adapter: str, frames: int, last_id: int | None) -> None:
@@ -183,6 +297,9 @@ def main() -> int:
     options = load_options()
     stale_after = max(5, int(options.get("stale_after_seconds", 30)))
     interval = max(1, int(options.get("publish_interval_seconds", 2)))
+    bitrate = int(options.get("bitrate", 500000))
+    dashboard = start_dashboard(int(options.get("dashboard_port", 8098)))
+    update_status(service="running", bitrate=bitrate)
     log("Starting Baiamonte CAN Monitor; transmit code is disabled")
     publish_connection(False, "searching", 0, None)
 
@@ -200,8 +317,10 @@ def main() -> int:
             try:
                 receiver, adapter_name = open_adapter(options)
                 log(f"Connected with {adapter_name}")
+                update_status(adapter_connected=True, adapter=adapter_name, last_error=None)
             except Exception as exc:
                 log(f"CAN adapter not ready: {exc}; retrying in 10 seconds")
+                update_status(adapter_connected=False, bus_active=False, adapter="not ready", last_error=str(exc))
                 publish_connection(False, "adapter not ready", frame_count, last_id)
                 time.sleep(10)
                 continue
@@ -210,6 +329,7 @@ def main() -> int:
             message = receiver.recv(timeout=1.0)
         except Exception as exc:
             log(f"CAN receive error: {exc}; reopening adapter")
+            update_status(adapter_connected=False, bus_active=False, last_error=f"CAN receive error: {exc}")
             try:
                 receiver.shutdown()
             except Exception:
@@ -222,11 +342,33 @@ def main() -> int:
             frame_count += 1
             last_frame_at = now
             last_id = message.arbitration_id
-            pending.update(decode_frame(message.arbitration_id, bytes(message.data)))
+            decoded = decode_frame(message.arbitration_id, bytes(message.data))
+            pending.update(decoded)
+            frame_record = {
+                "id": f"0x{message.arbitration_id:03X}",
+                "data": bytes(message.data).hex(" ").upper(),
+                "at": iso_now(),
+                "decoded": sorted(decoded),
+            }
+            with STATUS_LOCK:
+                RECENT_FRAMES.appendleft(frame_record)
+                FRAME_TIMES.append(time.time())
+                ID_COUNTS[frame_record["id"]] += 1
+                readings = dict(STATUS.get("readings", {}))
+                for key, reading in decoded.items():
+                    readings[key] = {"value": reading.value, "unit": reading.unit, "updated_at": frame_record["at"]}
+                STATUS.update({
+                    "bus_active": True,
+                    "frames_received": frame_count,
+                    "last_id": frame_record["id"],
+                    "last_frame_at": frame_record["at"],
+                    "readings": readings,
+                })
             if frame_count <= 20 or frame_count % 500 == 0:
                 log(f"RX 0x{message.arbitration_id:03X} {bytes(message.data).hex(' ')}")
 
         connected = bool(last_frame_at and now - last_frame_at <= stale_after)
+        update_status(bus_active=connected, frames_received=frame_count)
         if pending and now - last_publish_at >= interval:
             for key, reading in pending.items():
                 publish(key, reading, key.endswith("_active") or key.endswith("_enabled") or key.startswith("force_charge"))
@@ -240,6 +382,8 @@ def main() -> int:
     if receiver is not None:
         receiver.shutdown()
     publish_connection(False, "stopped", frame_count, last_id)
+    update_status(service="stopped", adapter_connected=False, bus_active=False)
+    dashboard.shutdown()
     log("Stopped")
     return 0
 
