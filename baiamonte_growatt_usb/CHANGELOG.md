@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1
+
+- Deduplicates stable and numbered paths that point to the same physical USB adapter.
+- Adds a native read-only QPIGS serial fallback that does not depend on mpp-solar response parsing.
+- Recovery discovery safely tests the common SPF direct-USB speeds and Modbus 9600/19200 baud at addresses 1 and 2.
+- Retries the Growatt Modbus input map in smaller blocks for inverter revisions that reject a single long request.
+- Reports the active recovered baud rate and preserves the useful Modbus failures in connection diagnostics.
+
 ## 1.3.0
 
 - Adds native Growatt Off-Grid Modbus RTU v0.14 support for the SPF 5000 ES RJ45 RS485-to-USB cable.

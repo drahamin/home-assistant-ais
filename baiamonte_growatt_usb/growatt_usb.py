@@ -74,6 +74,7 @@ PROTOCOL_PROFILES = {
 AUTO_PROTOCOLS = ["PI30", "PI30MAX", "PI30M044", "PI30M045", "PI30REVO", "PI41"]
 
 MODBUS_PROTOCOL = "GROWATT_MODBUS_V014"
+RAW_PI_PROTOCOL = "PI_RAW"
 MODBUS_STATUS = {
     0: "Standby", 1: "PV and grid combined discharge", 2: "Discharge", 3: "Fault",
     4: "Firmware update", 5: "PV charge", 6: "AC charge", 7: "Combined charge",
@@ -164,11 +165,78 @@ def run_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tuple[d
             raise ConnectionError("the RS485 adapter could not be opened")
         try:
             response = _modbus_read(client, "read_input_registers", 0, 91, slave_id)
+            if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+                # Some SPF revisions reject a long request even though the same
+                # register range is available in smaller blocks.
+                first = _modbus_read(client, "read_input_registers", 0, 45, slave_id)
+                second = _modbus_read(client, "read_input_registers", 45, 46, slave_id)
+                if all(item is not None and not (hasattr(item, "isError") and item.isError()) and hasattr(item, "registers") for item in (first, second)):
+                    response = type("RegisterReply", (), {"registers": list(first.registers) + list(second.registers)})()
         finally:
             client.close()
     if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
         raise ConnectionError(f"no valid Modbus reply from inverter address {slave_id}")
     return decode_modbus_input(list(response.registers))
+
+
+def pi_crc(payload: bytes) -> bytes:
+    """Return the escaped CRC-16/XMODEM used by Voltronic/Growatt PI links."""
+    crc = 0
+    for byte in payload:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    result = bytearray(crc.to_bytes(2, "big"))
+    for index, byte in enumerate(result):
+        if byte in (0x28, 0x0D, 0x0A):
+            result[index] = (byte + 1) & 0xFF
+    return bytes(result)
+
+
+def decode_raw_qpigs(response: bytes) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    frame = response.rstrip(b"\r\n")
+    if len(frame) < 4 or not frame.startswith(b"("):
+        raise ValueError(f"short raw PI response ({len(frame)} bytes)")
+    payload = frame[:-2]
+    if pi_crc(payload) != frame[-2:]:
+        raise ValueError("raw PI response CRC mismatch")
+    fields = payload[1:].decode("ascii", errors="strict").split()
+    if len(fields) < 16:
+        raise ValueError(f"short QPIGS payload ({len(fields)} fields)")
+    number = lambda index: float(fields[index])
+    readings = {
+        "ac_input_voltage": _reading(number(0), "V"),
+        "ac_input_frequency": _reading(number(1), "Hz"),
+        "ac_output_voltage": _reading(number(2), "V"),
+        "ac_output_frequency": _reading(number(3), "Hz"),
+        "ac_output_apparent_power": _reading(number(4), "VA"),
+        "ac_output_active_power": _reading(number(5), "W"),
+        "ac_output_load": _reading(number(6), "%"),
+        "bus_voltage": _reading(number(7), "V"),
+        "battery_voltage": _reading(number(8), "V"),
+        "battery_charging_current": _reading(number(9), "A"),
+        "battery_capacity": _reading(number(10), "%"),
+        "inverter_heat_sink_temperature": _reading(number(11), "°C"),
+        "pv_input_current_for_battery": _reading(number(12), "A"),
+        "pv_input_voltage": _reading(number(13), "V"),
+        "battery_discharge_current": _reading(number(15), "A"),
+    }
+    if len(fields) > 19:
+        readings["pv_input_power"] = _reading(number(19), "W")
+    return readings, "Live", {}
+
+
+def run_raw_pi_read(device: str, baud: int = 2400) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    import serial
+
+    command = b"QPIGS"
+    request = command + pi_crc(command) + b"\r"
+    with DEVICE_IO_LOCK, serial.Serial(device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=3) as port:
+        port.reset_input_buffer()
+        port.write(request)
+        port.flush()
+        response = port.read_until(b"\r", 512)
+    return decode_raw_qpigs(response)
 
 
 def decode_modbus_holding(registers: list[int]) -> dict[str, dict[str, object]]:
@@ -324,7 +392,17 @@ def candidate_devices(configured: str = "auto") -> list[str]:
         if os.path.realpath(p) not in excluded_targets
     ]
     hid = sorted(glob.glob("/dev/hidraw*"))
-    return list(dict.fromkeys(growatt_stable + serial + other_stable + hid))
+    # A stable by-id link and /dev/ttyUSB0 commonly name the same adapter.
+    # Probe each physical target only once so one cable is not reported twice.
+    result = []
+    seen_targets = set()
+    for path in growatt_stable + serial + other_stable + hid:
+        target = os.path.realpath(path)
+        if target in seen_targets:
+            continue
+        seen_targets.add(target)
+        result.append(path)
+    return result
 
 
 def protocols(configured: str = "auto") -> list[str]:
@@ -406,19 +484,36 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
             failures.append(f"{device}: path does not exist")
             continue
         if "hidraw" not in device.lower() and selected_protocol in {"auto", MODBUS_PROTOCOL} and selected_transport in {"auto", "serial", "modbus_rtu"}:
-            try:
-                readings, mode, _warnings = run_modbus_read(device, modbus_baud, slave_id)
-                identity = {
-                    "connection": _reading("Growatt RS485 Modbus RTU v0.14"),
-                    "inverter_address": _reading(slave_id),
-                    "initial_mode": _reading(mode),
-                    "registers_received": _reading(len(readings)),
-                }
-                return device, MODBUS_PROTOCOL, identity
-            except Exception as exc:
-                failures.append(f"{device} / Growatt Modbus RTU address {slave_id}: {exc}")
+            modbus_bauds = list(dict.fromkeys([modbus_baud, 9600, 19200]))
+            slave_ids = list(dict.fromkeys([slave_id, 1, 2]))
+            for test_baud in modbus_bauds:
+                for test_slave in slave_ids:
+                    try:
+                        readings, mode, _warnings = run_modbus_read(device, test_baud, test_slave)
+                        identity = {
+                            "connection": _reading("Growatt RS485 Modbus RTU v0.14"),
+                            "inverter_address": _reading(test_slave),
+                            "active_baud": _reading(test_baud),
+                            "initial_mode": _reading(mode),
+                            "registers_received": _reading(len(readings)),
+                        }
+                        return device, MODBUS_PROTOCOL, identity
+                    except Exception as exc:
+                        failures.append(f"{device} / Modbus {test_baud} baud address {test_slave}: {exc}")
         if selected_protocol == MODBUS_PROTOCOL or selected_transport == "modbus_rtu":
             continue
+        if "hidraw" not in device.lower() and selected_protocol == "auto" and selected_transport in {"auto", "serial"}:
+            for test_baud in dict.fromkeys([baud, 2400, 9600, 19200, 115200]):
+                try:
+                    readings, mode, _warnings = run_raw_pi_read(device, test_baud)
+                    return device, RAW_PI_PROTOCOL, {
+                        "connection": _reading("Growatt direct serial PI"),
+                        "active_baud": _reading(test_baud),
+                        "initial_mode": _reading(mode),
+                        "fields_received": _reading(len(readings)),
+                    }
+                except Exception as exc:
+                    failures.append(f"{device} / raw PI {test_baud} baud: {exc}")
         for protocol in protocols(str(options.get("protocol", "auto"))):
             profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
             try:
@@ -442,7 +537,7 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
                 }
             except Exception as live_exc:
                 failures.append(f"{device} / {protocol}: identity {identity_error}; live status {live_exc}")
-    summary = failures[-1] if failures else "no candidates responded"
+    summary = " | ".join(failures[:8]) if failures else "no candidates responded"
     raise ConnectionError(f"USB/RS485 devices were found, but no Growatt response was received ({summary})")
 
 
@@ -848,8 +943,8 @@ def dashboard_status() -> dict[str, object]:
         "configured_device": options.get("device", "auto"),
         "configured_transport": options.get("transport", "auto"),
         "configured_protocol": options.get("protocol", "auto"),
-        "baud_rate": int(options.get("modbus_baud_rate", 9600)) if result.get("protocol") == MODBUS_PROTOCOL else int(options.get("baud_rate", 2400)),
-        "modbus_slave_id": int(options.get("modbus_slave_id", 1)),
+        "baud_rate": int(result.get("active_baud") or (options.get("modbus_baud_rate", 9600) if result.get("protocol") == MODBUS_PROTOCOL else options.get("baud_rate", 2400))),
+        "modbus_slave_id": int(result.get("active_slave_id") or options.get("modbus_slave_id", 1)),
         "poll_interval_seconds": int(options.get("poll_interval_seconds", 10)),
         "events": list(EVENTS), "server_time": now_iso(),
         "setting_catalog": setting_catalog(options),
@@ -987,6 +1082,8 @@ def poll_loop() -> None:
     energy = load_energy()
     device = None
     protocol = None
+    active_baud = None
+    active_slave_id = None
     last_identity: dict[str, dict[str, object]] = {}
     last_slow_poll = 0.0
     last_settings_poll = 0.0
@@ -1004,15 +1101,19 @@ def poll_loop() -> None:
         try:
             if not device or not Path(device).exists():
                 device, protocol, last_identity = discover(options)
+                active_baud = int(last_identity.get("active_baud", {}).get("value", options.get("baud_rate", 2400)))
+                active_slave_id = int(last_identity.get("inverter_address", {}).get("value", options.get("modbus_slave_id", 1)))
                 connection_name = "Growatt RS485 Modbus RTU" if protocol == MODBUS_PROTOCOL else protocol
                 log(f"Connected to Growatt on {device} using {connection_name}")
             profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
             warnings: dict[str, dict[str, object]] = {}
             if protocol == MODBUS_PROTOCOL:
                 readings, mode, warnings = run_modbus_read(
-                    device, int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+                    device, int(active_baud or options.get("modbus_baud_rate", 9600)), int(active_slave_id or options.get("modbus_slave_id", 1)),
                 )
                 last_slow_poll = time.time()
+            elif protocol == RAW_PI_PROTOCOL:
+                readings, mode, warnings = run_raw_pi_read(device, int(active_baud or options.get("baud_rate", 2400)))
             else:
                 readings = run_query(
                     device, protocol, int(options.get("baud_rate", 2400)), str(profile["live"]),
@@ -1066,6 +1167,7 @@ def poll_loop() -> None:
                 existing_warnings = STATUS.get("warnings", {})
                 STATUS.update({
                     "connected": True, "device": device, "protocol": protocol,
+                    "active_baud": active_baud, "active_slave_id": active_slave_id,
                     "identity": last_identity, "mode": mode, "readings": readings,
                     "warnings": warnings or existing_warnings, "last_success_at": now_iso(),
                     "last_success_epoch": time.time(), "last_error": None,
@@ -1087,6 +1189,8 @@ def poll_loop() -> None:
             publish_all({}, snapshot, publish_enabled)
             device = None
             protocol = None
+            active_baud = None
+            active_slave_id = None
         WAKE.wait(interval)
         WAKE.clear()
 

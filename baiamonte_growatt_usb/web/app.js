@@ -7,7 +7,7 @@ const title=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,char=>char.
 function reading(data,key,fallback='—'){const item=(data.readings||{})[key];if(!item||item.value===null||item.value===undefined)return fallback;return `${item.value}${item.unit?` ${item.unit}`:''}`}
 function age(iso){if(!iso)return'Never';const sec=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));if(sec<5)return'Just now';if(sec<60)return`${sec}s ago`;if(sec<3600)return`${Math.floor(sec/60)}m ago`;return new Date(iso).toLocaleString()}
 function healthLabel(health){return({healthy:'Online',usb_missing:'Adapter missing',no_response:'No response',stale:'Data stale',warning:'Inverter warning',searching:'Searching'})[health]||'Checking'}
-function protocolLabel(protocol){return protocol==='GROWATT_MODBUS_V014'?'Growatt Modbus RTU v0.14':protocol}
+function protocolLabel(protocol){if(protocol==='GROWATT_MODBUS_V014')return 'Growatt Modbus RTU v0.14';if(protocol==='PI_RAW')return 'Growatt direct serial PI';return protocol}
 function render(data){
   const healthy=data.health==='healthy', warning=data.health==='warning', offline=['usb_missing','no_response','stale'].includes(data.health);
   ['#top-light','#hero-light'].forEach(sel=>{$(sel).className=healthy?'healthy':offline?'offline':''});

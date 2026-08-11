@@ -114,6 +114,16 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(settings["battery_bulk_charge_voltage"]["value"], 56.4)
         self.assertEqual(settings["modbus_version"]["value"], 2.07)
 
+    def test_raw_pi_crc_and_qpigs_decoder(self):
+        payload = b"(230.0 50.0 229.8 50.0 1000 823 18 390 52.40 12 76 43.0 4.2 180.0 53.0 10 00000000 0 0 756"
+        frame = payload + growatt.pi_crc(payload) + b"\r"
+        readings, mode, warnings = growatt.decode_raw_qpigs(frame)
+        self.assertEqual(mode, "Live")
+        self.assertEqual(readings["ac_output_active_power"]["value"], 823.0)
+        self.assertEqual(readings["battery_voltage"]["value"], 52.4)
+        self.assertEqual(readings["pv_input_power"]["value"], 756.0)
+        self.assertEqual(warnings, {})
+
     @patch.object(growatt.Path, "exists", return_value=True)
     @patch.object(growatt, "candidate_devices", return_value=["/dev/serial/by-id/usb-Silicon_Labs_CP2102N"])
     @patch.object(growatt, "run_modbus_read")
@@ -180,7 +190,7 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertNotIn("/dev/serial/by-id/usb-CANable", candidates)
         self.assertNotIn("/dev/serial/by-id/usb-u-blox_GNSS_receiver", candidates)
         self.assertNotIn("/dev/ttyACM0", candidates)
-        self.assertIn("/dev/ttyUSB0", candidates)
+        self.assertNotIn("/dev/ttyUSB0", candidates)
 
     @patch.object(growatt, "candidate_devices", return_value=[])
     def test_usb_missing_health(self, _candidates):

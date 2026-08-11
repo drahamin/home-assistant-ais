@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.3.0"
+version: "1.3.1"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -36,7 +36,7 @@ options:
 schema:
   device: "str"
   transport: "list(auto|serial|usb|modbus_rtu)"
-  protocol: "list(auto|GROWATT_MODBUS_V014|PI16|PI17|PI17INFINI|PI17M058|PI18|PI18LVX|PI18SV|PI30|PI30M044|PI30M045|PI30MAX|PI30MST|PI30REVO|PI41)"
+  protocol: "list(auto|GROWATT_MODBUS_V014|PI_RAW|PI16|PI17|PI17INFINI|PI17M058|PI18|PI18LVX|PI18SV|PI30|PI30M044|PI30M045|PI30MAX|PI30MST|PI30REVO|PI41)"
   baud_rate: "list(2400|9600|19200|115200)"
   modbus_baud_rate: "list(9600|19200)"
   modbus_slave_id: "int"
