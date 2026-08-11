@@ -54,6 +54,19 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in snapshot["nearest_vessels"]], ["Near", "Far"])
         self.assertIsNone(snapshot["vessels"][-1]["distance_km"])
 
+    def test_area_filtered_compact_tv_snapshot_reduces_work(self):
+        tracker.dashboard_vessels.update({
+            "sicily": {"mmsi": "247000001", "name": "Sicily", "area_id": "baiamonte", "latitude": 37.75, "longitude": 15.05, "call_sign": "IT1"},
+            "miami": {"mmsi": "367000001", "name": "Miami", "area_id": "miami", "latitude": 25.80, "longitude": -80.10},
+        })
+        snapshot = tracker.dashboard_snapshot("baiamonte", compact=True)
+        self.assertEqual(snapshot["config"]["area_id"], "baiamonte")
+        self.assertEqual([vessel["name"] for vessel in snapshot["vessels"]], ["Sicily"])
+        self.assertNotIn("call_sign", snapshot["vessels"][0])
+        self.assertNotIn("events", snapshot)
+        self.assertNotIn("receiver_log", snapshot)
+        self.assertNotIn("flightaware_weather", snapshot)
+
     def test_snapshot_includes_receiver_gps_weather_and_hardware_log(self):
         tracker.receiver_logs.clear()
         tracker.log("AIS receiver test event")
@@ -431,6 +444,8 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("renderedTiles[key]", television_script)
         self.assertIn("'PointerEvent' in window", television_script)
         self.assertIn("tvRefreshQueued", television_script)
+        self.assertIn("?view=tv&area=", television_script)
+        self.assertIn("if(!document.hidden)refresh()", television_script)
         self.assertIn("if(!tvMapExplore||!latest", television_script)
         self.assertIn("event.buttons!==1", television_script)
         self.assertIn("lostpointercapture", television_script)

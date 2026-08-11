@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.13"
+VERSION = "2.7.14"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -526,8 +526,16 @@ def receiver_path_operational():
         or rahamin_proxy_state.get("state") == "Connected"
     )
 
-def dashboard_snapshot():
-    airport_weather = flightaware_weather()
+TV_VESSEL_FIELDS = {
+    "mmsi", "name", "latitude", "longitude", "sog", "cog", "heading",
+    "area_id", "area_status", "distance_km", "destination",
+    "nav_status_string", "vessel_type", "vessel_class", "station", "source",
+}
+
+
+def dashboard_snapshot(area_id=None, compact=False):
+    selected_area_id = area_id if area_id in MAP_AREAS else None
+    airport_weather = None if compact else flightaware_weather()
     with dashboard_lock:
         location = current_location()
         gps_reference_lat = location["latitude"]
@@ -535,6 +543,9 @@ def dashboard_snapshot():
         vessels = []
         for vessel in dashboard_vessels.values():
             item = dict(vessel)
+            item_area_id = str(item.get("area_id") or "baiamonte")
+            if selected_area_id and item_area_id != selected_area_id:
+                continue
             latitude = clean_number(item.get("latitude"))
             longitude = clean_number(item.get("longitude"))
             if latitude is not None and longitude is not None:
@@ -554,7 +565,41 @@ def dashboard_snapshot():
             vessel.get("distance_km") if vessel.get("distance_km") is not None else math.inf,
         ))
         nearest_vessels = [vessel for vessel in vessels if vessel.get("distance_km") is not None][:10]
-        return {
+        events = list(dashboard_events)
+        if selected_area_id:
+            events = [event for event in events if str(event.get("area_id") or "baiamonte") == selected_area_id]
+        config_snapshot = {
+            "bounds": {
+                "south": lat_south, "west": lon_west,
+                "north": lat_north, "east": lon_east,
+            },
+            "area_id": selected_area_id,
+            "map_areas": list(MAP_AREAS.values()),
+            "default_map_area": DEFAULT_MAP_AREA,
+            "tv_default_map_area": TV_DEFAULT_MAP_AREA,
+            "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
+            "tv_map_vessels": TV_MAP_VESSELS,
+            "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
+            "rahamin_proxy_enabled": RAHAMIN_PROXY_ENABLED,
+            "rahamin_proxy_interval": RAHAMIN_PROXY_INTERVAL,
+            "reference_location": location,
+            "map_entities": ENABLE_MAP_ENTITIES,
+            "include_class_b": INCLUDE_CLASS_B,
+            "timeout_minutes": MAP_TIMEOUT_MINUTES,
+            "watchlist_count": len(watchlist_mmsis),
+            "source": "Local AIS-catcher + optional AISHub" if RECEIVER_MODE == "sdr" else "Network AIS input + optional AISHub",
+            "poll_interval": AISHUB_POLL_INTERVAL,
+            "receiver_mode": RECEIVER_MODE,
+            "receiver_port": RECEIVER_PORT,
+            "receiver_channel": RECEIVER_CHANNEL,
+            "sharing_enabled": AISHUB_SHARING_ENABLED,
+            "sharing_configured": bool(AISHUB_SHARING_ENABLED and AISHUB_FEED_HOST and AISHUB_FEED_PORT),
+            "weather_overlay_dashboard": WEATHER_OVERLAY_DASHBOARD,
+            "tv_weather_overlay": TV_WEATHER_OVERLAY,
+            "tv_weather_opacity": TV_WEATHER_OPACITY,
+            "map_style": MAP_STYLE,
+        }
+        snapshot = {
             "brand": "Baiamonte AIS",
             "version": VERSION,
             "connection": current_conn_status,
@@ -562,46 +607,38 @@ def dashboard_snapshot():
             "last_error": last_known_error,
             "vessels": vessels,
             "nearest_vessels": nearest_vessels,
-            "events": list(dashboard_events),
-            "config": {
-                "bounds": {
-                    "south": lat_south, "west": lon_west,
-                    "north": lat_north, "east": lon_east,
-                },
-                "map_areas": list(MAP_AREAS.values()),
-                "default_map_area": DEFAULT_MAP_AREA,
-                "tv_default_map_area": TV_DEFAULT_MAP_AREA,
-                "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
-                "tv_map_vessels": TV_MAP_VESSELS,
-                "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
-                "rahamin_proxy_enabled": RAHAMIN_PROXY_ENABLED,
-                "rahamin_proxy_interval": RAHAMIN_PROXY_INTERVAL,
-                "reference_location": location,
-                "map_entities": ENABLE_MAP_ENTITIES,
-                "include_class_b": INCLUDE_CLASS_B,
-                "timeout_minutes": MAP_TIMEOUT_MINUTES,
-                "watchlist_count": len(watchlist_mmsis),
-                "source": "Local AIS-catcher + optional AISHub" if RECEIVER_MODE == "sdr" else "Network AIS input + optional AISHub",
-                "poll_interval": AISHUB_POLL_INTERVAL,
-                "receiver_mode": RECEIVER_MODE,
-                "receiver_port": RECEIVER_PORT,
-                "receiver_channel": RECEIVER_CHANNEL,
-                "sharing_enabled": AISHUB_SHARING_ENABLED,
-                "sharing_configured": bool(AISHUB_SHARING_ENABLED and AISHUB_FEED_HOST and AISHUB_FEED_PORT),
-                "weather_overlay_dashboard": WEATHER_OVERLAY_DASHBOARD,
-                "tv_weather_overlay": TV_WEATHER_OVERLAY,
-                "tv_weather_opacity": TV_WEATHER_OPACITY,
-                "map_style": MAP_STYLE,
-            },
+            "events": events,
+            "config": config_snapshot,
+            "rahamin_proxy": dict(rahamin_proxy_state),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        if compact:
+            compact_config_keys = {
+                "bounds", "area_id", "map_areas", "tv_default_map_area",
+                "tv_map_vessels", "tv_live_traffic_only", "tv_weather_overlay",
+                "tv_weather_opacity", "map_style",
+            }
+            return {
+                "brand": snapshot["brand"],
+                "version": snapshot["version"],
+                "connection": snapshot["connection"],
+                "vessels": [
+                    {key: value for key, value in vessel.items() if key in TV_VESSEL_FIELDS}
+                    for vessel in vessels
+                ],
+                "config": {key: value for key, value in config_snapshot.items() if key in compact_config_keys},
+                "rahamin_proxy": snapshot["rahamin_proxy"],
+                "generated_at": snapshot["generated_at"],
+            }
+        snapshot.update({
             "feed": dict(feed_state),
             "area_feeds": {area_id: dict(area_state) for area_id, area_state in aishub_area_states.items()},
-            "rahamin_proxy": dict(rahamin_proxy_state),
             "decoder": dict(decoder_state),
             "marine_vhf": marine_vhf_snapshot(),
             "receiver_log": list(receiver_logs),
             "flightaware_weather": airport_weather,
-            "generated_at": datetime.now().isoformat(timespec="seconds"),
-        }
+        })
+        return snapshot
 
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -677,7 +714,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
         if request_path.rstrip("/") == "/api/status":
-            payload = json.dumps(dashboard_snapshot()).encode("utf-8")
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            requested_area = str(query.get("area", [""])[0]).strip().lower()
+            compact = str(query.get("view", [""])[0]).strip().lower() == "tv"
+            payload = json.dumps(dashboard_snapshot(requested_area, compact=compact), separators=(",", ":")).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -726,7 +766,7 @@ MAP_TILE_PROVIDERS = {
 }
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=128)
 def fetch_map_tile(style, zoom, x, y):
     """Fetch and briefly cache OSM tiles so restrictive TV browsers use one origin."""
     url = MAP_TILE_PROVIDERS[style].format(z=zoom, x=x, y=y)
@@ -762,7 +802,7 @@ def fetch_weather_metadata():
     return payload
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=64)
 def fetch_weather_tile(suffix):
     request = urllib.request.Request(
         f"https://tilecache.rainviewer.com/{suffix}",
