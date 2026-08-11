@@ -1,4 +1,14 @@
-# Baiamonte AIS
+# Baiamonte Home Assistant Apps
+
+## Baiamonte CAN Monitor
+
+**Baiamonte CAN Monitor** is a receive-only Growatt and Felicity battery communications app. Version 0.2.0 adds a Tenuta Baiamonte-styled Home Assistant sidebar interface with live adapter health, decoded battery values, alarms and protections, guided wiring diagnostics, and a dedicated CAN Traffic view showing frame rate, active identifiers, raw payloads, decoded fields, and recent activity.
+
+The dashboard is responsive on desktop, tablet, and phone and includes Home Assistant, favicon, Apple touch, and installable web-app icons. A Supervisor watchdog checks the local status endpoint. The adapter remains in firmware listen-only mode and the app exposes no CAN transmit controls.
+
+Install **Baiamonte CAN Monitor** from this repository, start it, enable **Show in sidebar**, and enable **Auto update** on its Info page. Home Assistant Supervisor will then install future repository versions automatically.
+
+## Baiamonte AIS
 
 Baiamonte AIS is an end-to-end Home Assistant vessel station. It includes [AIS-catcher](https://github.com/jvde-github/AIS-catcher) for dual-channel decoding from an RTL-SDR such as the Nooelec NESDR SMArt v5, displays locally received vessels immediately, and can exchange the original NMEA feed with [AISHub](https://www.aishub.net/) for wider-area coverage. A second Nooelec can run a receive-only marine VHF scanner with live audio in the AIS sidebar.
 

@@ -1,8 +1,9 @@
 name: "Baiamonte CAN Monitor"
-version: "0.1.1"
+version: "0.2.0"
 slug: "baiamonte_can_monitor"
 description: "Receive-only Growatt and Felicity battery CAN monitoring"
 url: "https://github.com/drahamin/home-assistant-ais"
+icon: "icon.png"
 arch:
   - "aarch64"
   - "amd64"
@@ -13,6 +14,13 @@ usb: true
 uart: true
 udev: true
 homeassistant_api: true
+ingress: true
+ingress_port: 8098
+panel_icon: "mdi:car-battery"
+panel_title: "CAN"
+panel_admin: true
+stage: "stable"
+watchdog: "http://[HOST]:[PORT:8098]/api/status"
 options:
   adapter: "auto"
   bitrate: 500000
