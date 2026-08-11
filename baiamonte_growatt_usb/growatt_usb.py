@@ -226,15 +226,28 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
             failures.append(f"{device}: path does not exist")
             continue
         for protocol in protocols(str(options.get("protocol", "auto"))):
+            profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
             try:
-                profile = PROTOCOL_PROFILES.get(protocol, PROTOCOL_PROFILES["PI30"])
                 identity = run_query(
                     device, protocol, baud, str(profile["identity"]), timeout=9,
                     transport=str(options.get("transport", "auto")),
                 )
                 return device, protocol, identity
             except Exception as exc:
-                failures.append(f"{device} / {protocol}: {exc}")
+                identity_error = exc
+            try:
+                # Some SPF firmware revisions do not implement QPI even though
+                # their read-only QPIGS telemetry command works normally.
+                run_query(
+                    device, protocol, baud, str(profile["live"]), timeout=9,
+                    transport=str(options.get("transport", "auto")),
+                )
+                return device, protocol, {
+                    "protocol_probe": {"value": "live status", "unit": None},
+                    "identity_note": {"value": f"Identity inquiry unavailable: {identity_error}", "unit": None},
+                }
+            except Exception as live_exc:
+                failures.append(f"{device} / {protocol}: identity {identity_error}; live status {live_exc}")
     summary = failures[-1] if failures else "no candidates responded"
     raise ConnectionError(f"USB devices were found, but no Growatt response was received ({summary})")
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+
+- Discover SPF firmware that supports live `QPIGS` telemetry but does not answer the optional `QPI` protocol identity inquiry.
+
 ## 1.2.1
 
 - Rejects mpp-solar empty-response and NAK diagnostics instead of reporting a false Online state.

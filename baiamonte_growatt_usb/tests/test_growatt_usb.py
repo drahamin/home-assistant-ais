@@ -56,6 +56,19 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertIn("PI30M044", discovered)
         self.assertIn("PI41", discovered)
 
+    @patch.object(growatt.Path, "exists", return_value=True)
+    @patch.object(growatt, "candidate_devices", return_value=["/dev/ttyUSB0"])
+    @patch.object(growatt, "run_query")
+    def test_discovery_falls_back_to_live_status_when_identity_is_unsupported(self, query, _candidates, _exists):
+        query.side_effect = [ValueError("identity inquiry unavailable"), {"battery_voltage": {"value": 52.4, "unit": "V"}}]
+        device, protocol, identity = growatt.discover({
+            "device": "auto", "protocol": "PI30", "baud_rate": 2400, "transport": "auto",
+        })
+        self.assertEqual(device, "/dev/ttyUSB0")
+        self.assertEqual(protocol, "PI30")
+        self.assertEqual(identity["protocol_probe"]["value"], "live status")
+        self.assertEqual(query.call_args_list[1].args[3], "QPIGS")
+
     def test_setting_command_whitelist_and_ranges(self):
         self.assertEqual(growatt.build_setting_command("output_source_priority", "sbu_first"), "POP02")
         self.assertEqual(growatt.build_setting_command("battery_bulk_charge_voltage", "56.4"), "PCVV56.4")
