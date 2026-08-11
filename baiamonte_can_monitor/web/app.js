@@ -76,6 +76,17 @@ function renderTraffic(data){
   $('traffic-id-grid').innerHTML=ids.length?ids.map(item=>`<div class="traffic-id"><b>${item.id}</b><span>${idNames[item.id]||'Unmapped CAN message'}</span><small>${Number(item.count).toLocaleString()} received</small></div>`).join(''):'<div class="empty">No CAN identifiers received yet.</div>';
   $('traffic-frame-list').innerHTML=frames.length?frames.map(frame=>`<div class="traffic-frame"><b>${frame.id}</b><code>${frame.data}</code><span>${(frame.decoded||[]).map(key=>key.replaceAll('_',' ')).join(', ')||'Raw frame'}</span><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>';
 }
+function renderDeviceLights(data){
+  const adapter=Boolean(data.adapter_connected), traffic=Boolean(data.bus_active);
+  $('led-pwr').classList.toggle('on',adapter);
+  $('led-state').classList.toggle('on',adapter);
+  $('led-work').classList.toggle('on',traffic);
+  $('led-work').classList.toggle('pulse',traffic);
+  $('led-pwr-state').textContent=adapter?'On':'Off';
+  $('led-state-state').textContent=adapter?'Connected':'Idle';
+  $('led-work-state').textContent=traffic?'Receiving':'Waiting';
+  $('device-lights-status').textContent=!adapter?'Adapter not detected — indicator state unavailable':traffic?'PWR and STATE steady · WORK pulses with incoming frames':'PWR and STATE active · WORK waiting for CAN traffic';
+}
 function render(data){
   latest=data;
   const readings=data.readings||{};
@@ -112,7 +123,7 @@ function render(data){
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
   $('check-list').innerHTML=checksFor(data.health).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join('');
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
-  renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);
+  renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }
 async function refresh(){
   $('refresh').disabled=true;
@@ -124,6 +135,7 @@ async function refresh(){
     $('hero-status').textContent='Status page disconnected';
     $('diagnosis').textContent='The dashboard cannot reach the local monitor status API. Restart the app and reload this page.';
     ['hero-light','side-light'].forEach(id=>$(id).className='error');
+    renderDeviceLights({adapter_connected:false,bus_active:false});
   }finally{$('refresh').disabled=false;}
 }
 $('refresh').addEventListener('click',refresh);
