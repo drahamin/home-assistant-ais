@@ -128,9 +128,12 @@ configuration:
   marine_vhf_ppm:
     name: Marine VHF Frequency Correction
     description: Frequency correction from -150 to 150 PPM. Start at 0 for a NESDR SMArt v5.
+  marine_vhf_auto_squelch:
+    name: Automatic Marine VHF Squelch
+    description: Recommended. Learns the noise floor on each channel and opens only for a signal. Turn off only to use the manual threshold below.
   marine_vhf_squelch:
     name: Marine VHF Squelch
-    description: Signal threshold from -100 to 0 dBFS. Start at -28.
+    description: Manual signal threshold from -100 to 0 dBFS, used only when automatic squelch is off.
   GPS_USE_USB:
     name: Use Attached USB GPS
     description: Use a recent NMEA GPS fix for map centering and distance ranking.

@@ -36,7 +36,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **Marine VHF RTL-SDR Device:** use `1`, `auto`, a unique serial, or a stable `port:` selector; it must resolve separately from AIS.
 - **Marine VHF USB Recovery:** optionally allows manual recovery and up to 0–5 automatic device resets without touching the AIS radio.
 - **Marine Frequencies / Labels:** matching comma-separated scan lists, with up to 12 frequencies between 156 and 163 MHz. Confirm the correct local channel plan.
-- **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and squelch `-28`, then adjust for the antenna and local noise floor.
+- **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and automatic squelch. Use the manual dBFS threshold only for a channel that cannot work with adaptive squelch.
 - **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.
 - **Live Rain Radar on Dashboard / TV:** enable RainViewer independently for each surface.
 - **FlightAware Airport Weather:** optional AeroAPI v4 observations, using an API key and ICAO airport code such as `LICC`.
@@ -47,7 +47,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 
 Start the app and open **AIS** in the Home Assistant sidebar. A green local receiver state confirms AIS-catcher is running; received vessels appear without AISHub credentials. The reciprocal feed details separately confirm AISHub sharing and downloads.
 
-Open **Marine radio** for the live audio player, current scanner state, device profile, and channel list. The browser will not autoplay radio audio; press Play. Marine receiver activity is included in **Watch area → Receiver log**. The stream stays inside the add-on and is proxied through the same dashboard server, with no separate audio port or Icecast credentials exposed.
+Open **Marine radio** for the live audio player, current scanner state, device profile, and channel list. The receiver supplies one NFM scanner stream: it cycles through the configured channels and pauses on the first active transmission. The browser will not autoplay radio audio; press Play once. Marine receiver activity is included in **Watch area → Receiver log**. The stream stays inside the add-on and is proxied through the same dashboard server, with no separate audio port or Icecast credentials exposed.
 
 ## TV map
 
@@ -71,6 +71,7 @@ The **Watch Area** page includes the hardware receiver log, GPS/reference positi
 - **AIS-catcher start failed / no supported devices:** confirm the RTL-SDR is attached to the Home Assistant host, no other add-on owns it, and the receiver mode is SDR.
 - **Decoder running but no boats:** use an antenna designed for approximately 162 MHz, move it higher or outdoors, and confirm vessels are within VHF range.
 - **Marine VHF device conflict:** select the second Nooelec or its unique serial; AIS and marine radio cannot share one dongle.
+- **Marine audio is a solid tone or constant noise:** install 2.7.17 or newer, which explicitly selects NFM and defaults to adaptive squelch. Confirm automatic squelch is enabled before changing gain or the manual threshold.
 - **Marine audio unavailable:** confirm Marine VHF is enabled, the second dongle is attached and not used elsewhere, and review the receiver log. Adjust squelch only after confirming the configured channels and antenna.
 - **Sharing error:** recheck the contributor feed host and port supplied by AISHub. Receiving and decoding remain active while sharing is unavailable.
 - **AISHub credentials rejected:** confirm the approved username. The app waits 15 minutes before another API request; restart it after correcting the username to retry immediately.

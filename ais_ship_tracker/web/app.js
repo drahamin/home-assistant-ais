@@ -64,13 +64,13 @@ function renderMarineRadio(radio){
   $('#marine-device').textContent=`RTL-SDR ${fmt(radio.device)}`;
   $('#marine-gain').textContent=`${fmt(radio.gain)} dB`;
   $('#marine-ppm').textContent=`${fmt(radio.ppm)} PPM`;
-  $('#marine-squelch').textContent=`${fmt(radio.squelch)} dBFS`;
+  $('#marine-squelch').textContent=radio.auto_squelch!==false?'Automatic':`${fmt(radio.squelch)} dBFS`;
   const channels=radio.channels||[];
   $('#marine-channel-count').textContent=`${channels.length} channel${channels.length===1?'':'s'}`;
   $('#marine-channels').innerHTML=channels.map((channel,index)=>`<div class="marine-channel"><span><b>${esc(channel.label||`Channel ${index+1}`)}</b><small>Receive-only NFM</small></span><em>${esc(channel.frequency)} MHz</em></div>`).join('')||'<div class="empty">No marine channels configured.</div>';
   if(ready&&radio.stream_url&&!player.getAttribute('src')){player.src=radio.stream_url;player.load()}
   if(!enabled||radio.state==='Device conflict'){player.pause();player.removeAttribute('src');player.load()}
-  $('#marine-player-help').textContent=ready?'Live receiver is connected. Press Play to listen; the scanner follows the first active configured channel.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
+  $('#marine-player-help').textContent=ready?'Live NFM scanner connected. Press Play once; this single feed scans the configured channels and pauses on the first active transmission.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
   const recover=$('#marine-recover'),resetBusy=['Recovery requested','Resetting USB'].includes(stateText);
   recover.disabled=!radio.recovery_allowed||resetBusy;
   recover.textContent=resetBusy?'Recovering…':'Recover VHF radio';
