@@ -194,9 +194,19 @@ def pi_crc(payload: bytes) -> bytes:
 
 
 def decode_raw_qpigs(response: bytes) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    # USB-to-RS485 service cables can locally echo the request or prefix the
+    # inverter reply with line noise.  Select the first complete PI response
+    # rather than requiring the receive buffer itself to begin with "(".
     frame = response.rstrip(b"\r\n")
+    marker = frame.find(b"(")
+    if marker > 0:
+        frame = frame[marker:]
+    terminator = frame.find(b"\r")
+    if terminator >= 0:
+        frame = frame[:terminator]
     if len(frame) < 4 or not frame.startswith(b"("):
-        raise ValueError(f"short raw PI response ({len(frame)} bytes)")
+        preview = response[:32].hex(" ") or "empty"
+        raise ValueError(f"no PI frame in {len(response)} received bytes [{preview}]")
     payload = frame[:-2]
     if pi_crc(payload) != frame[-2:]:
         raise ValueError("raw PI response CRC mismatch")
@@ -231,12 +241,22 @@ def run_raw_pi_read(device: str, baud: int = 2400) -> tuple[dict[str, dict[str, 
 
     command = b"QPIGS"
     request = command + pi_crc(command) + b"\r"
-    with DEVICE_IO_LOCK, serial.Serial(device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=3) as port:
+    with DEVICE_IO_LOCK, serial.Serial(device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=0.35) as port:
         port.reset_input_buffer()
         port.write(request)
         port.flush()
-        response = port.read_until(b"\r", 512)
-    return decode_raw_qpigs(response)
+        # Do not stop on a locally echoed request.  Accumulate several serial
+        # fragments until a complete parenthesized inverter reply is present.
+        response = bytearray()
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and len(response) < 1024:
+            chunk = port.read(256)
+            if chunk:
+                response.extend(chunk)
+                marker = response.find(b"(")
+                if marker >= 0 and response.find(b"\r", marker) >= 0:
+                    break
+    return decode_raw_qpigs(bytes(response))
 
 
 def decode_modbus_holding(registers: list[int]) -> dict[str, dict[str, object]]:

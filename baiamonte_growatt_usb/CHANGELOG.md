@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2
+
+- Keeps reading after USB-to-RS485 request echoes and leading serial noise instead of discarding the inverter reply at the first carriage return.
+- Extracts the first complete Growatt PI response from a fragmented receive buffer and includes a short hexadecimal preview when non-Growatt bytes are received.
+
 ## 1.3.1
 
 - Deduplicates stable and numbered paths that point to the same physical USB adapter.

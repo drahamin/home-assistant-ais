@@ -91,6 +91,20 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertTrue(warnings["battery_voltage_low"]["value"])
         self.assertTrue(warnings["bms_communication_error"]["value"])
 
+    def test_raw_qpigs_decoder_ignores_echo_and_noise(self):
+        fields = b"230.0 60.0 230.0 60.0 1000 800 20 400 52.0 10 75 40 5 180.0 52.0 2 00000000 00 00 900"
+        payload = b"(" + fields
+        frame = payload + growatt.pi_crc(payload) + b"\r"
+        readings, mode, warnings = growatt.decode_raw_qpigs(b"QPIGS\x00\rgarbage" + frame + b"tail")
+        self.assertEqual(readings["ac_output_active_power"]["value"], 800.0)
+        self.assertEqual(readings["pv_input_power"]["value"], 900.0)
+        self.assertEqual(mode, "Live")
+        self.assertEqual(warnings, {})
+
+    def test_raw_qpigs_decoder_reports_non_pi_preview(self):
+        with self.assertRaisesRegex(ValueError, "51 50 49 47 53"):
+            growatt.decode_raw_qpigs(b"QPIGS\r")
+
     def test_growatt_modbus_holding_decoder(self):
         registers = [0] * 114
         registers[1] = 2
