@@ -89,15 +89,28 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertTrue(growatt.setting_catalog({"read_only": False, "allow_setting_changes": True})["writable"])
 
     @patch.object(growatt.glob, "glob")
-    def test_candidates_prefer_growatt_by_id_and_exclude_can_by_id(self, mocked_glob):
+    @patch.object(growatt.os.path, "realpath")
+    def test_candidates_prefer_growatt_by_id_and_exclude_can_and_gps(self, mocked_realpath, mocked_glob):
         values = {
-            "/dev/serial/by-id/*": ["/dev/serial/by-id/usb-CANable", "/dev/serial/by-id/usb-Growatt_CH340"],
+            "/dev/serial/by-id/*": [
+                "/dev/serial/by-id/usb-CANable",
+                "/dev/serial/by-id/usb-u-blox_GNSS_receiver",
+                "/dev/serial/by-id/usb-Silicon_Labs_CP2102N",
+            ],
             "/dev/ttyUSB*": ["/dev/ttyUSB0"], "/dev/ttyACM*": ["/dev/ttyACM0"], "/dev/hidraw*": ["/dev/hidraw0"],
         }
         mocked_glob.side_effect = lambda pattern: values.get(pattern, [])
+        targets = {
+            "/dev/serial/by-id/usb-CANable": "/dev/ttyACM9",
+            "/dev/serial/by-id/usb-u-blox_GNSS_receiver": "/dev/ttyACM0",
+            "/dev/serial/by-id/usb-Silicon_Labs_CP2102N": "/dev/ttyUSB0",
+        }
+        mocked_realpath.side_effect = lambda path: targets.get(path, path)
         candidates = growatt.candidate_devices()
-        self.assertEqual(candidates[0], "/dev/serial/by-id/usb-Growatt_CH340")
+        self.assertEqual(candidates[0], "/dev/serial/by-id/usb-Silicon_Labs_CP2102N")
         self.assertNotIn("/dev/serial/by-id/usb-CANable", candidates)
+        self.assertNotIn("/dev/serial/by-id/usb-u-blox_GNSS_receiver", candidates)
+        self.assertNotIn("/dev/ttyACM0", candidates)
         self.assertIn("/dev/ttyUSB0", candidates)
 
     @patch.object(growatt, "candidate_devices", return_value=[])

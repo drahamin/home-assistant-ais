@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3
+
+- Exclude u-blox GPS and CANable interfaces from Growatt automatic discovery, including their generic `ttyACM` aliases.
+- Prefer stable CP210x, FTDI, Exar, and CH34x USB-serial paths when the Growatt interface is present.
+
 ## 1.2.2
 
 - Discover SPF firmware that supports live `QPIGS` telemetry but does not answer the optional `QPI` protocol identity inquiry.
