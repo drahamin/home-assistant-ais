@@ -156,27 +156,91 @@ def _modbus_read(client: object, method: str, address: int, count: int, slave_id
             return call(address=address, count=count, unit=slave_id)
 
 
+def modbus_crc(payload: bytes) -> bytes:
+    """Return the Modbus RTU CRC16 in wire-order (low byte first)."""
+    crc = 0xFFFF
+    for byte in payload:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc.to_bytes(2, "little")
+
+
+def decode_raw_modbus_response(response: bytes, slave_id: int, count: int) -> list[int]:
+    """Extract a valid function-04 reply, tolerating a locally echoed request."""
+    expected_bytes = count * 2
+    for offset in range(max(0, len(response) - 4)):
+        if response[offset:offset + 3] != bytes((slave_id, 0x04, expected_bytes)):
+            continue
+        frame_length = 3 + expected_bytes + 2
+        frame = response[offset:offset + frame_length]
+        if len(frame) != frame_length or modbus_crc(frame[:-2]) != frame[-2:]:
+            continue
+        data = frame[3:-2]
+        return [int.from_bytes(data[index:index + 2], "big") for index in range(0, len(data), 2)]
+    preview = response[:32].hex(" ") or "empty"
+    raise ConnectionError(f"no valid direct Modbus reply in {len(response)} bytes [{preview}]")
+
+
+def run_raw_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
+    """Read the Growatt input map without pymodbus serial-port handling."""
+    import serial
+
+    count = 91
+    request_body = bytes((slave_id, 0x04, 0x00, 0x00, 0x00, count))
+    request = request_body + modbus_crc(request_body)
+    with DEVICE_IO_LOCK, serial.Serial(device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=0.25) as port:
+        port.reset_input_buffer()
+        port.write(request)
+        port.flush()
+        response = bytearray()
+        deadline = time.monotonic() + 3.0
+        expected = 3 + count * 2 + 2
+        while time.monotonic() < deadline and len(response) < 1024:
+            chunk = port.read(256)
+            if chunk:
+                response.extend(chunk)
+                # Allow an eight-byte local request echo before the reply.
+                if len(response) >= expected or len(response) >= expected + len(request):
+                    try:
+                        registers = decode_raw_modbus_response(bytes(response), slave_id, count)
+                        return decode_modbus_input(registers)
+                    except ConnectionError:
+                        pass
+    registers = decode_raw_modbus_response(bytes(response), slave_id, count)
+    return decode_modbus_input(registers)
+
+
 def run_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
     from pymodbus.client import ModbusSerialClient
 
     client = ModbusSerialClient(port=device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=2)
-    with DEVICE_IO_LOCK:
-        if not client.connect():
-            raise ConnectionError("the RS485 adapter could not be opened")
-        try:
-            response = _modbus_read(client, "read_input_registers", 0, 91, slave_id)
-            if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
-                # Some SPF revisions reject a long request even though the same
-                # register range is available in smaller blocks.
-                first = _modbus_read(client, "read_input_registers", 0, 45, slave_id)
-                second = _modbus_read(client, "read_input_registers", 45, 46, slave_id)
-                if all(item is not None and not (hasattr(item, "isError") and item.isError()) and hasattr(item, "registers") for item in (first, second)):
-                    response = type("RegisterReply", (), {"registers": list(first.registers) + list(second.registers)})()
-        finally:
-            client.close()
-    if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
-        raise ConnectionError(f"no valid Modbus reply from inverter address {slave_id}")
-    return decode_modbus_input(list(response.registers))
+    library_error = None
+    try:
+        with DEVICE_IO_LOCK:
+            if not client.connect():
+                raise ConnectionError("the RS485 adapter could not be opened")
+            try:
+                response = _modbus_read(client, "read_input_registers", 0, 91, slave_id)
+                if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+                    # Some SPF revisions reject a long request even though the same
+                    # register range is available in smaller blocks.
+                    first = _modbus_read(client, "read_input_registers", 0, 45, slave_id)
+                    second = _modbus_read(client, "read_input_registers", 45, 46, slave_id)
+                    if all(item is not None and not (hasattr(item, "isError") and item.isError()) and hasattr(item, "registers") for item in (first, second)):
+                        response = type("RegisterReply", (), {"registers": list(first.registers) + list(second.registers)})()
+            finally:
+                client.close()
+        if response is None or (hasattr(response, "isError") and response.isError()) or not hasattr(response, "registers"):
+            raise ConnectionError(f"no valid Modbus reply from inverter address {slave_id}")
+        return decode_modbus_input(list(response.registers))
+    except Exception as exc:
+        library_error = exc
+
+    try:
+        return run_raw_modbus_read(device, baud, slave_id)
+    except Exception as raw_exc:
+        raise ConnectionError(f"{library_error}; direct serial fallback: {raw_exc}") from raw_exc
 
 
 def pi_crc(payload: bytes) -> bytes:

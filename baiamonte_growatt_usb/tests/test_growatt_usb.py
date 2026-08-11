@@ -91,6 +91,19 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertTrue(warnings["battery_voltage_low"]["value"])
         self.assertTrue(warnings["bms_communication_error"]["value"])
 
+    def test_raw_modbus_decoder_accepts_echo_before_reply(self):
+        registers = list(range(91))
+        request_body = bytes((1, 4, 0, 0, 0, 91))
+        request = request_body + growatt.modbus_crc(request_body)
+        data = b"".join(value.to_bytes(2, "big") for value in registers)
+        response_body = bytes((1, 4, len(data))) + data
+        response = response_body + growatt.modbus_crc(response_body)
+        self.assertEqual(growatt.decode_raw_modbus_response(request + response, 1, 91), registers)
+
+    def test_raw_modbus_decoder_rejects_bad_crc(self):
+        with self.assertRaisesRegex(ConnectionError, "no valid direct Modbus reply"):
+            growatt.decode_raw_modbus_response(bytes((1, 4, 2, 0, 1, 0, 0)), 1, 1)
+
     def test_raw_qpigs_decoder_ignores_echo_and_noise(self):
         fields = b"230.0 60.0 230.0 60.0 1000 800 20 400 52.0 10 75 40 5 180.0 52.0 2 00000000 00 00 900"
         payload = b"(" + fields

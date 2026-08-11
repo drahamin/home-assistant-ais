@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+
+- Adds a native Growatt Modbus RTU function-04 reader that bypasses pymodbus when its serial-port open fails.
+- Accepts locally echoed Modbus requests and validates the inverter response with a wire-order CRC before decoding telemetry.
+
 ## 1.3.2
 
 - Keeps reading after USB-to-RS485 request echoes and leading serial noise instead of discarding the inverter reply at the first carriage return.
