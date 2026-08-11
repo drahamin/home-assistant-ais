@@ -12,9 +12,11 @@ Choose **SDR** for the included AIS-catcher decoder, or **UDP**, **TCP**, or **S
 
 For the full Miami and Sicily map datasets, keep **AIS Network Data Source** set to **Rahamin Miami single-key proxy**. The default endpoint is `http://192.168.86.196:8999/api/status` on the private routed network. Baiamonte AIS requests the Pi's separate `?area=miami` and `?area=baiamonte` caches and imports each only into its matching map. The raw UDP stream remains useful as the direct Miami radio path, while the private status proxy supplies the broader cached vessel views. In this mode Home Assistant never polls AISHub directly, even if an older username remains stored; the Miami Pi is the sole reciprocal API client.
 
-For a Nooelec NESDR SMArt v5, start with device `0`, tuner gain `auto`, correction `0` PPM, RTL AGC enabled, bias tee disabled, and decoder bandwidth `192K`. AIS-catcher listens to both AIS A at 161.975 MHz and AIS B at 162.025 MHz. If several RTL-SDR devices are attached, use the dongle serial number instead of index `0`. Only one app can own a USB dongle at a time.
+For a Nooelec NESDR SMArt v5, start with device `0`, tuner gain `auto`, correction `0` PPM, RTL AGC enabled, bias tee disabled, and decoder bandwidth `192K`. AIS-catcher listens to both AIS A at 161.975 MHz and AIS B at 162.025 MHz. With multiple RTL-SDRs, use an index, a unique selector such as `serial:AIS001`, or a stable physical selector such as `port:1-2.3`. The Watch Area status lists detected ports. Only one service can own a USB dongle at a time.
 
-For two Nooelec receivers, leave AIS on device `0` and select device `1` for **Marine VHF**. Prefer unique dongle serial numbers for a permanent installation so a USB reorder cannot swap the receivers. The app refuses to start marine scanning if its device matches the AIS device.
+For two identical Nooelec receivers, leave AIS on device `0` and select device `1` or `auto` for **Marine VHF**. For a permanent installation, use different programmed serials or assign each role to its physical `port:` value so reconnecting or rebooting cannot swap jobs. If both dongles still have the same factory serial, do not select that serial: the app identifies it as ambiguous and asks for an index or port. The app refuses to start marine scanning if both roles resolve to one radio.
+
+**Marine VHF USB recovery** is off by default. Enable **Allow Marine VHF USB Recovery** to expose the manual Recover button. The app first stops RTLSDR-Airband, resolves the configured marine device, and issues a Linux USB reset to only that device; AIS is not reset. **Automatically Reset Failed Marine VHF USB** can perform this after failures up to the configured limit (two recommended). If the Home Assistant host does not permit USB reset, the error is logged and ordinary process restarts continue.
 
 The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open the app log after starting it. You should see the friendly receiver name, its network address, valid NMEA counts, and forwarding totals.
 
@@ -31,7 +33,8 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **RTL-SDR Bias Tee:** leave off for a NESDR SMArt v5 unless attached active hardware explicitly requires power.
 - **AIS Decoder Bandwidth:** use the recommended `192K` starting filter, `288K`, or `OFF` for diagnosis.
 - **Enable Marine VHF Receiver:** starts the bundled receive-only RTLSDR-Airband NFM scanner and private audio service.
-- **Marine VHF RTL-SDR Device:** use `1` for the second Nooelec or its unique serial; it must not match the AIS device.
+- **Marine VHF RTL-SDR Device:** use `1`, `auto`, a unique serial, or a stable `port:` selector; it must resolve separately from AIS.
+- **Marine VHF USB Recovery:** optionally allows manual recovery and up to 0–5 automatic device resets without touching the AIS radio.
 - **Marine Frequencies / Labels:** matching comma-separated scan lists, with up to 12 frequencies between 156 and 163 MHz. Confirm the correct local channel plan.
 - **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and squelch `-28`, then adjust for the antenna and local noise floor.
 - **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.

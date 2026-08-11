@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.16
+
+- Supports two identical RTL-SDRs with independent AIS and marine VHF assignments by index, unique serial, automatic selection, or stable physical `port:<USB-port>` selector.
+- Detects duplicate factory serials and refuses ambiguous assignments instead of allowing both services to contend for the same dongle.
+- Adds an opt-in manual Marine radio recovery control that stops the scanner and resets only its resolved USB device.
+- Adds optional automatic marine USB recovery with a configurable 0–5 reset limit; normal process restarts continue without resetting the AIS radio.
+- Reports resolved device assignments, discovered RTL-SDR ports, reset counts, and recovery errors in the dashboard and receiver log.
+
 ## 2.7.15
 
 - Adds an explicit AIS Network Data Source setting that defaults to the Rahamin Miami single-key private proxy.

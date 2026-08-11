@@ -71,6 +71,20 @@ function renderMarineRadio(radio){
   if(ready&&radio.stream_url&&!player.getAttribute('src')){player.src=radio.stream_url;player.load()}
   if(!enabled||radio.state==='Device conflict'){player.pause();player.removeAttribute('src');player.load()}
   $('#marine-player-help').textContent=ready?'Live receiver is connected. Press Play to listen; the scanner follows the first active configured channel.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
+  const recover=$('#marine-recover'),resetBusy=['Recovery requested','Resetting USB'].includes(stateText);
+  recover.disabled=!radio.recovery_allowed||resetBusy;
+  recover.textContent=resetBusy?'Recovering…':'Recover VHF radio';
+  $('#marine-recovery-detail').textContent=radio.usb_reset_error||(
+    radio.last_usb_reset?`Last USB recovery ${ago(radio.last_usb_reset)} · ${radio.usb_resets||0} total`:
+    radio.recovery_allowed?(radio.auto_usb_reset?`Automatic recovery enabled · limit ${radio.usb_reset_attempts}`:'Manual USB recovery ready'):
+    'USB recovery is disabled in configuration.'
+  );
+}
+
+async function recoverMarineRadio(){
+  const button=$('#marine-recover');button.disabled=true;button.textContent='Recovering…';
+  try{const response=await fetch('api/marine-radio/recover',{method:'POST',cache:'no-store'}),payload=await response.json();if(!response.ok)throw new Error(payload.message||`Recovery ${response.status}`);$('#marine-recovery-detail').textContent=payload.message;setTimeout(refresh,800)}
+  catch(error){$('#marine-recovery-detail').textContent=error.message;button.disabled=false;button.textContent='Recover VHF radio'}
 }
 
 function render(data){
@@ -158,4 +172,4 @@ try{
   new ResizeObserver(entries=>{const height=Math.round(entries[0].contentRect.height);if(height>=260&&height<=720)localStorage.setItem('baiamonteOverviewMapHeight',String(height));applyOverviewView();rerenderVisibleMap()}).observe(overviewMap);
 }catch(error){console.debug('Map size preference is unavailable',error)}
 async function refresh(){if(refreshRunning)return;refreshRunning=true;const button=$('#refresh');button.disabled=true;try{const response=await fetch('api/status',{cache:'no-store'});if(!response.ok)throw new Error(`Dashboard API ${response.status}`);const data=await response.json();refreshFailures=0;render(data)}catch(error){refreshFailures+=1;$('#last-check').textContent=state?'Update delayed · retrying':'Connecting to dashboard…';if(!state&&refreshFailures>=3){$('#receiver-status').textContent='Dashboard unavailable';$('#hero-status').textContent='Waiting for the Baiamonte AIS service'}console.error(error)}finally{refreshRunning=false;button.disabled=false}}
-$('#refresh').onclick=refresh;showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){resetOverviewMap();rerenderVisibleMap();refresh()}});addEventListener('resize',rerenderVisibleMap);
+$('#refresh').onclick=refresh;$('#marine-recover').onclick=recoverMarineRadio;showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){resetOverviewMap();rerenderVisibleMap();refresh()}});addEventListener('resize',rerenderVisibleMap);

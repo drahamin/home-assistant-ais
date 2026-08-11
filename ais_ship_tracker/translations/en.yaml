@@ -85,7 +85,7 @@ configuration:
     description: Both channels, channel A 161.975 MHz, or channel B 162.025 MHz.
   sdr_device:
     name: RTL-SDR Device
-    description: Device index such as 0, or its serial number when multiple dongles are attached.
+    description: Use 0, serial:AIS001, or port:1-2.3 for a stable physical USB socket when identical dongles are attached.
   sdr_gain:
     name: RTL-SDR Tuner Gain
     description: Use auto initially, or enter a manual gain from 0 to 50 dB.
@@ -106,7 +106,16 @@ configuration:
     description: Use a second RTL-SDR as a receive-only marine VHF scanner with live dashboard audio.
   marine_vhf_device:
     name: Marine VHF RTL-SDR Device
-    description: Use device index 1 for the second Nooelec, or its unique serial number. It must differ from AIS.
+    description: Use 1, auto, serial:VHF001, or port:1-2.4. It must resolve to a different radio from AIS.
+  marine_vhf_usb_reset_enabled:
+    name: Allow Marine VHF USB Recovery
+    description: Enables the manual Recover control for only the selected marine RTL-SDR.
+  marine_vhf_auto_usb_reset:
+    name: Automatically Reset Failed Marine VHF USB
+    description: Reset the marine radio after scanner failures before restarting it.
+  marine_vhf_usb_reset_attempts:
+    name: Automatic Marine VHF USB Reset Limit
+    description: Maximum automatic USB resets from 0 to 5; two is recommended.
   marine_vhf_frequencies:
     name: Marine VHF Frequencies
     description: Comma-separated receive frequencies in MHz for your local waters.
