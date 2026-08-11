@@ -144,9 +144,19 @@ def candidate_devices(configured: str = "auto") -> list[str]:
     if configured and configured != "auto":
         return [configured]
     stable = sorted(glob.glob("/dev/serial/by-id/*"))
-    growatt_stable = [p for p in stable if any(word in p.lower() for word in ("growatt", "usb-serial", "ch340", "ch341"))]
-    other_stable = [p for p in stable if p not in growatt_stable and "can" not in p.lower()]
-    serial = sorted(glob.glob("/dev/ttyUSB*")) + sorted(glob.glob("/dev/ttyACM*"))
+    excluded_words = ("canable", "openlight", "u-blox", "ublox", "gnss", "gps")
+    excluded_stable = [p for p in stable if any(word in p.lower() for word in excluded_words)]
+    excluded_targets = {os.path.realpath(p) for p in excluded_stable}
+    growatt_words = ("growatt", "usb-serial", "ch340", "ch341", "cp2102", "cp210x", "ftdi", "exar")
+    growatt_stable = [
+        p for p in stable
+        if p not in excluded_stable and any(word in p.lower() for word in growatt_words)
+    ]
+    other_stable = [p for p in stable if p not in growatt_stable and p not in excluded_stable]
+    serial = [
+        p for p in sorted(glob.glob("/dev/ttyUSB*")) + sorted(glob.glob("/dev/ttyACM*"))
+        if os.path.realpath(p) not in excluded_targets
+    ]
     hid = sorted(glob.glob("/dev/hidraw*"))
     return list(dict.fromkeys(growatt_stable + serial + other_stable + hid))
 
