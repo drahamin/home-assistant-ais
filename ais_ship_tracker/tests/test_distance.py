@@ -286,19 +286,16 @@ class AisCatcherTests(unittest.TestCase):
         self.assertIs(tracker.rahamin_proxy_records({"VESSELS": records}), records)
         self.assertIs(tracker.rahamin_proxy_records({"records": records}), records)
 
-    def test_private_proxy_bounds_include_source_area_and_every_target(self):
+    def test_private_proxy_targets_do_not_expand_configured_watch_area(self):
         payload = {"config": {"map_areas": [{
             "id": "miami", "bounds": {"south": 25.4, "west": -80.6, "north": 26.3, "east": -79.7},
         }]}}
         bounds = tracker.rahamin_proxy_map_bounds(payload, "miami", [{
             "MMSI": "367444444", "LATITUDE": 26.5, "LONGITUDE": -80.2,
         }])
-        self.assertLess(bounds["south"], 25.4)
-        self.assertGreater(bounds["north"], 26.5)
-        self.assertLess(bounds["west"], -80.6)
-        self.assertGreater(bounds["east"], -79.7)
+        self.assertEqual(bounds, tracker.MAP_AREAS["miami"]["bounds"])
 
-    def test_dashboard_uses_connected_proxy_map_bounds(self):
+    def test_dashboard_keeps_configured_bounds_when_proxy_reports_global_coverage(self):
         proxy_area = tracker.rahamin_proxy_state["areas"]["miami"]
         previous = dict(proxy_area)
         try:
@@ -307,7 +304,7 @@ class AisCatcherTests(unittest.TestCase):
                 "map_bounds": {"south": 25.2, "west": -80.7, "north": 26.6, "east": -79.6},
             })
             miami = next(area for area in tracker.dashboard_map_areas() if area["id"] == "miami")
-            self.assertEqual(miami["bounds"]["north"], 26.6)
+            self.assertEqual(miami["bounds"], tracker.MAP_AREAS["miami"]["bounds"])
         finally:
             proxy_area.clear()
             proxy_area.update(previous)
@@ -330,6 +327,22 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(vessel["destination"], "CATANIA")
         self.assertEqual(tracker.dashboard_events[0]["area_id"], "baiamonte")
         self.assertEqual(tracker.dashboard_events[0]["area_name"], "Baiamonte Sicily")
+
+    def test_private_status_proxy_rejects_stale_timestamped_contact(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123457", "name": "STALE PROXY", "latitude": 37.62, "longitude": 15.18,
+            "last_seen": "2026-08-12T10:00:00+00:00",
+        }, "baiamonte", "2026-08-12T11:00:00+00:00")
+        self.assertFalse(imported)
+        self.assertNotIn("247123457", tracker.dashboard_vessels)
+
+    def test_private_status_proxy_keeps_fresh_timestamped_contact(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123458", "name": "FRESH PROXY", "latitude": 37.62, "longitude": 15.18,
+            "last_seen": "2026-08-12T10:50:00+00:00",
+        }, "baiamonte", "2026-08-12T11:00:00+00:00")
+        self.assertTrue(imported)
+        self.assertEqual(tracker.dashboard_vessels["247123458"]["source_last_seen"], "2026-08-12T10:50:00+00:00")
 
     def test_private_proxy_area_url_preserves_existing_query(self):
         previous_url = tracker.RAHAMIN_PROXY_URL
@@ -558,7 +571,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="map-area-switch"', dashboard)
         self.assertIn("map_areas", dashboard_script)
         self.assertIn('id="tv-area-switch"', television)
-        self.assertIn("URLSearchParams(location.search).get('area')", television_script)
+        self.assertIn("tvParams.get('area')", television_script)
         self.assertIn("area_status==='inbound'", television_script)
 
     def test_dashboard_and_tv_offer_live_vessel_map_controls(self):
@@ -608,7 +621,11 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("cancel(mapFrame)", television_script)
         self.assertIn('id="tv-map-explore" aria-label="Allow map pan and pinch"', television)
         self.assertIn('id="tv-map-reset" aria-label="Reset and lock map at the fixed AIS home location">Reset</button>', television)
-        self.assertIn("cfg.tv_live_traffic_only===false?nearest:visible", television_script)
+        self.assertIn("vesselIsOnScreen", television_script)
+        self.assertIn("source_last_seen||v.last_seen", television_script)
+        self.assertIn("stale after", television_script)
+        self.assertIn("tvParams.get('map_zoom')", television_script)
+        self.assertIn("tvParams.get('target_size')", television_script)
         self.assertIn('tv_default_map_area: "baiamonte"', config)
         self.assertIn("dashboard_map_vessels: true", config)
         self.assertIn("tv_map_vessels: true", config)

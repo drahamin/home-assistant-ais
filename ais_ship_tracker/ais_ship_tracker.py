@@ -26,7 +26,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.16"
+VERSION = "2.7.22"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -635,6 +635,7 @@ TV_VESSEL_FIELDS = {
     "mmsi", "name", "latitude", "longitude", "sog", "cog", "heading",
     "area_id", "area_status", "distance_km", "destination",
     "nav_status_string", "vessel_type", "vessel_class", "station", "source",
+    "last_seen", "source_last_seen",
 }
 
 
@@ -733,7 +734,7 @@ def dashboard_snapshot(area_id=None, compact=False):
             compact_config_keys = {
                 "bounds", "area_id", "map_areas", "tv_default_map_area",
                 "tv_map_vessels", "tv_live_traffic_only", "tv_weather_overlay",
-                "tv_weather_opacity", "map_style",
+                "tv_weather_opacity", "map_style", "timeout_minutes",
             }
             return {
                 "brand": snapshot["brand"],
@@ -1303,6 +1304,27 @@ def clean_number(value, unavailable=None):
         return None
 
 
+def source_timestamp_is_fresh(value, reference_value=None, timeout_minutes=None):
+    """Reject replayed proxy contacts while allowing sources without timestamps."""
+    if value in (None, ""):
+        return True
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if reference_value not in (None, ""):
+            reference = datetime.fromisoformat(str(reference_value).strip().replace("Z", "+00:00"))
+            if parsed.tzinfo is None and reference.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=reference.tzinfo)
+            elif parsed.tzinfo is not None and reference.tzinfo is None:
+                reference = reference.replace(tzinfo=parsed.tzinfo)
+            age_seconds = reference.timestamp() - parsed.timestamp()
+        else:
+            age_seconds = time.time() - parsed.timestamp()
+        limit_seconds = max(1, timeout_minutes or MAP_TIMEOUT_MINUTES) * 60
+        return -300 <= age_seconds <= limit_seconds
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def proxy_value(record, *names):
     """Read a Rahamin dashboard or standard AIS field without case assumptions."""
     for name in names:
@@ -1343,52 +1365,13 @@ def valid_map_bounds(bounds):
 
 
 def rahamin_proxy_map_bounds(payload, area_id, records):
-    """Use the source area's coverage and guarantee every supplied target fits."""
-    source_bounds = None
-    if isinstance(payload, dict):
-        config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
-        map_areas = config.get("map_areas") if isinstance(config.get("map_areas"), list) else []
-        for candidate in map_areas:
-            if isinstance(candidate, dict) and str(candidate.get("id", "")).lower() == area_id:
-                source_bounds = valid_map_bounds(candidate.get("bounds"))
-                break
-        if source_bounds is None and str(config.get("area_id", "")).lower() == area_id:
-            source_bounds = valid_map_bounds(config.get("bounds"))
-    bounds = dict(source_bounds or MAP_AREAS[area_id]["bounds"])
-    for raw_record in records:
-        if not isinstance(raw_record, dict):
-            continue
-        attributes = raw_record.get("attributes") if isinstance(raw_record.get("attributes"), dict) else {}
-        record = {**attributes, **raw_record}
-        latitude = clean_number(proxy_value(record, "latitude", "LATITUDE", "lat", "LAT"))
-        longitude = clean_number(proxy_value(record, "longitude", "LONGITUDE", "lon", "LON", "lng"))
-        if latitude is None or longitude is None or not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-            continue
-        bounds["south"] = min(bounds["south"], latitude)
-        bounds["north"] = max(bounds["north"], latitude)
-        bounds["west"] = min(bounds["west"], longitude)
-        bounds["east"] = max(bounds["east"], longitude)
-    lat_pad = max(0.01, (bounds["north"] - bounds["south"]) * 0.025)
-    lon_pad = max(0.01, (bounds["east"] - bounds["west"]) * 0.025)
-    return {
-        "south": max(-90, bounds["south"] - lat_pad),
-        "west": max(-180, bounds["west"] - lon_pad),
-        "north": min(90, bounds["north"] + lat_pad),
-        "east": min(180, bounds["east"] + lon_pad),
-    }
+    """Keep the configured local watch area; targets must not enlarge the TV map."""
+    return dict(MAP_AREAS[area_id]["bounds"])
 
 
 def dashboard_map_areas():
-    """Expose private-source coverage so accepted targets remain on-screen."""
-    areas = []
-    for area_id, configured in MAP_AREAS.items():
-        area = {**configured, "bounds": dict(configured["bounds"])}
-        proxy_area = rahamin_proxy_state.get("areas", {}).get(area_id, {})
-        proxy_bounds = valid_map_bounds(proxy_area.get("map_bounds"))
-        if proxy_bounds and proxy_area.get("state") == "Connected":
-            area["bounds"] = proxy_bounds
-        areas.append(area)
-    return areas
+    """Expose fixed configured watch areas; feed contents never change map scale."""
+    return [{**configured, "bounds": dict(configured["bounds"])} for configured in MAP_AREAS.values()]
 
 
 def union_map_bounds(first, second):
@@ -1482,7 +1465,7 @@ def process_aishub_record(record, area_id="baiamonte"):
         last_map_update[mmsi] = now
 
 
-def process_rahamin_proxy_record(record, area_id="miami"):
+def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=None):
     """Import one positioned vessel from the private Rahamin AIS status API."""
     if not isinstance(record, dict):
         return False
@@ -1495,6 +1478,9 @@ def process_rahamin_proxy_record(record, area_id="miami"):
     longitude = clean_number(proxy_value(record, "longitude", "LONGITUDE", "lon", "LON", "lng"))
     area = MAP_AREAS.get(area_id)
     if not area or not area.get("enabled"):
+        return False
+    source_seen_at = proxy_value(record, "source_last_seen", "last_seen", "timestamp", "TIME")
+    if not source_timestamp_is_fresh(source_seen_at, source_generated_at):
         return False
     # The private source already scopes /api/status?area=... to its configured
     # area. Do not apply Baiamonte's potentially different bounds a second time;
@@ -1519,6 +1505,7 @@ def process_rahamin_proxy_record(record, area_id="miami"):
         "area_name": area["name"],
         "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
         "icon": str(proxy_value(record, "icon") or "mdi:ferry"),
+        "source_last_seen": source_seen_at,
     }
     static = {
         "destination": proxy_value(record, "destination", "DEST"),
@@ -1575,7 +1562,8 @@ def rahamin_proxy_worker():
                 response_area = str(payload.get("config", {}).get("area_id", area_id)).lower() if isinstance(payload, dict) else area_id
                 if response_area != area_id:
                     raise ValueError(f"Rahamin AIS returned {response_area} data for the {area_id} request")
-                imported = sum(int(process_rahamin_proxy_record(record, area_id)) for record in records)
+                source_generated_at = payload.get("generated_at") if isinstance(payload, dict) else None
+                imported = sum(int(process_rahamin_proxy_record(record, area_id, source_generated_at)) for record in records)
                 map_bounds = union_map_bounds(
                     area_proxy_state.get("map_bounds"),
                     rahamin_proxy_map_bounds(payload, area_id, records),
