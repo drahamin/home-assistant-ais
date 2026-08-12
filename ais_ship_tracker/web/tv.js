@@ -17,7 +17,7 @@ let manualCenter=null,manualZoom=null;
 const tvParams=new URLSearchParams(location.search);
 const requestedArea=(tvParams.get('area')||'').toLowerCase();
 const requestedZoomDelta=clampedParam(tvParams.get('map_zoom'),-6,20,0);
-const requestedTargetScale=clampedParam(tvParams.get('target_size'),50,180,100)/100;
+const requestedTargetScale=clampedParam(tvParams.get('target_size'),30,180,100)/100;
 window.BaiamonteNativeMapControls=true;
 let activeArea=requestedArea;
 let tvVesselsVisible=null;
@@ -44,6 +44,15 @@ function chooseTvArea(areaId){activeArea=areaId;manualCenter=null;manualZoom=nul
 function renderTvAreaSwitch(config){const area=currentTvArea(config),switcher=document.querySelector('#tv-area-switch'),key=tvAreas(config).map(function(item){return `${item.id}:${item.name}:${item.id===area.id}`}).join('|');activeArea=area.id;if(key!==tvAreaSwitchKey){tvAreaSwitchKey=key;switcher.innerHTML=tvAreas(config).map(function(item){return `<button type="button" data-area="${escapeHtml(item.id)}" aria-pressed="${item.id===area.id}">${escapeHtml(item.name)}</button>`}).join('');Array.prototype.forEach.call(switcher.querySelectorAll('[data-area]'),function(button){button.onclick=function(){chooseTvArea(button.getAttribute('data-area'))}})}return area}
 
 function tvHomeCenter(config,area){
+  if(area.id==='baiamonte'){
+    const cutoff=Date.now()-Math.max(1,Number(config.timeout_minutes)||30)*60000;
+    const nearest=((latest&&latest.vessels)||[]).filter(function(vessel){
+      const seen=Date.parse(vessel.source_last_seen||vessel.last_seen||'');
+      return String(vessel.area_id||'baiamonte')==='baiamonte'&&Number.isFinite(Number(vessel.latitude))&&Number.isFinite(Number(vessel.longitude))&&Number.isFinite(seen)&&seen>=cutoff;
+    }).sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)})[0];
+    if(nearest)return{lat:Number(nearest.latitude),lon:Number(nearest.longitude)};
+    return{lat:37.55,lon:15.16};
+  }
   return{lat:(area.bounds.north+area.bounds.south)/2,lon:(area.bounds.east+area.bounds.west)/2};
 }
 
@@ -58,8 +67,9 @@ function fittedZoom(bounds,width,height){
 }
 
 function tvHomeView(config,area,width,height){
-  const boundsKey=[area.bounds.south,area.bounds.west,area.bounds.north,area.bounds.east,width,height].join(':');
-  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:clamp(fittedZoom(area.bounds,width,height)+requestedZoomDelta,2,18),boundsKey:boundsKey};
+  const center=tvHomeCenter(config,area);
+  const boundsKey=[area.bounds.south,area.bounds.west,area.bounds.north,area.bounds.east,center.lat,center.lon,width,height].join(':');
+  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:center,zoom:clamp(fittedZoom(area.bounds,width,height)+requestedZoomDelta,2,18),boundsKey:boundsKey};
   return tvHomeViews[area.id];
 }
 
@@ -197,11 +207,9 @@ function boatNode(vessel,view,occupied,width,height){
   const info=flagInfo(vessel.mmsi);
   const icon=vesselIcon(vessel);
   const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
-  const offsetX=trueX-x,offsetY=trueY-y,offsetDistance=Math.hypot(offsetX,offsetY),positionLine=offsetDistance>2?`<span class="boat-position-line" style="width:${offsetDistance}px;transform:rotate(${Math.atan2(offsetY,offsetX)}rad)"></span>`:'';
   node.classList.add(`boat-${icon.kind}`);
   node.style.setProperty('--target-scale',String(requestedTargetScale));
-  if(positionLine)node.classList.add('decluttered');
-  node.innerHTML=`${positionLine}<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
+  node.innerHTML=`<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
   return node;
 }
 
@@ -228,7 +236,7 @@ function vesselRow(vessel){
   const direction=Number.isFinite(Number(vessel.heading))?`${Math.round(Number(vessel.heading))}°`:Number.isFinite(Number(vessel.cog))?`${Math.round(Number(vessel.cog))}°`:'—';
   const distance=Number.isFinite(Number(vessel.distance_km))?`${Number(vessel.distance_km).toFixed(1)} km`:'Distance unavailable';
   const areaStatus=vessel.area_status==='inbound'?'Inbound':vessel.area_status==='in_area'?'In area':'Nearby';
-  return `<article class="vessel-row"><span class="flag" title="${escapeHtml(info.country)}">${info.flag}</span><div class="vessel-main"><div class="vessel-title"><h2>${escapeHtml(vessel.name||'Unknown vessel')}</h2><strong>${speed}</strong></div><div class="vessel-meta"><span>${escapeHtml(areaStatus)}</span><span>${escapeHtml(info.country)}</span><span>${distance}</span><span>${direction}</span></div><div class="vessel-dest"><span>${escapeHtml(vessel.destination||vessel.nav_status_string||'No destination broadcast')}</span><em>${escapeHtml(vessel.vessel_type||vessel.station||'AIS contact')}</em></div></div></article>`;
+  return `<article class="vessel-row" data-mmsi="${escapeHtml(vessel.mmsi)}"><span class="flag" title="${escapeHtml(info.country)}">${info.flag}</span><div class="vessel-main"><div class="vessel-title"><h2>${escapeHtml(vessel.name||'Unknown vessel')}</h2><strong>${speed}</strong></div><div class="vessel-meta"><span>${escapeHtml(areaStatus)}</span><span>${escapeHtml(info.country)}</span><span>${distance}</span><span>${direction}</span></div><div class="vessel-dest"><span>${escapeHtml(vessel.destination||vessel.nav_status_string||'No destination broadcast')}</span><em>${escapeHtml(vessel.vessel_type||vessel.station||'AIS contact')}</em></div></div></article>`;
 }
 
 function render(data){

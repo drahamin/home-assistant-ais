@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.23
+
+- Identifies the fresh vessels in the native TV rail so the Vineyard Operations kiosk can mirror exactly the contacts inside the current AIS viewport.
+- Centers the Sicily TV map on the nearest fresh coastal contact, with a Catania-coast fallback when the receiver is quiet.
+- Removes misleading decluttering vectors from the TV map and permits compact 30% vessel targets.
+
 ## 2.7.22
 
 - Keeps Sicily and Miami TV maps fixed to their configured watch areas instead of expanding them around every cached target.

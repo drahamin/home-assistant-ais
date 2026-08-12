@@ -26,7 +26,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.22"
+VERSION = "2.7.23"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
