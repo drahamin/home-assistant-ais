@@ -53,6 +53,10 @@ STATUS: dict[str, object] = {
     "settings_updated_at": None,
     "firmware": {},
     "firmware_updated_at": None,
+    "address_scan": {
+        "running": False, "progress": 0, "current_address": None,
+        "found_addresses": [], "started_at": None, "finished_at": None, "error": None,
+    },
 }
 
 PROTOCOL_PROFILES = {
@@ -209,6 +213,100 @@ def run_raw_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tup
                         pass
     registers = decode_raw_modbus_response(bytes(response), slave_id, count)
     return decode_modbus_input(registers)
+
+
+def _valid_modbus_probe(response: bytes, slave_id: int) -> bool:
+    """Return true for a CRC-valid normal or exception response from one slave."""
+    for offset in range(len(response)):
+        if response[offset] != slave_id or offset + 5 > len(response):
+            continue
+        function = response[offset + 1]
+        lengths = []
+        if function == 0x04 and offset + 3 <= len(response):
+            lengths.append(3 + response[offset + 2] + 2)
+        elif function == 0x84:
+            lengths.append(5)
+        for length in lengths:
+            frame = response[offset:offset + length]
+            if len(frame) == length and modbus_crc(frame[:-2]) == frame[-2:]:
+                return True
+    return False
+
+
+def scan_modbus_addresses(device: str, baud: int = 9600, first: int = 1, last: int = 247) -> list[int]:
+    """Probe every documented Modbus address without reading or writing settings."""
+    import serial
+
+    found: list[int] = []
+    with DEVICE_IO_LOCK, serial.Serial(device, baudrate=baud, bytesize=8, parity="N", stopbits=1, timeout=0.05) as port:
+        for slave_id in range(first, last + 1):
+            started = time.monotonic()
+            request_body = bytes((slave_id, 0x04, 0x00, 0x00, 0x00, 0x01))
+            request = request_body + modbus_crc(request_body)
+            port.reset_input_buffer()
+            port.write(request)
+            port.flush()
+            response = bytearray()
+            deadline = started + 0.35
+            while time.monotonic() < deadline and len(response) < 128:
+                chunk = port.read(64)
+                if chunk:
+                    response.extend(chunk)
+                    if _valid_modbus_probe(bytes(response), slave_id):
+                        found.append(slave_id)
+                        break
+            with STATUS_LOCK:
+                STATUS["address_scan"] = {
+                    **dict(STATUS.get("address_scan", {})),
+                    "running": True,
+                    "progress": int(slave_id * 100 / last),
+                    "current_address": slave_id,
+                    "found_addresses": list(found),
+                }
+            # Growatt documents an 850 ms minimum command period.
+            remaining = 0.85 - (time.monotonic() - started)
+            if remaining > 0:
+                time.sleep(remaining)
+    return found
+
+
+def start_address_scan() -> None:
+    """Run the long read-only address sweep in the background."""
+    with STATUS_LOCK:
+        current = dict(STATUS.get("address_scan", {}))
+        if current.get("running"):
+            raise RuntimeError("An RS485 address scan is already running")
+        STATUS["address_scan"] = {
+            "running": True, "progress": 0, "current_address": 1,
+            "found_addresses": [], "started_at": now_iso(), "finished_at": None, "error": None,
+        }
+
+    def worker() -> None:
+        options = load_options()
+        devices = [item for item in candidate_devices(str(options.get("device", "auto"))) if "hidraw" not in item.lower()]
+        try:
+            if not devices:
+                raise FileNotFoundError("No serial RS485 adapter is visible")
+            baud = int(options.get("modbus_baud_rate", 9600))
+            log(f"Read-only Modbus address scan started on {devices[0]} at {baud} baud")
+            found = scan_modbus_addresses(devices[0], baud)
+            with STATUS_LOCK:
+                STATUS["address_scan"] = {
+                    **dict(STATUS.get("address_scan", {})), "running": False, "progress": 100,
+                    "current_address": 247, "found_addresses": found, "finished_at": now_iso(), "error": None,
+                }
+            log(f"Modbus address scan finished; responding addresses: {found or 'none'}", "info" if found else "warning")
+        except Exception as exc:
+            with STATUS_LOCK:
+                STATUS["address_scan"] = {
+                    **dict(STATUS.get("address_scan", {})), "running": False,
+                    "finished_at": now_iso(), "error": str(exc),
+                }
+            log(f"Modbus address scan failed: {exc}", "error")
+        finally:
+            WAKE.set()
+
+    threading.Thread(target=worker, name="growatt-address-scan", daemon=True).start()
 
 
 def run_modbus_read(device: str, baud: int = 9600, slave_id: int = 1) -> tuple[dict[str, dict[str, object]], str, dict[str, dict[str, object]]]:
@@ -569,7 +667,9 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
             continue
         if "hidraw" not in device.lower() and selected_protocol in {"auto", MODBUS_PROTOCOL} and selected_transport in {"auto", "serial", "modbus_rtu"}:
             modbus_bauds = list(dict.fromkeys([modbus_baud, 9600, 19200]))
-            slave_ids = list(dict.fromkeys([slave_id, 1, 2]))
+            with STATUS_LOCK:
+                scan_addresses = list(dict(STATUS.get("address_scan", {})).get("found_addresses", []))
+            slave_ids = list(dict.fromkeys([*scan_addresses, slave_id, 1, 2]))
             for test_baud in modbus_bauds:
                 for test_slave in slave_ids:
                     try:
@@ -1092,6 +1192,13 @@ class Handler(BaseHTTPRequestHandler):
                 STATUS.update({"connected": False, "device": None, "protocol": None, "last_error": "Manual USB rescan requested"})
             WAKE.set()
             self.send_json({"ok": True, "message": "USB rescan requested"}, 202)
+            return
+        if path.endswith("/api/address-scan"):
+            try:
+                start_address_scan()
+                self.send_json({"ok": True, "message": "Read-only addresses 1-247 scan started"}, 202)
+            except RuntimeError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 409)
             return
         if path.endswith("/api/poll"):
             WAKE.set()
