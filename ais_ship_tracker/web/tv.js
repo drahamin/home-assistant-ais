@@ -17,7 +17,7 @@ let manualCenter=null,manualZoom=null;
 const tvParams=new URLSearchParams(location.search);
 const requestedArea=(tvParams.get('area')||'').toLowerCase();
 const requestedZoomDelta=clampedParam(tvParams.get('map_zoom'),-6,20,0);
-const requestedTargetScale=clampedParam(tvParams.get('target_size'),30,180,100)/100;
+const requestedTargetScale=clampedParam(tvParams.get('target_size'),30,180,70)/100;
 window.BaiamonteNativeMapControls=true;
 let activeArea=requestedArea;
 let tvVesselsVisible=null;
@@ -69,7 +69,7 @@ function fittedZoom(bounds,width,height){
 function tvHomeView(config,area,width,height){
   const center=tvHomeCenter(config,area);
   const boundsKey=[area.bounds.south,area.bounds.west,area.bounds.north,area.bounds.east,center.lat,center.lon,width,height].join(':');
-  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:center,zoom:clamp(fittedZoom(area.bounds,width,height)+requestedZoomDelta,2,18),boundsKey:boundsKey};
+  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:center,zoom:clamp(fittedZoom(area.bounds,width,height)+(area.id==='baiamonte'?2:0)+requestedZoomDelta,2,18),boundsKey:boundsKey};
   return tvHomeViews[area.id];
 }
 
@@ -182,23 +182,11 @@ function vesselIcon(vessel){
   return{kind:'vessel',svg:'<path class="icon-outline" d="M20 1 34 16 31 48 20 55 9 48 6 16Z"/><path class="icon-light" d="M12 18h16v22H12z"/><path class="icon-detail" d="M15 11h10v9H15z"/>'};
 }
 
-function declutterTvPoint(x,y,occupied,width,height){
-  const gap=30,margin=18,fits=function(candidate){return candidate.x>=margin&&candidate.y>=margin&&candidate.x<=width-margin&&candidate.y<=height-margin&&!occupied.some(function(point){return Math.hypot(candidate.x-point.x,candidate.y-point.y)<gap})};
-  for(let ring=0;ring<=7;ring++){
-    const radius=ring*gap,steps=ring===0?1:Math.max(8,Math.ceil(2*Math.PI*radius/gap));
-    for(let step=0;step<steps;step++){
-      const angle=(step/steps)*Math.PI*2-ring*.37,candidate={x:x+Math.cos(angle)*radius,y:y+Math.sin(angle)*radius};
-      if(fits(candidate)){occupied.push(candidate);return{x:candidate.x,y:candidate.y,trueX:x,trueY:y}}
-    }
-  }
-  const fallback={x:Math.max(margin,Math.min(width-margin,x)),y:Math.max(margin,Math.min(height-margin,y))};occupied.push(fallback);return{x:fallback.x,y:fallback.y,trueX:x,trueY:y};
-}
-
-function boatNode(vessel,view,occupied,width,height){
+function boatNode(vessel,view){
   const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
   const node=document.createElement('div');
   node.className='boat';
-  const trueX=point.x-view.originX,trueY=point.y-view.originY,placed=declutterTvPoint(trueX,trueY,occupied,width,height),x=placed.x,y=placed.y;
+  const x=point.x-view.originX,y=point.y-view.originY;
   node.style.left=`${x}px`;
   node.style.top=`${y}px`;
   node.setAttribute('data-map-x',String(x));
@@ -260,7 +248,7 @@ function render(data){
   const freshCutoff=Date.now()-Math.max(1,Number(cfg.timeout_minutes)||30)*60000;
   const freshVessels=areaVessels.filter(function(v){const seen=Date.parse(v.source_last_seen||v.last_seen||'');return Number.isFinite(seen)&&seen>=freshCutoff});
   const visible=freshVessels.filter(v=>vesselIsOnScreen(v,view,width,height));
-  if(tvVesselsVisible){const occupied=[],mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view,occupied,width,height)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
+  if(tvVesselsVisible){const mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
   empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);
   const liveTraffic=visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
   fleetCount.textContent=liveTraffic.length;

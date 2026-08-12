@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.23"
+version: "2.7.24"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
