@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.13
+
+- Makes the Vineyard Operations TV zoom and vessel-size settings apply natively on the AIS map.
+- Shows and lists only fresh vessels that are actually inside the current TV viewport.
+- Rejects replayed private-proxy contacts older than the configured map timeout while retaining legitimate cross-time-zone feeds.
+- Displays the active stale timeout in the TV status line and centers close Sicily views on Baiamonte.
+
 ## 2.7.12
 
 - Adds an explicit AIS Network Data Source setting that defaults to the Rahamin Miami single-key private proxy.

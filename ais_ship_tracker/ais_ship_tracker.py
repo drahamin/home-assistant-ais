@@ -25,7 +25,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.11"
+VERSION = "2.7.13"
 receiver_logs = deque(maxlen=80)
 
 BAIAMONTE_BOUNDS = {
@@ -1132,6 +1132,27 @@ def clean_number(value, unavailable=None):
         return None
 
 
+def source_timestamp_is_fresh(value, reference_value=None, timeout_minutes=None):
+    """Reject replayed proxy contacts while allowing sources without timestamps."""
+    if value in (None, ""):
+        return True
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if reference_value not in (None, ""):
+            reference = datetime.fromisoformat(str(reference_value).strip().replace("Z", "+00:00"))
+            if parsed.tzinfo is None and reference.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=reference.tzinfo)
+            elif parsed.tzinfo is not None and reference.tzinfo is None:
+                reference = reference.replace(tzinfo=parsed.tzinfo)
+            age_seconds = reference.timestamp() - parsed.timestamp()
+        else:
+            age_seconds = time.time() - parsed.timestamp()
+        limit_seconds = max(1, timeout_minutes or MAP_TIMEOUT_MINUTES) * 60
+        return -300 <= age_seconds <= limit_seconds
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def process_aishub_record(record, area_id="baiamonte"):
     """Convert one human-readable AISHub vessel record into HA telemetry."""
     mmsi = str(record.get("MMSI", "")).strip()
@@ -1207,7 +1228,7 @@ def process_aishub_record(record, area_id="baiamonte"):
         last_map_update[mmsi] = now
 
 
-def process_rahamin_proxy_record(record, area_id="miami"):
+def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=None):
     """Import one positioned vessel from the private Rahamin AIS status API."""
     if not isinstance(record, dict):
         return False
@@ -1218,6 +1239,9 @@ def process_rahamin_proxy_record(record, area_id="miami"):
     longitude = clean_number(record.get("longitude"))
     area = MAP_AREAS.get(area_id)
     if not area or not area.get("enabled"):
+        return False
+    source_seen_at = record.get("source_last_seen") or record.get("last_seen") or record.get("timestamp")
+    if not source_timestamp_is_fresh(source_seen_at, source_generated_at):
         return False
     if latitude is None or longitude is None or not point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
         return False
@@ -1239,6 +1263,7 @@ def process_rahamin_proxy_record(record, area_id="miami"):
         "area_name": area["name"],
         "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
         "icon": str(record.get("icon") or "mdi:ferry"),
+        "source_last_seen": source_seen_at,
     }
     static = {
         "destination": record.get("destination"),
@@ -1297,7 +1322,8 @@ def rahamin_proxy_worker():
                     raise ValueError(f"Rahamin AIS returned {response_area} data for the {area_id} request")
                 if not isinstance(records, list):
                     raise ValueError("Rahamin AIS proxy did not return a vessel list")
-                imported = sum(int(process_rahamin_proxy_record(record, area_id)) for record in records)
+                source_generated_at = payload.get("generated_at") if isinstance(payload, dict) else None
+                imported = sum(int(process_rahamin_proxy_record(record, area_id, source_generated_at)) for record in records)
                 now = datetime.now().isoformat(timespec="seconds")
                 area_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
                 if area_id in aishub_area_states:

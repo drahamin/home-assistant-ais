@@ -233,6 +233,22 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(tracker.dashboard_events[0]["area_id"], "baiamonte")
         self.assertEqual(tracker.dashboard_events[0]["area_name"], "Baiamonte Sicily")
 
+    def test_private_status_proxy_rejects_stale_contacts(self):
+        stale = (tracker.datetime.now() - tracker.timedelta(minutes=tracker.MAP_TIMEOUT_MINUTES + 1)).isoformat()
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123456", "latitude": 37.72, "longitude": 15.10,
+            "name": "Stale vessel", "last_seen": stale,
+        }, "baiamonte")
+        self.assertFalse(imported)
+        self.assertNotIn("247123456", tracker.dashboard_vessels)
+
+    def test_tv_limits_targets_to_current_view_and_accepts_runtime_controls(self):
+        script = (TRACKER.parent / "web" / "tv.js").read_text()
+        self.assertIn("requestedZoomDelta", script)
+        self.assertIn("requestedTargetScale", script)
+        self.assertIn("vesselIsOnScreen", script)
+        self.assertIn("stale after", script)
+
     def test_private_proxy_area_url_preserves_existing_query(self):
         previous_url = tracker.RAHAMIN_PROXY_URL
         tracker.RAHAMIN_PROXY_URL = "http://192.168.86.196:8999/api/status?token=local&area=miami"
@@ -411,7 +427,8 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="map-area-switch"', dashboard)
         self.assertIn("map_areas", dashboard_script)
         self.assertIn('id="tv-area-switch"', television)
-        self.assertIn("URLSearchParams(location.search).get('area')", television_script)
+        self.assertIn("new URLSearchParams(location.search)", television_script)
+        self.assertIn("tvParams.get('area')", television_script)
         self.assertIn("area_status==='inbound'", television_script)
 
     def test_dashboard_and_tv_offer_live_vessel_map_controls(self):
@@ -437,7 +454,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("ArrowDown", television_script)
         self.assertIn("tvHomeCenter", television_script)
         self.assertIn("return areas.length?areas:fallback", television_script)
-        self.assertNotIn("config.reference_location", television_script)
+        self.assertIn("config.reference_location", television_script)
         self.assertIn("renderedTiles[key]", television_script)
         self.assertIn("'PointerEvent' in window", television_script)
         self.assertIn("tvRefreshQueued", television_script)
@@ -446,7 +463,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("manualCenter=tvHomeCenter(latest.config,area)", television_script)
         self.assertIn("cancel(mapFrame)", television_script)
         self.assertIn('id="tv-map-reset" aria-label="Reset map to the fixed AIS home location">Reset</button>', television)
-        self.assertIn("cfg.tv_live_traffic_only===false?nearest:visible", television_script)
+        self.assertIn("const liveTraffic=visible.slice()", television_script)
         self.assertIn('tv_default_map_area: "baiamonte"', config)
         self.assertIn("dashboard_map_vessels: true", config)
         self.assertIn("tv_map_vessels: true", config)
