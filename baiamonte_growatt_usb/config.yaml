@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.3.4"
+version: "1.3.5"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
