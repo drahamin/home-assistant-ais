@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.4
+
+- Adds a read-only RS485 sweep across documented Modbus addresses 1 through 247.
+- Shows live scan progress and automatically prioritizes any responding address.
+
 ## 1.3.3
 
 - Adds a native Growatt Modbus RTU function-04 reader that bypasses pymodbus when its serial-port open fails.

@@ -104,6 +104,16 @@ class GrowattUsbTests(unittest.TestCase):
         with self.assertRaisesRegex(ConnectionError, "no valid direct Modbus reply"):
             growatt.decode_raw_modbus_response(bytes((1, 4, 2, 0, 1, 0, 0)), 1, 1)
 
+    def test_modbus_address_probe_accepts_normal_and_exception_frames(self):
+        normal_body = bytes((17, 4, 2, 0, 12))
+        normal = normal_body + growatt.modbus_crc(normal_body)
+        exception_body = bytes((23, 0x84, 2))
+        exception = exception_body + growatt.modbus_crc(exception_body)
+        self.assertTrue(growatt._valid_modbus_probe(normal, 17))
+        self.assertTrue(growatt._valid_modbus_probe(exception, 23))
+        self.assertFalse(growatt._valid_modbus_probe(normal, 18))
+        self.assertFalse(growatt._valid_modbus_probe(normal[:-1] + b"\x00", 17))
+
     def test_raw_qpigs_decoder_ignores_echo_and_noise(self):
         fields = b"230.0 60.0 230.0 60.0 1000 800 20 400 52.0 10 75 40 5 180.0 52.0 2 00000000 00 00 900"
         payload = b"(" + fields
