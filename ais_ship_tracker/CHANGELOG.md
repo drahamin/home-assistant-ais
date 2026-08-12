@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.19
+
+- Keeps valid Rahamin AIS area targets when the Miami and Baiamonte installations use different local watch-area bounds.
+- Accepts both Baiamonte dashboard fields and standard uppercase AIS fields from the private Rahamin proxy.
+- Supports current, legacy, and compact proxy vessel-list payloads while continuing to reject invalid identities and coordinates.
+
 ## 2.7.18
 
 - Adds explicit Start listening and Stop listening controls to Marine radio.

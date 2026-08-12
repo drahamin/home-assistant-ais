@@ -1303,6 +1303,31 @@ def clean_number(value, unavailable=None):
         return None
 
 
+def proxy_value(record, *names):
+    """Read a Rahamin dashboard or standard AIS field without case assumptions."""
+    for name in names:
+        value = record.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def rahamin_proxy_records(payload):
+    """Return vessel records from current and earlier Rahamin status formats."""
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        raise ValueError("Rahamin AIS proxy did not return an object or vessel list")
+    records = payload.get("vessels")
+    if records is None:
+        records = payload.get("VESSELS")
+    if records is None:
+        records = payload.get("records")
+    if not isinstance(records, list):
+        raise ValueError("Rahamin AIS proxy did not return a vessel list")
+    return records
+
+
 def process_aishub_record(record, area_id="baiamonte"):
     """Convert one human-readable AISHub vessel record into HA telemetry."""
     mmsi = str(record.get("MMSI", "")).strip()
@@ -1382,44 +1407,49 @@ def process_rahamin_proxy_record(record, area_id="miami"):
     """Import one positioned vessel from the private Rahamin AIS status API."""
     if not isinstance(record, dict):
         return False
-    mmsi = str(record.get("mmsi") or "").strip()
+    attributes = record.get("attributes") if isinstance(record.get("attributes"), dict) else {}
+    record = {**attributes, **record}
+    mmsi = str(proxy_value(record, "mmsi", "MMSI") or "").strip()
     if len(mmsi) != 9 or not mmsi.isdigit() or (watchlist_mmsis and mmsi not in watchlist_mmsis):
         return False
-    latitude = clean_number(record.get("latitude"))
-    longitude = clean_number(record.get("longitude"))
+    latitude = clean_number(proxy_value(record, "latitude", "LATITUDE", "lat", "LAT"))
+    longitude = clean_number(proxy_value(record, "longitude", "LONGITUDE", "lon", "LON", "lng"))
     area = MAP_AREAS.get(area_id)
     if not area or not area.get("enabled"):
         return False
-    if latitude is None or longitude is None or not point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
+    # The private source already scopes /api/status?area=... to its configured
+    # area. Do not apply Baiamonte's potentially different bounds a second time;
+    # that previously discarded valid Rahamin contacts without an error.
+    if latitude is None or longitude is None or not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return False
-    sog = clean_number(record.get("sog"), 102.4)
-    cog = clean_number(record.get("cog"), 360.0)
+    sog = clean_number(proxy_value(record, "sog", "SOG", "speed_knots"), 102.4)
+    cog = clean_number(proxy_value(record, "cog", "COG", "course"), 360.0)
     ship_data = {
-        "name": str(record.get("name") or f"AIS {mmsi}").strip(" @"),
+        "name": str(proxy_value(record, "name", "NAME", "ship_name") or f"AIS {mmsi}").strip(" @"),
         "mmsi": mmsi,
         "latitude": latitude,
         "longitude": longitude,
         "sog": sog,
         "cog": cog,
-        "heading": clean_number(record.get("heading"), 511),
-        "nav_status_string": str(record.get("nav_status_string") or "Not defined"),
-        "vessel_class": str(record.get("vessel_class") or "Rahamin AIS network"),
+        "heading": clean_number(proxy_value(record, "heading", "HEADING"), 511),
+        "nav_status_string": str(proxy_value(record, "nav_status_string", "navigational_status") or "Not defined"),
+        "vessel_class": str(proxy_value(record, "vessel_class", "class") or "Rahamin AIS network"),
         "source": f"Rahamin AIS private proxy · {area['name']}",
         "station": area["station"],
         "area_id": area_id,
         "area_name": area["name"],
         "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
-        "icon": str(record.get("icon") or "mdi:ferry"),
+        "icon": str(proxy_value(record, "icon") or "mdi:ferry"),
     }
     static = {
-        "destination": record.get("destination"),
-        "eta": record.get("eta"),
-        "ship_length": clean_number(record.get("ship_length")),
-        "ship_width": clean_number(record.get("ship_width")),
-        "draught": clean_number(record.get("draught")),
-        "imo_number": str(record.get("imo_number")) if record.get("imo_number") not in (None, "", 0, "0") else None,
-        "call_sign": str(record.get("call_sign") or "").strip() or None,
-        "vessel_type": record.get("vessel_type"),
+        "destination": proxy_value(record, "destination", "DEST"),
+        "eta": proxy_value(record, "eta", "ETA"),
+        "ship_length": clean_number(proxy_value(record, "ship_length", "length")),
+        "ship_width": clean_number(proxy_value(record, "ship_width", "width")),
+        "draught": clean_number(proxy_value(record, "draught", "DRAUGHT")),
+        "imo_number": proxy_value(record, "imo_number", "IMO"),
+        "call_sign": str(proxy_value(record, "call_sign", "CALLSIGN") or "").strip() or None,
+        "vessel_type": proxy_value(record, "vessel_type", "TYPE"),
     }
     static_ship_data.setdefault(mmsi, {}).update({key: value for key, value in static.items() if value not in (None, "")})
     remember_dashboard_vessel(ship_data)
@@ -1462,12 +1492,10 @@ def rahamin_proxy_worker():
                 request = urllib.request.Request(rahamin_proxy_area_url(area_id), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
                 with urllib.request.urlopen(request, timeout=12) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                records = payload.get("vessels", []) if isinstance(payload, dict) else []
+                records = rahamin_proxy_records(payload)
                 response_area = str(payload.get("config", {}).get("area_id", area_id)).lower() if isinstance(payload, dict) else area_id
                 if response_area != area_id:
                     raise ValueError(f"Rahamin AIS returned {response_area} data for the {area_id} request")
-                if not isinstance(records, list):
-                    raise ValueError("Rahamin AIS proxy did not return a vessel list")
                 imported = sum(int(process_rahamin_proxy_record(record, area_id)) for record in records)
                 now = datetime.now().isoformat(timespec="seconds")
                 area_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
