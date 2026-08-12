@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.21
+
+- Separates AIS markers that project to the same few pixels, so harbor traffic no longer appears as only a handful of stacked vessels.
+- Draws a subtle line from each separated marker back to its true reported position.
+- Applies the same deterministic, stable decluttering to Overview, `/tv`, and `/t`, while leaving the full live count unchanged.
+
 ## 2.7.20
 
 - Uses the Rahamin source area's own coverage bounds and expands them to contain every accepted target, so proxy vessels cannot remain off-screen behind Baiamonte's local map rectangle.

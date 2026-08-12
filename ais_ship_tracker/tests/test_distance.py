@@ -573,6 +573,8 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="tv-vessels-toggle"', television)
         self.assertIn("config.tv_default_map_area||'baiamonte'", television_script)
         self.assertIn("layoutTvLabels", television_script)
+        self.assertIn("declutterTvPoint", television_script)
+        self.assertIn("boat-position-line", television_script)
         self.assertIn("function vesselIcon", television_script)
         self.assertIn("boat-passenger", (web / "tv.css").read_text())
         self.assertIn("flex:0 0 360px", (web / "tv.css").read_text())
@@ -624,7 +626,9 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2718', dashboard)
+        self.assertIn('app.js?v=2721', dashboard)
+        self.assertIn("declutterOverviewPoint", dashboard_script)
+        self.assertIn("marker-position-line", dashboard_script)
 
     def test_dashboard_and_tv_treat_each_private_area_proxy_as_live(self):
         dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()

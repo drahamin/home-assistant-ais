@@ -167,11 +167,23 @@ function vesselIcon(vessel){
   return{kind:'vessel',svg:'<path class="icon-outline" d="M20 1 34 16 31 48 20 55 9 48 6 16Z"/><path class="icon-light" d="M12 18h16v22H12z"/><path class="icon-detail" d="M15 11h10v9H15z"/>'};
 }
 
-function boatNode(vessel,view){
+function declutterTvPoint(x,y,occupied,width,height){
+  const gap=30,margin=18,fits=function(candidate){return candidate.x>=margin&&candidate.y>=margin&&candidate.x<=width-margin&&candidate.y<=height-margin&&!occupied.some(function(point){return Math.hypot(candidate.x-point.x,candidate.y-point.y)<gap})};
+  for(let ring=0;ring<=7;ring++){
+    const radius=ring*gap,steps=ring===0?1:Math.max(8,Math.ceil(2*Math.PI*radius/gap));
+    for(let step=0;step<steps;step++){
+      const angle=(step/steps)*Math.PI*2-ring*.37,candidate={x:x+Math.cos(angle)*radius,y:y+Math.sin(angle)*radius};
+      if(fits(candidate)){occupied.push(candidate);return{x:candidate.x,y:candidate.y,trueX:x,trueY:y}}
+    }
+  }
+  const fallback={x:Math.max(margin,Math.min(width-margin,x)),y:Math.max(margin,Math.min(height-margin,y))};occupied.push(fallback);return{x:fallback.x,y:fallback.y,trueX:x,trueY:y};
+}
+
+function boatNode(vessel,view,occupied,width,height){
   const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
   const node=document.createElement('div');
   node.className='boat';
-  const x=point.x-view.originX,y=point.y-view.originY;
+  const trueX=point.x-view.originX,trueY=point.y-view.originY,placed=declutterTvPoint(trueX,trueY,occupied,width,height),x=placed.x,y=placed.y;
   node.style.left=`${x}px`;
   node.style.top=`${y}px`;
   node.setAttribute('data-map-x',String(x));
@@ -180,8 +192,10 @@ function boatNode(vessel,view){
   const info=flagInfo(vessel.mmsi);
   const icon=vesselIcon(vessel);
   const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
+  const offsetX=trueX-x,offsetY=trueY-y,offsetDistance=Math.hypot(offsetX,offsetY),positionLine=offsetDistance>2?`<span class="boat-position-line" style="width:${offsetDistance}px;transform:rotate(${Math.atan2(offsetY,offsetX)}rad)"></span>`:'';
   node.classList.add(`boat-${icon.kind}`);
-  node.innerHTML=`<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
+  if(positionLine)node.classList.add('decluttered');
+  node.innerHTML=`${positionLine}<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
   return node;
 }
 
@@ -225,7 +239,7 @@ function render(data){
   const areaVessels=(data.vessels||[]).filter(v=>String(v.area_id||'baiamonte')===area.id&&Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude)));
   const visible=areaVessels.filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
   const nearest=areaVessels.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3},aRank=rank[a.area_status]===undefined?3:rank[a.area_status],bRank=rank[b.area_status]===undefined?3:rank[b.area_status];return aRank-bRank||Number(a.distance_km||99999)-Number(b.distance_km||99999)});
-  if(tvVesselsVisible){const mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
+  if(tvVesselsVisible){const occupied=[],mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view,occupied,width,height)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
   empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);
   const liveTraffic=cfg.tv_live_traffic_only===false?nearest:visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
   fleetCount.textContent=liveTraffic.length;
