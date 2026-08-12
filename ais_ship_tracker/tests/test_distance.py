@@ -236,13 +236,13 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(static["name"], "P/V_GOLDEN_GATE")
         self.assertEqual(static["call_sign"], "WDK4954")
 
-    def test_private_status_proxy_imports_only_miami_approach_vessels(self):
+    def test_private_status_proxy_imports_valid_miami_vessels(self):
         imported = tracker.process_rahamin_proxy_record({
             "mmsi": "367123456", "name": "RAHAMIN PROXY", "latitude": 25.82, "longitude": -80.14,
             "sog": 7.2, "cog": 95, "heading": 96, "destination": "MIAMI", "vessel_type": "Cargo",
         })
         outside = tracker.process_rahamin_proxy_record({
-            "mmsi": "367999999", "name": "OUTSIDE", "latitude": 40.0, "longitude": -70.0,
+            "mmsi": "367999999", "name": "OUTSIDE", "latitude": 95.0, "longitude": -70.0,
         })
         self.assertTrue(imported)
         self.assertFalse(outside)
@@ -250,6 +250,30 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(vessel["area_id"], "miami")
         self.assertEqual(vessel["source"], "Rahamin AIS private proxy · Rahamin Miami")
         self.assertEqual(vessel["destination"], "MIAMI")
+
+    def test_private_proxy_trusts_source_area_when_local_bounds_differ(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "367222222", "name": "RAHAMIN EDGE", "latitude": 26.70, "longitude": -80.10,
+            "sog": 11.4, "cog": 175,
+        }, "miami")
+        self.assertTrue(imported)
+        self.assertEqual(tracker.dashboard_vessels["367222222"]["area_id"], "miami")
+
+    def test_private_proxy_accepts_standard_ais_and_nested_attribute_fields(self):
+        self.assertTrue(tracker.process_rahamin_proxy_record({
+            "attributes": {"MMSI": 367333333, "LATITUDE": 25.82, "LONGITUDE": -80.14},
+            "NAME": "RAHAMIN UPPER", "SOG": 8.5, "COG": 91, "DEST": "MIAMI",
+        }, "miami"))
+        vessel = tracker.dashboard_vessels["367333333"]
+        self.assertEqual(vessel["name"], "RAHAMIN UPPER")
+        self.assertEqual(vessel["destination"], "MIAMI")
+
+    def test_private_proxy_extracts_all_supported_payload_shapes(self):
+        records = [{"MMSI": "367444444"}]
+        self.assertIs(tracker.rahamin_proxy_records(records), records)
+        self.assertIs(tracker.rahamin_proxy_records({"vessels": records}), records)
+        self.assertIs(tracker.rahamin_proxy_records({"VESSELS": records}), records)
+        self.assertIs(tracker.rahamin_proxy_records({"records": records}), records)
 
     def test_private_status_proxy_imports_sicily_cache_into_baiamonte_map(self):
         imported = tracker.process_rahamin_proxy_record({
