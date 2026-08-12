@@ -14,7 +14,8 @@
   <link rel="manifest" href="manifest.webmanifest?v=277">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="decoder.css?v=240">
-  <link rel="stylesheet" href="marine-radio.css?v=2716">
+  <link rel="stylesheet" href="marine-radio.css?v=2718">
+  <link rel="stylesheet" href="marine-radio-controls.css?v=2718">
   <link rel="stylesheet" href="overview-map.css?v=275">
   <link rel="stylesheet" href="traffic-cards.css?v=232">
   <link rel="stylesheet" href="theme.css?v=260">
@@ -93,6 +94,11 @@
             <div class="panel-head"><div><p>LIVE AUDIO</p><h3>Baiamonte marine scanner</h3></div><span class="marine-live-state" id="marine-live-state">Waiting</span></div>
             <div class="marine-player-emblem"><img src="brand-icon.png" alt=""><span><small>SECOND RTL-SDR</small><b id="marine-player-device">Nooelec device 1</b></span></div>
             <audio id="marine-player" controls preload="none"></audio>
+            <div class="marine-listen-controls">
+              <button id="marine-listen-start" type="button" disabled>Start listening</button>
+              <button id="marine-listen-stop" type="button" disabled>Stop listening</button>
+              <span id="marine-listen-status">Stopped</span>
+            </div>
             <p class="marine-player-help" id="marine-player-help">Enable Marine VHF after connecting the second Nooelec, then press Play to listen.</p>
             <div class="marine-recovery"><button id="marine-recover" type="button" disabled>Recover VHF radio</button><span id="marine-recovery-detail">USB recovery is disabled in configuration.</span></div>
           </article>
@@ -117,6 +123,6 @@
     </main>
   </div>
   <script src="maritime-flags.js?v=240"></script>
-  <script src="app.js?v=2716"></script>
+  <script src="app.js?v=2718"></script>
 </body>
 </html>

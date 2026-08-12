@@ -556,7 +556,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2716', dashboard)
+        self.assertIn('app.js?v=2718', dashboard)
 
     def test_dashboard_and_tv_treat_each_private_area_proxy_as_live(self):
         dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()
@@ -583,8 +583,14 @@ class DashboardAssetTests(unittest.TestCase):
         styles = (web / "marine-radio.css").read_text()
         self.assertIn('data-page="radio"', dashboard)
         self.assertIn('id="marine-player"', dashboard)
+        self.assertIn('id="marine-listen-start"', dashboard)
+        self.assertIn('id="marine-listen-stop"', dashboard)
         self.assertIn('id="marine-recover"', dashboard)
         self.assertIn("renderMarineRadio", script)
+        self.assertIn("function stopMarineAudio", script)
+        self.assertIn("player.removeAttribute('src')", script)
+        self.assertIn("addEventListener('visibilitychange'", script)
+        self.assertIn("addEventListener('pagehide'", script)
         self.assertIn("api/marine-radio/recover", script)
         self.assertIn("marine-radio-grid", styles)
 

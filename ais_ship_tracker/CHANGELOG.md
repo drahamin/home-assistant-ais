@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.18
+
+- Adds explicit Start listening and Stop listening controls to Marine radio.
+- Makes Pause close the live MP3 request instead of leaving its endless Icecast connection running in the background.
+- Automatically disconnects VHF audio when leaving the Marine radio page, hiding Home Assistant, closing the browser view, or navigating away.
+- Requires a deliberate Start listening action for each new connection, preventing refreshes from silently reconnecting stopped audio.
+
 ## 2.7.17
 
 - Fixes the marine receiver's solid-tone audio by explicitly selecting narrowband FM instead of RTLSDR-Airband's default AM demodulation.
