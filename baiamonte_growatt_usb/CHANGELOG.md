@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.5
+
+- Makes the dashboard substantially more compact on phones with a two-column live-power layout, condensed connection details, and reduced spacing.
+- Keeps Refresh, Rescan, live readings, connection health, and the RS485 address scan immediately visible.
+- Collapses settings, firmware, troubleshooting, and event-history sections on small screens to reduce scrolling while keeping every tool one tap away.
+- Adds automatic system dark mode plus a remembered light/dark toggle in the header.
+
 ## 1.3.4
 
 - Adds a read-only RS485 sweep across documented Modbus addresses 1 through 247.

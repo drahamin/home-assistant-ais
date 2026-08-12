@@ -20,11 +20,12 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5m0 3h.01"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8A7 7 0 0 1 18.8 7M17.9 16A7 7 0 0 1 5.2 17"/></symbol>
+    <symbol id="i-theme" viewBox="0 0 24 24"><path d="M20.5 15.2A8.8 8.8 0 0 1 8.8 3.5 9 9 0 1 0 20.5 15.2Z"/></symbol>
   </svg>
 
   <header class="topbar">
     <div class="brand"><img class="brand-mark" src="icon-192.png" alt="Baiamonte Growatt USB"><div><b>TENUTA BAIAMONTE</b><small>ESTATE ENERGY OPERATIONS</small></div></div>
-    <div class="top-state"><i id="top-light"></i><span><small>GROWATT USB</small><b id="top-status">Starting</b></span></div>
+    <div class="top-tools"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme"><svg><use href="#i-theme"/></svg><span id="theme-label">Dark</span></button><div class="top-state"><i id="top-light"></i><span><small>GROWATT USB</small><b id="top-status">Starting</b></span></div></div>
   </header>
 
   <main>
@@ -60,6 +61,9 @@
 
     <section class="section settings-section" id="commissioning">
       <div class="section-head"><div><p>GROWATT COMMISSIONING</p><h2>Configuration &amp; settings</h2><span>Read the current inverter profile and apply supported changes with confirmation and automatic read-back.</span></div><span class="badge neutral" id="settings-lock">Loading</span></div>
+      <details class="section-disclosure">
+      <summary><span>Settings controls</span><small>Tap to open</small></summary>
+      <div class="section-body">
       <div class="settings-warning"><svg><use href="#i-alert"/></svg><div><b>Settings can affect power availability and battery safety.</b><span>Verify battery voltages and charge-current limits against the approved Felicity configuration. Factory reset, calibration, time-setting, and raw commands are intentionally unavailable.</span></div></div>
       <div class="settings-layout">
         <article class="panel current-settings"><div class="panel-title"><div><small>INVERTER READ-BACK</small><h3>Current profile</h3></div><button class="secondary dark" id="refresh-settings"><svg><use href="#i-refresh"/></svg>Read settings</button></div><div class="settings-readback" id="settings-readback"><div class="empty">Waiting for the inverter settings inquiry.</div></div></article>
@@ -74,10 +78,15 @@
           <div class="setting-result" id="setting-result"></div>
         </article>
       </div>
+      </div>
+      </details>
     </section>
 
     <section class="section firmware-section" id="firmware-maintenance">
       <div class="section-head"><div><p>FIRMWARE MAINTENANCE</p><h2>Version, backup &amp; package validation</h2><span>Prepare an official Growatt update safely without sending undocumented bootloader commands.</span></div><span class="badge neutral" id="firmware-state">Checking</span></div>
+      <details class="section-disclosure">
+      <summary><span>Firmware tools</span><small>Tap to open</small></summary>
+      <div class="section-body">
       <div class="firmware-grid">
         <article class="panel firmware-current"><div class="panel-title"><div><small>INSTALLED FIRMWARE</small><h3>CPU versions</h3></div><button class="secondary dark" id="read-firmware"><svg><use href="#i-refresh"/></svg>Read versions</button></div><div id="firmware-versions" class="settings-readback"><div class="empty">Waiting for the firmware version inquiry.</div></div><a class="download-button" href="api/firmware/backup" download><svg><use href="#i-shield"/></svg>Download settings backup</a></article>
         <article class="panel firmware-package"><div class="panel-title"><div><small>OFFICIAL PACKAGE</small><h3>Validate &amp; stage</h3></div></div>
@@ -93,10 +102,15 @@
       </div>
       <article class="firmware-boundary"><svg><use href="#i-alert"/></svg><div><b>Direct flashing is intentionally unavailable.</b><span id="firmware-boundary-text">No official SPF 5000 ES USB flashing protocol, signed-package specification, or recovery driver is bundled. A validated file is never executed or sent to the inverter.</span></div><button disabled>Awaiting official Growatt driver</button></article>
       <div class="preflight-grid"><div><b>1 · Identify</b><span>Read CPU1/CPU2 versions and confirm the exact inverter model.</span></div><div><b>2 · Preserve</b><span>Download the current configuration and retain it off the Home Assistant host.</span></div><div><b>3 · Verify</b><span>Use only a Growatt-supplied file and independently confirm its SHA-256.</span></div><div><b>4 · Handoff</b><span>Apply it only through Growatt's approved updater and recovery procedure.</span></div></div>
+      </div>
+      </details>
     </section>
 
-    <section class="section">
+    <section class="section troubleshooting-section">
       <div class="section-head"><div><p>COMMISSIONING &amp; RECOVERY</p><h2>Complete troubleshooting guide</h2><span>Work from left to right; stop as soon as live values return.</span></div></div>
+      <details class="section-disclosure">
+      <summary><span>Six troubleshooting guides</span><small>Tap to open</small></summary>
+      <div class="section-body">
       <div class="guide-grid">
         <article class="guide"><span>01</span><h3>No adapter detected</h3><ul><li>Reconnect the RJ45 plug at the inverter and USB plug at the Home Assistant host.</li><li>Connect directly before trying a USB hub.</li><li>Power the inverter and reconnect both cable ends.</li><li>Confirm USB and UART access are enabled for this app.</li><li>Press Rescan connection after any cable change.</li></ul></article>
         <article class="guide"><span>02</span><h3>Adapter but no reply</h3><ul><li>Stop the previous manual Growatt process or integration.</li><li>Only one program can own the serial adapter.</li><li>Confirm the RJ45 end is in the inverter RS485 port—not BMS or CAN.</li><li>Use Growatt Modbus RTU v0.14, address 1, and 9600 baud.</li><li>Try the stable <code>/dev/serial/by-id/…</code> path if USB numbering changes.</li></ul></article>
@@ -105,11 +119,18 @@
         <article class="guide"><span>05</span><h3>After a reboot</h3><ul><li>Use a by-id path to survive USB numbering changes.</li><li>Keep Start on boot and Watchdog enabled in Home Assistant.</li><li>Keep Automatic updates enabled on the app Info page.</li><li>Allow about one minute for USB discovery after host startup.</li><li>Rescan rather than reinstalling the manual configuration.</li></ul></article>
         <article class="guide"><span>06</span><h3>Safe commissioning</h3><ul><li>Keep read-only mode enabled during initial migration.</li><li>Record current values before enabling changes.</li><li>Change only one setting at a time.</li><li>Confirm the read-back and Growatt display after each command.</li><li>Return the app to read-only mode when commissioning is complete.</li></ul></article>
       </div>
+      </div>
+      </details>
     </section>
 
     <section class="section events-section">
       <div class="section-head"><div><p>SERVICE HISTORY</p><h2>Recent connection events</h2><span>Useful evidence for cable, protocol, and USB ownership problems.</span></div><span class="badge neutral" id="failure-count">0 failures</span></div>
+      <details class="section-disclosure">
+      <summary><span>Connection event log</span><small>Tap to open</small></summary>
+      <div class="section-body">
       <div class="panel event-log" id="events"><div class="empty">Waiting for the first event.</div></div>
+      </div>
+      </details>
     </section>
   </main>
   <footer><span>TENUTA BAIAMONTE · ETNA ENERGY SYSTEMS</span><span id="server-time">Local, private, read-only</span></footer>
