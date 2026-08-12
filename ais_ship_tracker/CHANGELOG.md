@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.22
+
+- Keeps Sicily and Miami TV maps fixed to their configured watch areas instead of expanding them around every cached target.
+- Shows and lists only fresh vessels inside the current panned/zoomed TV viewport, with the stale timeout visible in the status line.
+- Applies Vineyard Operations TV zoom and target-size settings directly in the AIS map.
+
 ## 2.7.21
 
 - Separates AIS markers that project to the same few pixels, so harbor traffic no longer appears as only a handful of stacked vessels.

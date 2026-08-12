@@ -14,7 +14,11 @@ let latest=null;
 let weatherMetadata=null;
 let weatherMetadataFetched=0;
 let manualCenter=null,manualZoom=null;
-const requestedArea=(new URLSearchParams(location.search).get('area')||'').toLowerCase();
+const tvParams=new URLSearchParams(location.search);
+const requestedArea=(tvParams.get('area')||'').toLowerCase();
+const requestedZoomDelta=clampedParam(tvParams.get('map_zoom'),-6,20,0);
+const requestedTargetScale=clampedParam(tvParams.get('target_size'),50,180,100)/100;
+window.BaiamonteNativeMapControls=true;
 let activeArea=requestedArea;
 let tvVesselsVisible=null;
 let tvMapExplore=false;
@@ -30,6 +34,7 @@ const tvHomeViews={};
 
 const apiPath=location.pathname.replace(/\/(?:tv|t)\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+function clampedParam(value,min,max,fallback){const parsed=Number(value);return Number.isFinite(parsed)?Math.min(max,Math.max(min,parsed)):fallback}
 const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
 function tvAreas(config){const fallback=[{id:'baiamonte',name:'Baiamonte Sicily',bounds:config.bounds,enabled:true}],areas=(config.map_areas||fallback).filter(function(area){return area.enabled!==false});return areas.length?areas:fallback}
@@ -54,7 +59,7 @@ function fittedZoom(bounds,width,height){
 
 function tvHomeView(config,area,width,height){
   const boundsKey=[area.bounds.south,area.bounds.west,area.bounds.north,area.bounds.east,width,height].join(':');
-  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:fittedZoom(area.bounds,width,height),boundsKey:boundsKey};
+  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:clamp(fittedZoom(area.bounds,width,height)+requestedZoomDelta,2,18),boundsKey:boundsKey};
   return tvHomeViews[area.id];
 }
 
@@ -194,9 +199,16 @@ function boatNode(vessel,view,occupied,width,height){
   const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
   const offsetX=trueX-x,offsetY=trueY-y,offsetDistance=Math.hypot(offsetX,offsetY),positionLine=offsetDistance>2?`<span class="boat-position-line" style="width:${offsetDistance}px;transform:rotate(${Math.atan2(offsetY,offsetX)}rad)"></span>`:'';
   node.classList.add(`boat-${icon.kind}`);
+  node.style.setProperty('--target-scale',String(requestedTargetScale));
   if(positionLine)node.classList.add('decluttered');
   node.innerHTML=`${positionLine}<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
   return node;
+}
+
+function vesselIsOnScreen(vessel,view,width,height){
+  const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
+  const x=point.x-view.originX,y=point.y-view.originY,margin=28*requestedTargetScale;
+  return x>=-margin&&x<=width+margin&&y>=-margin&&y<=height+margin;
 }
 
 function layoutTvLabels(nodes,width,height){
@@ -237,18 +249,19 @@ function render(data){
   renderWeather(view,width,height,cfg);
   boats.innerHTML='';
   const areaVessels=(data.vessels||[]).filter(v=>String(v.area_id||'baiamonte')===area.id&&Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude)));
-  const visible=areaVessels.filter(v=>Number(v.latitude)>=bounds.south&&Number(v.latitude)<=bounds.north&&Number(v.longitude)>=bounds.west&&Number(v.longitude)<=bounds.east);
-  const nearest=areaVessels.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3},aRank=rank[a.area_status]===undefined?3:rank[a.area_status],bRank=rank[b.area_status]===undefined?3:rank[b.area_status];return aRank-bRank||Number(a.distance_km||99999)-Number(b.distance_km||99999)});
+  const freshCutoff=Date.now()-Math.max(1,Number(cfg.timeout_minutes)||30)*60000;
+  const freshVessels=areaVessels.filter(function(v){const seen=Date.parse(v.source_last_seen||v.last_seen||'');return Number.isFinite(seen)&&seen>=freshCutoff});
+  const visible=freshVessels.filter(v=>vesselIsOnScreen(v,view,width,height));
   if(tvVesselsVisible){const occupied=[],mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view,occupied,width,height)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
   empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);
-  const liveTraffic=cfg.tv_live_traffic_only===false?nearest:visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
+  const liveTraffic=visible.slice().sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)});
   fleetCount.textContent=liveTraffic.length;
   const previousListScroll=vesselList.scrollTop;
   vesselList.innerHTML=liveTraffic.length?liveTraffic.map(vesselRow).join(''):'<div class="list-empty">No live vessels inside this map view</div>';
   vesselList.scrollTop=Math.min(previousListScroll,Math.max(0,vesselList.scrollHeight-vesselList.clientHeight));
   const proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyConnected=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),connected=data.connection==='Connected'||proxyConnected,version=data.version?`v${data.version} · `:'';
   feedLight.classList.toggle('online',connected);
-  feedStatus.textContent=connected?`${area.name} · ${version}live · updated ${new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`${area.name} · ${version}${String(proxyArea.state||data.connection).toLowerCase()}`;
+  feedStatus.textContent=connected?`${area.name} · ${version}${liveTraffic.length} in view · stale after ${Math.max(1,Number(cfg.timeout_minutes)||30)} min`:`${area.name} · ${version}${String(proxyArea.state||data.connection).toLowerCase()}`;
 }
 
 function refresh(){
