@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.20
+
+- Uses the Rahamin source area's own coverage bounds and expands them to contain every accepted target, so proxy vessels cannot remain off-screen behind Baiamonte's local map rectangle.
+- Removes the remaining ten-vessel limit from the positioned/nearest collection used by dashboard consumers.
+- Keeps the `/tv` map, live count, and scrollable vessel rail aligned with the complete positioned target set.
+- Supports `/t` as a short alias for the same unlimited TV vessel view.
+
 ## 2.7.19
 
 - Keeps valid Rahamin AIS area targets when the Miami and Baiamonte installations use different local watch-area bounds.

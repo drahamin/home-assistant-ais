@@ -28,7 +28,7 @@ let mapFrame=0;
 let tvRefreshRunning=false,tvRefreshQueued=false;
 const tvHomeViews={};
 
-const apiPath=location.pathname.replace(/\/tv\/?$/,'')+'/api/status';
+const apiPath=location.pathname.replace(/\/(?:tv|t)\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
@@ -53,7 +53,8 @@ function fittedZoom(bounds,width,height){
 }
 
 function tvHomeView(config,area,width,height){
-  if(!tvHomeViews[area.id])tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:fittedZoom(area.bounds,width,height)};
+  const boundsKey=[area.bounds.south,area.bounds.west,area.bounds.north,area.bounds.east,width,height].join(':');
+  if(!tvHomeViews[area.id]||tvHomeViews[area.id].boundsKey!==boundsKey)tvHomeViews[area.id]={center:tvHomeCenter(config,area),zoom:fittedZoom(area.bounds,width,height),boundsKey:boundsKey};
   return tvHomeViews[area.id];
 }
 

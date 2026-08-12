@@ -57,6 +57,17 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in snapshot["nearest_vessels"]], ["Near", "Far"])
         self.assertIsNone(snapshot["vessels"][-1]["distance_km"])
 
+    def test_positioned_vessels_are_not_limited_to_ten(self):
+        tracker.dashboard_vessels.update({
+            str(200000000 + index): {
+                "mmsi": str(200000000 + index), "name": f"Vessel {index}",
+                "area_id": "baiamonte", "latitude": 37.5 + index / 1000, "longitude": 15.0,
+            }
+            for index in range(18)
+        })
+        self.assertEqual(len(tracker.dashboard_snapshot("baiamonte", compact=True)["vessels"]), 18)
+        self.assertEqual(len(tracker.dashboard_snapshot("baiamonte")["nearest_vessels"]), 18)
+
     def test_area_filtered_compact_tv_snapshot_reduces_work(self):
         tracker.dashboard_vessels.update({
             "sicily": {"mmsi": "247000001", "name": "Sicily", "area_id": "baiamonte", "latitude": 37.75, "longitude": 15.05, "call_sign": "IT1"},
@@ -274,6 +285,37 @@ class AisCatcherTests(unittest.TestCase):
         self.assertIs(tracker.rahamin_proxy_records({"vessels": records}), records)
         self.assertIs(tracker.rahamin_proxy_records({"VESSELS": records}), records)
         self.assertIs(tracker.rahamin_proxy_records({"records": records}), records)
+
+    def test_private_proxy_bounds_include_source_area_and_every_target(self):
+        payload = {"config": {"map_areas": [{
+            "id": "miami", "bounds": {"south": 25.4, "west": -80.6, "north": 26.3, "east": -79.7},
+        }]}}
+        bounds = tracker.rahamin_proxy_map_bounds(payload, "miami", [{
+            "MMSI": "367444444", "LATITUDE": 26.5, "LONGITUDE": -80.2,
+        }])
+        self.assertLess(bounds["south"], 25.4)
+        self.assertGreater(bounds["north"], 26.5)
+        self.assertLess(bounds["west"], -80.6)
+        self.assertGreater(bounds["east"], -79.7)
+
+    def test_dashboard_uses_connected_proxy_map_bounds(self):
+        proxy_area = tracker.rahamin_proxy_state["areas"]["miami"]
+        previous = dict(proxy_area)
+        try:
+            proxy_area.update({
+                "state": "Connected",
+                "map_bounds": {"south": 25.2, "west": -80.7, "north": 26.6, "east": -79.6},
+            })
+            miami = next(area for area in tracker.dashboard_map_areas() if area["id"] == "miami")
+            self.assertEqual(miami["bounds"]["north"], 26.6)
+        finally:
+            proxy_area.clear()
+            proxy_area.update(previous)
+
+    def test_proxy_map_coverage_expands_but_does_not_shrink(self):
+        existing = {"south": 25.0, "west": -81.0, "north": 27.0, "east": -79.0}
+        refresh = {"south": 25.5, "west": -80.5, "north": 26.5, "east": -79.5}
+        self.assertEqual(tracker.union_map_bounds(existing, refresh), existing)
 
     def test_private_status_proxy_imports_sicily_cache_into_baiamonte_map(self):
         imported = tracker.process_rahamin_proxy_record({
@@ -545,6 +587,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("ArrowDown", television_script)
         self.assertIn("tvHomeCenter", television_script)
         self.assertIn("tvHomeView", television_script)
+        self.assertIn("boundsKey", television_script)
         self.assertIn("const tvHomeViews={}", television_script)
         self.assertIn("return areas.length?areas:fallback", television_script)
         self.assertNotIn("config.reference_location", television_script)
@@ -552,6 +595,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("'PointerEvent' in window", television_script)
         self.assertIn("tvRefreshQueued", television_script)
         self.assertIn("?view=tv&area=", television_script)
+        self.assertIn("(?:tv|t)", television_script)
         self.assertIn("if(!document.hidden)refresh()", television_script)
         self.assertIn("if(!tvMapExplore||!latest", television_script)
         self.assertIn("event.buttons!==1", television_script)

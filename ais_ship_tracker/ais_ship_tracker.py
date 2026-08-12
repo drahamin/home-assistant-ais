@@ -669,7 +669,7 @@ def dashboard_snapshot(area_id=None, compact=False):
             vessel.get("distance_km") is None,
             vessel.get("distance_km") if vessel.get("distance_km") is not None else math.inf,
         ))
-        nearest_vessels = [vessel for vessel in vessels if vessel.get("distance_km") is not None][:10]
+        nearest_vessels = [vessel for vessel in vessels if vessel.get("distance_km") is not None]
         events = list(dashboard_events)
         if selected_area_id:
             events = [event for event in events if str(event.get("area_id") or "baiamonte") == selected_area_id]
@@ -679,7 +679,7 @@ def dashboard_snapshot(area_id=None, compact=False):
                 "north": lat_north, "east": lon_east,
             },
             "area_id": selected_area_id,
-            "map_areas": list(MAP_AREAS.values()),
+            "map_areas": dashboard_map_areas(),
             "default_map_area": DEFAULT_MAP_AREA,
             "tv_default_map_area": TV_DEFAULT_MAP_AREA,
             "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
@@ -858,7 +858,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
-        if request_path.rstrip("/").endswith("/tv"):
+        if request_path.rstrip("/").endswith(("/tv", "/t")):
             relative = "tv.html"
         else:
             relative = request_path.lstrip("/") or "index.html"
@@ -1328,6 +1328,85 @@ def rahamin_proxy_records(payload):
     return records
 
 
+def valid_map_bounds(bounds):
+    """Return normalized geographic bounds, or None for an invalid shape."""
+    if not isinstance(bounds, dict):
+        return None
+    normalized = {key: clean_number(bounds.get(key)) for key in ("south", "west", "north", "east")}
+    if any(value is None for value in normalized.values()):
+        return None
+    if not (-90 <= normalized["south"] < normalized["north"] <= 90):
+        return None
+    if not (-180 <= normalized["west"] < normalized["east"] <= 180):
+        return None
+    return normalized
+
+
+def rahamin_proxy_map_bounds(payload, area_id, records):
+    """Use the source area's coverage and guarantee every supplied target fits."""
+    source_bounds = None
+    if isinstance(payload, dict):
+        config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+        map_areas = config.get("map_areas") if isinstance(config.get("map_areas"), list) else []
+        for candidate in map_areas:
+            if isinstance(candidate, dict) and str(candidate.get("id", "")).lower() == area_id:
+                source_bounds = valid_map_bounds(candidate.get("bounds"))
+                break
+        if source_bounds is None and str(config.get("area_id", "")).lower() == area_id:
+            source_bounds = valid_map_bounds(config.get("bounds"))
+    bounds = dict(source_bounds or MAP_AREAS[area_id]["bounds"])
+    for raw_record in records:
+        if not isinstance(raw_record, dict):
+            continue
+        attributes = raw_record.get("attributes") if isinstance(raw_record.get("attributes"), dict) else {}
+        record = {**attributes, **raw_record}
+        latitude = clean_number(proxy_value(record, "latitude", "LATITUDE", "lat", "LAT"))
+        longitude = clean_number(proxy_value(record, "longitude", "LONGITUDE", "lon", "LON", "lng"))
+        if latitude is None or longitude is None or not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            continue
+        bounds["south"] = min(bounds["south"], latitude)
+        bounds["north"] = max(bounds["north"], latitude)
+        bounds["west"] = min(bounds["west"], longitude)
+        bounds["east"] = max(bounds["east"], longitude)
+    lat_pad = max(0.01, (bounds["north"] - bounds["south"]) * 0.025)
+    lon_pad = max(0.01, (bounds["east"] - bounds["west"]) * 0.025)
+    return {
+        "south": max(-90, bounds["south"] - lat_pad),
+        "west": max(-180, bounds["west"] - lon_pad),
+        "north": min(90, bounds["north"] + lat_pad),
+        "east": min(180, bounds["east"] + lon_pad),
+    }
+
+
+def dashboard_map_areas():
+    """Expose private-source coverage so accepted targets remain on-screen."""
+    areas = []
+    for area_id, configured in MAP_AREAS.items():
+        area = {**configured, "bounds": dict(configured["bounds"])}
+        proxy_area = rahamin_proxy_state.get("areas", {}).get(area_id, {})
+        proxy_bounds = valid_map_bounds(proxy_area.get("map_bounds"))
+        if proxy_bounds and proxy_area.get("state") == "Connected":
+            area["bounds"] = proxy_bounds
+        areas.append(area)
+    return areas
+
+
+def union_map_bounds(first, second):
+    """Expand coverage without shrinking it during ordinary feed refreshes."""
+    first = valid_map_bounds(first)
+    second = valid_map_bounds(second)
+    if not first:
+        return second
+    if not second:
+        return first
+    return {
+        "south": min(first["south"], second["south"]),
+        "west": min(first["west"], second["west"]),
+        "north": max(first["north"], second["north"]),
+        "east": max(first["east"], second["east"]),
+    }
+
+
 def process_aishub_record(record, area_id="baiamonte"):
     """Convert one human-readable AISHub vessel record into HA telemetry."""
     mmsi = str(record.get("MMSI", "")).strip()
@@ -1497,8 +1576,15 @@ def rahamin_proxy_worker():
                 if response_area != area_id:
                     raise ValueError(f"Rahamin AIS returned {response_area} data for the {area_id} request")
                 imported = sum(int(process_rahamin_proxy_record(record, area_id)) for record in records)
+                map_bounds = union_map_bounds(
+                    area_proxy_state.get("map_bounds"),
+                    rahamin_proxy_map_bounds(payload, area_id, records),
+                )
                 now = datetime.now().isoformat(timespec="seconds")
-                area_proxy_state.update({"state": "Connected", "last_success": now, "records": imported, "error": None})
+                area_proxy_state.update({
+                    "state": "Connected", "last_success": now, "records": imported,
+                    "map_bounds": map_bounds, "error": None,
+                })
                 if area_id in aishub_area_states:
                     aishub_area_states[area_id].update({"state": "Private proxy", "last_checked": checked_at, "last_success": now, "records": imported, "error": None})
                 total_imported += imported
