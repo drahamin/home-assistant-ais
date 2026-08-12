@@ -1,0 +1,35 @@
+.marine-listen-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: -7px 0 14px;
+}
+
+.marine-listen-controls button {
+  border: 1px solid #d4af37;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #d4af37;
+  color: #15110b;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.marine-listen-controls button:nth-child(2) {
+  background: transparent;
+  color: #f4e8d5;
+}
+
+.marine-listen-controls button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.marine-listen-controls span {
+  color: #bdb2a5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}

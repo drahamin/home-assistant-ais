@@ -5,6 +5,7 @@ const ago=value=>{if(!value)return'just now';const seconds=Math.max(0,(Date.now(
 let state=null,refreshRunning=false,refreshFailures=0,selectedMapMmsi=null,activeMapArea=null,mapVesselsVisible=null;
 let mapDisplayMode='labels';
 let dashboardWeatherGeneration=0;
+let marineStreamUrl=null,marineAudioStopping=false;
 try{mapDisplayMode=localStorage.getItem('baiamonteAisMapDisplay')==='focus'?'focus':'labels';activeMapArea=localStorage.getItem('baiamonteAisArea')}catch(error){}
 
 function mapIsVisible(){return $('#overview').classList.contains('active')&&$('#sea-map').clientWidth>0&&$('#sea-map').clientHeight>0}
@@ -14,7 +15,7 @@ function vesselsForArea(vessels,area){return vessels.filter(v=>String(v.area_id|
 function rerenderVisibleMap(){if(!state||!mapIsVisible())return;const area=selectedArea(state.config);requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(vesselsForArea(state.vessels||[],area),area.bounds,state.config)))}
 function setMapArea(areaId){activeMapArea=areaId;selectedMapMmsi=null;resetOverviewMap();try{localStorage.setItem('baiamonteAisArea',areaId)}catch(error){}if(state)render(state)}
 function renderAreaSwitch(cfg){const areas=mapAreas(cfg),area=selectedArea(cfg);activeMapArea=area.id;$('#map-area-switch').innerHTML=areas.map(item=>`<button type="button" data-area="${esc(item.id)}" aria-pressed="${item.id===area.id}">${esc(item.name)}</button>`).join('');$$('#map-area-switch [data-area]').forEach(node=>node.onclick=()=>setMapArea(node.dataset.area));$('#map-area-title').textContent=`${area.name} vessel positions`;$('#tv-link').href=`tv?area=${encodeURIComponent(area.id)}`;return area}
-function showPage(id){const page=$(`#${id}`)?id:'overview';$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview'){resetOverviewMap();rerenderVisibleMap()}}
+function showPage(id){const page=$(`#${id}`)?id:'overview';if(page!=='radio')stopMarineAudio('Stopped when you left Marine radio.');$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview'){resetOverviewMap();rerenderVisibleMap()}}
 $$('.nav').forEach(node=>node.onclick=()=>showPage(node.dataset.page));$$('[data-go]').forEach(node=>node.onclick=()=>showPage(node.dataset.go));
 
 const MAP_TILE=256;
@@ -55,6 +56,19 @@ function renderMap(vessels,bounds,cfg){if(!mapIsVisible())return;const world=$('
 function vesselRow(v){const info=vesselFlag(v.mmsi),area=v.area_status==='inbound'?'INBOUND':v.area_status==='in_area'?'IN AREA':'NEARBY';return`<div class="recent-row"><span class="recent-flag" title="${esc(info.country)}">${info.flag}</span><span><b>${esc(v.name||'Unknown vessel')}</b><small>${esc(area)} · ${esc(info.country)} · MMSI ${esc(v.mmsi)} · ${esc(v.destination||v.nav_status_string||'Status unavailable')}</small></span><em>${esc(fmt(v.sog))} kn</em></div>`}
 function vesselCard(v){const info=vesselFlag(v.mmsi),mark=(v.call_sign||v.imo_number||'AIS').toString().slice(0,8);return`<article class="vessel-card"><div class="vessel-card-top"><div class="identity-mark"><span class="identity-flag" title="${esc(info.country)}"><small>FLAG</small><span class="card-flag">${info.flag}</span></span><span class="operator-mark">${esc(mark)}</span></div><span class="status">${esc(v.nav_status_string||'Not defined')}</span></div><h3>${esc(v.name||'Unknown vessel')}</h3><span class="mmsi">${esc(info.country)} · MID ${esc(info.mid||'—')} · MMSI ${esc(v.mmsi)} · ${esc(v.vessel_type||v.vessel_class||'Unknown type')}</span><div class="vessel-metrics"><div><small>SPEED</small><b>${esc(fmt(v.sog))} kn</b></div><div><small>COURSE</small><b>${esc(fmt(v.cog))}°</b></div><div><small>HEADING</small><b>${esc(fmt(v.heading))}°</b></div><div><small>SEEN</small><b>${esc(ago(v.last_seen))}</b></div></div><div class="destination"><span>Destination</span><b>${esc(v.destination||'Not broadcast')}</b></div></article>`}
 
+async function startMarineAudio(){
+  const player=$('#marine-player');if(!marineStreamUrl)return;
+  marineAudioStopping=false;player.src=`${marineStreamUrl}?listen=${Date.now()}`;
+  try{await player.play();$('#marine-listen-status').textContent='Listening';$('#marine-listen-start').disabled=true;$('#marine-listen-stop').disabled=false}
+  catch(error){stopMarineAudio('Playback blocked — press Start listening again.');console.error(error)}
+}
+function stopMarineAudio(message='Stopped'){
+  const player=$('#marine-player');if(!player)return;
+  marineAudioStopping=true;player.pause();player.removeAttribute('src');player.load();
+  $('#marine-listen-status').textContent=message;$('#marine-listen-start').disabled=!marineStreamUrl;$('#marine-listen-stop').disabled=true;
+  requestAnimationFrame(()=>{marineAudioStopping=false});
+}
+
 function renderMarineRadio(radio){
   const enabled=Boolean(radio.enabled),ready=Boolean(radio.ready),player=$('#marine-player'),stateText=radio.state||'Disabled';
   $('#marine-radio-badge').textContent=stateText;
@@ -68,9 +82,11 @@ function renderMarineRadio(radio){
   const channels=radio.channels||[];
   $('#marine-channel-count').textContent=`${channels.length} channel${channels.length===1?'':'s'}`;
   $('#marine-channels').innerHTML=channels.map((channel,index)=>`<div class="marine-channel"><span><b>${esc(channel.label||`Channel ${index+1}`)}</b><small>Receive-only NFM</small></span><em>${esc(channel.frequency)} MHz</em></div>`).join('')||'<div class="empty">No marine channels configured.</div>';
-  if(ready&&radio.stream_url&&!player.getAttribute('src')){player.src=radio.stream_url;player.load()}
-  if(!enabled||radio.state==='Device conflict'){player.pause();player.removeAttribute('src');player.load()}
-  $('#marine-player-help').textContent=ready?'Live NFM scanner connected. Press Play once; this single feed scans the configured channels and pauses on the first active transmission.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
+  marineStreamUrl=ready&&radio.stream_url?radio.stream_url:null;
+  $('#marine-listen-start').disabled=!marineStreamUrl||Boolean(player.getAttribute('src'));
+  $('#marine-listen-stop').disabled=!player.getAttribute('src');
+  if(!marineStreamUrl&&player.getAttribute('src'))stopMarineAudio(radio.state==='Device conflict'?'Stopped — radio device conflict.':'Stopped — receiver stream unavailable.');
+  $('#marine-player-help').textContent=ready?'Use Start listening to connect. Pause, Stop listening, leaving this page, or hiding the app completely closes the live audio connection.':radio.error||(!enabled?'Enable Marine VHF after connecting the second Nooelec.':'Starting the second receiver and private audio stream…');
   const recover=$('#marine-recover'),resetBusy=['Recovery requested','Resetting USB'].includes(stateText);
   recover.disabled=!radio.recovery_allowed||resetBusy;
   recover.textContent=resetBusy?'Recovering…':'Recover VHF radio';
@@ -172,4 +188,4 @@ try{
   new ResizeObserver(entries=>{const height=Math.round(entries[0].contentRect.height);if(height>=260&&height<=720)localStorage.setItem('baiamonteOverviewMapHeight',String(height));applyOverviewView();rerenderVisibleMap()}).observe(overviewMap);
 }catch(error){console.debug('Map size preference is unavailable',error)}
 async function refresh(){if(refreshRunning)return;refreshRunning=true;const button=$('#refresh');button.disabled=true;try{const response=await fetch('api/status',{cache:'no-store'});if(!response.ok)throw new Error(`Dashboard API ${response.status}`);const data=await response.json();refreshFailures=0;render(data)}catch(error){refreshFailures+=1;$('#last-check').textContent=state?'Update delayed · retrying':'Connecting to dashboard…';if(!state&&refreshFailures>=3){$('#receiver-status').textContent='Dashboard unavailable';$('#hero-status').textContent='Waiting for the Baiamonte AIS service'}console.error(error)}finally{refreshRunning=false;button.disabled=false}}
-$('#refresh').onclick=refresh;$('#marine-recover').onclick=recoverMarineRadio;showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){resetOverviewMap();rerenderVisibleMap();refresh()}});addEventListener('resize',rerenderVisibleMap);
+$('#refresh').onclick=refresh;$('#marine-recover').onclick=recoverMarineRadio;$('#marine-listen-start').onclick=startMarineAudio;$('#marine-listen-stop').onclick=()=>stopMarineAudio();$('#marine-player').addEventListener('pause',()=>{if(!marineAudioStopping&&$('#marine-player').getAttribute('src'))stopMarineAudio()});showPage(location.hash.slice(1)||'overview');refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMarineAudio('Stopped while the app is hidden.');else{resetOverviewMap();rerenderVisibleMap();refresh()}});addEventListener('pagehide',()=>stopMarineAudio());addEventListener('beforeunload',()=>stopMarineAudio());addEventListener('resize',rerenderVisibleMap);
