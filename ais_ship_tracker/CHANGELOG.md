@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.24
+
+- Keeps dashboard and TV vessel symbols on their true reported coordinates instead of moving them across land to avoid overlap.
+- Filters stale contacts on the normal dashboard as well as the TV page and keeps symbols a fixed readable size while the dashboard map is zoomed.
+- Uses a closer Catania-coast home view and a smaller TV vessel default so the Sicily display shows useful local traffic instead of an overcrowded whole-island view.
+
 ## 2.7.23
 
 - Identifies the fresh vessels in the native TV rail so the Vineyard Operations kiosk can mirror exactly the contacts inside the current AIS viewport.

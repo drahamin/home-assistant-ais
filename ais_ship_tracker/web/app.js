@@ -11,8 +11,8 @@ try{mapDisplayMode=localStorage.getItem('baiamonteAisMapDisplay')==='focus'?'foc
 function mapIsVisible(){return $('#overview').classList.contains('active')&&$('#sea-map').clientWidth>0&&$('#sea-map').clientHeight>0}
 function mapAreas(cfg){return (cfg.map_areas||[{id:'baiamonte',name:'Baiamonte Sicily',bounds:cfg.bounds,enabled:true}]).filter(area=>area.enabled!==false)}
 function selectedArea(cfg){const areas=mapAreas(cfg);return areas.find(area=>area.id===activeMapArea)||areas.find(area=>area.id===cfg.default_map_area)||areas[0]}
-function vesselsForArea(vessels,area){return vessels.filter(v=>String(v.area_id||'baiamonte')===area.id)}
-function rerenderVisibleMap(){if(!state||!mapIsVisible())return;const area=selectedArea(state.config);requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(vesselsForArea(state.vessels||[],area),area.bounds,state.config)))}
+function vesselsForArea(vessels,area,timeoutMinutes=30){const cutoff=Date.now()-Math.max(1,Number(timeoutMinutes)||30)*60000;return vessels.filter(v=>{const seen=Date.parse(v.source_last_seen||v.last_seen||'');return String(v.area_id||'baiamonte')===area.id&&Number.isFinite(seen)&&seen>=cutoff})}
+function rerenderVisibleMap(){if(!state||!mapIsVisible())return;const area=selectedArea(state.config);requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(vesselsForArea(state.vessels||[],area,state.config.timeout_minutes),area.bounds,state.config)))}
 function setMapArea(areaId){activeMapArea=areaId;selectedMapMmsi=null;resetOverviewMap();try{localStorage.setItem('baiamonteAisArea',areaId)}catch(error){}if(state)render(state)}
 function renderAreaSwitch(cfg){const areas=mapAreas(cfg),area=selectedArea(cfg);activeMapArea=area.id;$('#map-area-switch').innerHTML=areas.map(item=>`<button type="button" data-area="${esc(item.id)}" aria-pressed="${item.id===area.id}">${esc(item.name)}</button>`).join('');$$('#map-area-switch [data-area]').forEach(node=>node.onclick=()=>setMapArea(node.dataset.area));$('#map-area-title').textContent=`${area.name} vessel positions`;$('#tv-link').href=`tv?area=${encodeURIComponent(area.id)}`;return area}
 function showPage(id){const page=$(`#${id}`)?id:'overview';if(page!=='radio')stopMarineAudio('Stopped when you left Marine radio.');$$('.nav').forEach(node=>node.classList.toggle('active',node.dataset.page===page));$$('.page').forEach(node=>node.classList.toggle('active',node.id===page));$('#page-title').textContent={overview:'Overview',fleet:'Live traffic',radio:'Marine radio',area:'Watch area'}[page]||'Overview';history.replaceState(null,'',`#${page}`);window.scrollTo({top:0,behavior:'smooth'});if(page==='overview'){resetOverviewMap();rerenderVisibleMap()}}
@@ -52,22 +52,19 @@ function layoutMapLabels(view){
     items.forEach((item,index)=>{const cardX=item.side==='west'?margin:view.width-cardWidth-margin,cardY=tops[index],markerLeft=item.x-14,markerTop=item.y-17,label=item.node.querySelector('.map-vessel-label'),leader=item.node.querySelector('.map-label-leader'),endX=item.side==='west'?cardX+cardWidth:cardX,endY=cardY+cardHeight/2,dx=endX-item.x,dy=endY-item.y;label.style.left=`${cardX-markerLeft}px`;label.style.top=`${cardY-markerTop}px`;label.style.width=`${cardWidth}px`;leader.style.width=`${Math.hypot(dx,dy)}px`;leader.style.transform=`rotate(${Math.atan2(dy,dx)}rad)`})
   })
 }
-function declutterOverviewPoint(x,y,occupied,width,height){const gap=24,margin=15,fits=candidate=>candidate.x>=margin&&candidate.y>=margin&&candidate.x<=width-margin&&candidate.y<=height-margin&&!occupied.some(point=>Math.hypot(candidate.x-point.x,candidate.y-point.y)<gap);for(let ring=0;ring<=7;ring++){const radius=ring*gap,steps=ring===0?1:Math.max(8,Math.ceil(2*Math.PI*radius/gap));for(let step=0;step<steps;step++){const angle=step/steps*Math.PI*2-ring*.37,candidate={x:x+Math.cos(angle)*radius,y:y+Math.sin(angle)*radius};if(fits(candidate)){occupied.push(candidate);return{x:candidate.x,y:candidate.y,trueX:x,trueY:y}}}}const fallback={x:Math.max(margin,Math.min(width-margin,x)),y:Math.max(margin,Math.min(height-margin,y))};occupied.push(fallback);return{x:fallback.x,y:fallback.y,trueX:x,trueY:y}}
 function renderMap(vessels,bounds,cfg){
   if(!mapIsVisible())return;
-  const world=$('#map-world'),view=dashboardView(bounds),occupied=[];
+  const world=$('#map-world'),view=dashboardView(bounds);
   if(mapVesselsVisible===null)mapVesselsVisible=cfg.dashboard_map_vessels!==false;
   $('#dashboard-vessels-toggle').setAttribute('aria-pressed',String(mapVesselsVisible));$('#sea-map').dataset.display=mapDisplayMode;
   renderDashboardTiles(view,cfg.map_style||'standard');renderDashboardWeather(view,cfg);$$('.vessel-marker').forEach(node=>node.remove());
   let positioned=0,selected=null;
   if(mapVesselsVisible)vessels.forEach(v=>{
     if(typeof v.latitude!=='number'||typeof v.longitude!=='number')return;
-    const point=geoPoint(v.latitude,v.longitude,view.zoom),trueX=point.x-view.left,trueY=point.y-view.top;
-    if(trueX<0||trueY<0||trueX>view.width||trueY>view.height)return;
-    const placed=declutterOverviewPoint(trueX,trueY,occupied,view.width,view.height),x=placed.x,y=placed.y,offsetX=trueX-x,offsetY=trueY-y,offsetDistance=Math.hypot(offsetX,offsetY);
-    positioned+=1;const info=vesselFlag(v.mmsi),node=document.createElement('button');node.type='button';node.className='vessel-marker label-east';if(positioned>12)node.classList.add('label-hidden');if(offsetDistance>2)node.classList.add('decluttered');node.dataset.mmsi=String(v.mmsi);node.dataset.mapX=String(x);node.dataset.mapY=String(y);node.style.left=`${x}px`;node.style.top=`${y}px`;node.style.setProperty('--vessel-color',overviewVesselColor(v));node.title=`${info.country} · ${v.name||'Unknown vessel'} · ${fmt(v.sog)} kn`;
-    const positionLine=offsetDistance>2?`<span class="marker-position-line" style="width:${offsetDistance}px;transform:rotate(${Math.atan2(offsetY,offsetX)}rad)"></span>`:'';
-    node.innerHTML=`${positionLine}<span class="vessel-symbol" style="transform:rotate(${Number(v.heading??v.cog)||0}deg)">${overviewVesselIcon(v)}</span><span class="map-label-leader"></span><span class="map-vessel-label"><b>${info.flag} ${esc(v.name||'Unknown vessel')}</b><span>MMSI ${esc(v.mmsi)} · ${esc(v.vessel_type||v.vessel_class||'AIS contact')}</span><span>${esc(fmt(v.sog))} kn · ${esc(v.destination||'Destination not broadcast')}</span><em>${esc(ago(v.last_seen))}</em></span>`;node.onclick=event=>{event.stopPropagation();showMapVessel(v)};if(String(v.mmsi)===selectedMapMmsi){node.classList.add('selected');selected=v}world.appendChild(node)
+    const point=geoPoint(v.latitude,v.longitude,view.zoom),x=point.x-view.left,y=point.y-view.top;
+    if(x<0||y<0||x>view.width||y>view.height)return;
+    positioned+=1;const info=vesselFlag(v.mmsi),node=document.createElement('button');node.type='button';node.className='vessel-marker label-east';if(positioned>12)node.classList.add('label-hidden');node.dataset.mmsi=String(v.mmsi);node.dataset.mapX=String(x);node.dataset.mapY=String(y);node.style.left=`${x}px`;node.style.top=`${y}px`;node.style.setProperty('--vessel-color',overviewVesselColor(v));node.title=`${info.country} · ${v.name||'Unknown vessel'} · ${fmt(v.sog)} kn`;
+    node.innerHTML=`<span class="vessel-symbol" style="transform:rotate(${Number(v.heading??v.cog)||0}deg)">${overviewVesselIcon(v)}</span><span class="map-label-leader"></span><span class="map-vessel-label"><b>${info.flag} ${esc(v.name||'Unknown vessel')}</b><span>MMSI ${esc(v.mmsi)} · ${esc(v.vessel_type||v.vessel_class||'AIS contact')}</span><span>${esc(fmt(v.sog))} kn · ${esc(v.destination||'Destination not broadcast')}</span><em>${esc(ago(v.last_seen))}</em></span>`;node.onclick=event=>{event.stopPropagation();showMapVessel(v)};if(String(v.mmsi)===selectedMapMmsi){node.classList.add('selected');selected=v}world.appendChild(node)
   });
   if(mapVesselsVisible&&mapDisplayMode==='labels')layoutMapLabels(view);if(mapVesselsVisible&&mapDisplayMode==='focus'&&selected)showMapVessel(selected);else if(mapDisplayMode==='labels'||!mapVesselsVisible)$('#map-vessel-detail').hidden=true;else if(selectedMapMmsi&&!selected)hideMapVessel();$('#map-empty').classList.toggle('hidden',!mapVesselsVisible||positioned>0)
 }
@@ -123,7 +120,7 @@ async function recoverMarineRadio(){
 
 function render(data){
   state=data;
-  const allVessels=data.vessels||[],cfg=data.config,area=renderAreaSwitch(cfg),vessels=vesselsForArea(allVessels,area),bounds=area.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyOperational=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),operational=connected||proxyOperational||feed.received>0||decoder.state==='Running';
+  const allVessels=data.vessels||[],cfg=data.config,area=renderAreaSwitch(cfg),vessels=vesselsForArea(allVessels,area,cfg.timeout_minutes),bounds=area.bounds,connected=data.connection==='Connected',feed=data.feed||{},decoder=data.decoder||{},proxy=data.rahamin_proxy||{},proxyArea=(proxy.areas||{})[area.id]||{},proxyOperational=proxyArea.state==='Connected'||(area.id==='miami'&&proxy.state==='Connected'&&!proxy.areas),operational=connected||proxyOperational||feed.received>0||decoder.state==='Running';
   $('#side-light').classList.toggle('online',operational);
   $('#hero-light').classList.toggle('online',operational);
   const receiverOperational=feed.state==='Receiving'||decoder.state==='Running';
@@ -173,7 +170,7 @@ function applyOverviewView(){
   const limitX=overviewMap.clientWidth*.75,limitY=overviewMap.clientHeight*.75;
   overviewView.x=Math.max(-limitX,Math.min(limitX,overviewView.x));
   overviewView.y=Math.max(-limitY,Math.min(limitY,overviewView.y));
-  overviewWorld.style.transform=`translate(${overviewView.x}px,${overviewView.y}px) scale(${overviewView.scale})`;
+  overviewWorld.style.setProperty('--overview-inverse-scale',String(1/overviewView.scale));overviewWorld.style.transform=`translate(${overviewView.x}px,${overviewView.y}px) scale(${overviewView.scale})`;
 }
 function scheduleOverviewReset(){clearTimeout(overviewResetTimer);overviewResetTimer=setTimeout(resetOverviewMap,30000)}
 function changeOverviewZoom(amount){overviewView.scale=Math.max(.7,Math.min(3,overviewView.scale+amount));applyOverviewView();scheduleOverviewReset()}
