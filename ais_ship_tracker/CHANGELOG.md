@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.25
+
+- Adds a Home Assistant **TV Map Target Size** setting from 30% to 180% for both `/tv` and `/t`.
+- Raises the default direct-browser vessel size to 100% while preserving `?target_size=` as a temporary per-screen override.
+
 ## 2.7.24
 
 - Keeps dashboard and TV vessel symbols on their true reported coordinates instead of moving them across land to avoid overlap.

@@ -38,6 +38,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **Marine Frequencies / Labels:** matching comma-separated scan lists, with up to 12 frequencies between 156 and 163 MHz. Confirm the correct local channel plan.
 - **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and automatic squelch. Use the manual dBFS threshold only for a channel that cannot work with adaptive squelch.
 - **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.
+- **TV Map Target Size:** sets vessel icons on `/tv` and `/t` from 30% to 180%. Use 100% for a normal browser or increase it for a television viewed from across the room.
 - **Live Rain Radar on Dashboard / TV:** enable RainViewer independently for each surface.
 - **FlightAware Airport Weather:** optional AeroAPI v4 observations, using an API key and ICAO airport code such as `LICC`.
 - **Bounding Box:** the west, south, east, and north limits of the vessel watch area.
@@ -54,6 +55,8 @@ Open **Marine radio** for the live audio player, current scanner state, device p
 For a television or kiosk display, open `http://HOME_ASSISTANT_IP:8999/tv` (or the shorter `/t` alias). With no query parameter, the display opens the Baiamonte Sicily map and shows every positioned live boat in the displayed coverage in its count and scrollable side list. Miami remains available only when deliberately selected on screen or opened with `/tv?area=miami`. Internal port `8099` remains dedicated to Home Assistant ingress.
 
 Turn on **TV Live Weather Radar** to add current precipitation radar from RainViewer. Turn on **Live Rain Radar on Dashboard** for the Overview map. Adjust **TV Weather Opacity** between 10 and 100 if the radar is too faint or covers too much of the base map. Radar availability is best-effort; boats and the base map continue working if the weather service is temporarily unavailable.
+
+Set **TV Map Target Size** to the preferred vessel-icon percentage. The default is 100; values from 30 to 180 are accepted. A direct URL can temporarily override the saved setting, for example `/tv?target_size=125`, without changing Home Assistant configuration.
 
 On Overview and TV pages, drag the map to move it, pinch or use the wheel and gold plus/minus buttons to zoom, and choose **Reset** to return to the automatic view. The Overview map also has height controls and a lower-right resize corner. Its height is remembered by the browser. The TV layout includes a flexbox fallback and same-origin tile proxy for Samsung/Tizen browsers.
 

@@ -90,6 +90,7 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual(snapshot["config"]["tv_default_map_area"], "baiamonte")
         self.assertTrue(snapshot["config"]["dashboard_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_map_vessels"])
+        self.assertEqual(snapshot["config"]["tv_map_target_size"], 100)
         self.assertTrue(snapshot["config"]["tv_live_traffic_only"])
         self.assertTrue(snapshot["config"]["rahamin_proxy_enabled"])
         self.assertEqual(snapshot["config"]["aishub_data_source"], "rahamin_proxy")
@@ -104,6 +105,10 @@ class DistanceTests(unittest.TestCase):
         self.assertFalse(snapshot["marine_vhf"]["enabled"])
         self.assertFalse(snapshot["config"]["sharing_enabled"])
         self.assertEqual(snapshot["feed"]["sharing_state"], "Disabled")
+
+    def test_tv_map_target_size_is_clamped(self):
+        self.assertEqual(load_tracker({"tv_map_target_size": 25}).TV_MAP_TARGET_SIZE, 30)
+        self.assertEqual(load_tracker({"tv_map_target_size": 250}).TV_MAP_TARGET_SIZE, 180)
 
     def test_receiver_health_is_independent_from_aishub(self):
         previous_feed = tracker.feed_state["state"]
@@ -627,13 +632,15 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('data-mmsi="${escapeHtml(vessel.mmsi)}"', television_script)
         self.assertIn("tvParams.get('map_zoom')", television_script)
         self.assertIn("tvParams.get('target_size')", television_script)
-        self.assertIn("clampedParam(tvParams.get('target_size'),30,180,70)", television_script)
+        self.assertIn("tvTargetScale(cfg)", television_script)
+        self.assertIn("config.tv_map_target_size", television_script)
         self.assertIn("area.id==='baiamonte'?2:0", television_script)
         self.assertIn("return{lat:37.55,lon:15.16}", television_script)
         self.assertNotIn('class="boat-position-line"', television_script)
         self.assertIn('tv_default_map_area: "baiamonte"', config)
         self.assertIn("dashboard_map_vessels: true", config)
         self.assertIn("tv_map_vessels: true", config)
+        self.assertIn("tv_map_target_size: 100", config)
         self.assertIn("tv_live_traffic_only: true", config)
 
     def test_overview_and_tv_maps_reject_stale_weather_and_recenter(self):

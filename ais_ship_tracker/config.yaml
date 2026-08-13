@@ -1,5 +1,5 @@
 name: "Baiamonte AIS"
-version: "2.7.24"
+version: "2.7.25"
 slug: "baiamonte_ais"
 description: "Estate maritime watch and live AIS vessel operations"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -41,6 +41,7 @@ options:
   tv_default_map_area: "baiamonte"
   dashboard_map_vessels: true
   tv_map_vessels: true
+  tv_map_target_size: 100
   tv_live_traffic_only: true
   baiamonte_approach_km: 45
   miami_approach_km: 45
@@ -106,6 +107,7 @@ schema:
   tv_default_map_area: "list(baiamonte|miami)?"
   dashboard_map_vessels: "bool?"
   tv_map_vessels: "bool?"
+  tv_map_target_size: "int?"
   tv_live_traffic_only: "bool?"
   baiamonte_approach_km: "int?"
   miami_approach_km: "int?"
@@ -196,6 +198,9 @@ configuration:
   tv_map_vessels:
     name: Show Vessels on TV Map
     description: Show live vessel markers on /tv. They can also be hidden temporarily from the TV map controls.
+  tv_map_target_size:
+    name: TV Map Target Size
+    description: Vessel icon size on /tv and /t as a percentage from 30 to 180. Use 100 for normal browser viewing; larger values improve visibility from across a room.
   tv_live_traffic_only:
     name: TV Live Traffic Only
     description: Keep the TV count and vessel list matched to boats actually inside the displayed map instead of approach traffic outside its edges.
