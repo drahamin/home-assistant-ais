@@ -47,7 +47,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 
 Start the app and open **AIS** in the Home Assistant sidebar. A green local receiver state confirms AIS-catcher is running; received vessels appear without AISHub credentials. The reciprocal feed details separately confirm AISHub sharing and downloads.
 
-Open **Marine radio** for the live audio player, current scanner state, device profile, and channel list. The receiver supplies one NFM scanner stream: it cycles through the configured channels and pauses on the first active transmission. Select **Start listening** to connect. **Pause** and **Stop listening** both close the live connection, and audio also disconnects when you leave the page or hide the app. Marine receiver activity is included in **Watch area → Receiver log**. The stream stays inside the add-on and is proxied through the same dashboard server, with no separate audio port or Icecast credentials exposed.
+Open **Marine radio** for the live audio player, current scanner state, device profile, and channel list. The receiver supplies one NFM scanner stream: it cycles through the configured channels and pauses on the first active transmission. Select **Start listening** to connect and **Stop listening** to disconnect. Audio also disconnects when you leave the page or hide the app. The status beside the buttons reports Connecting, Buffering, Listening, or a connection failure. Marine receiver activity is included in **Watch area → Receiver log**. The stream stays inside the add-on and is proxied through the same dashboard server, with no separate audio port or Icecast credentials exposed.
 
 ## TV map
 

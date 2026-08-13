@@ -792,7 +792,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self.send_header("Connection", "close")
                     self.end_headers()
                     while not shutdown_in_progress:
-                        chunk = stream.read(16384)
+                        chunk = stream.read1(4096) if hasattr(stream, "read1") else stream.read(4096)
                         if not chunk:
                             break
                         self.wfile.write(chunk)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.26
+
+- Fixes Marine VHF playback being disconnected by a browser-generated pause event while a new live source is starting.
+- Uses the unambiguous Start listening and Stop listening controls instead of mixing native player controls with automatic disconnect behavior.
+- Forwards 4 KB Icecast audio chunks immediately instead of waiting for a 16 KB block, substantially reducing first-audio delay on low-bitrate marine streams.
+- Shows Connecting, Buffering, Listening, reconnecting, and connection-failure states beside the controls.
+
 ## 2.7.25
 
 - Adds a Home Assistant **TV Map Target Size** setting from 30% to 180% for `/tv` vessel symbols.
