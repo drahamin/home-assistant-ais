@@ -99,6 +99,7 @@ try:
     DASHBOARD_MAP_VESSELS = str(config.get('dashboard_map_vessels', True)).lower() in ['true', '1', 't', 'y', 'yes']
     TV_MAP_VESSELS = str(config.get('tv_map_vessels', True)).lower() in ['true', '1', 't', 'y', 'yes']
     TV_LIVE_TRAFFIC_ONLY = str(config.get('tv_live_traffic_only', True)).lower() in ['true', '1', 't', 'y', 'yes']
+    TV_TARGET_SIZE = max(30, min(180, get_safe_int('tv_target_size', 100)))
     RECEIVER_UDP_PORT = 10110
     RECEIVER_NAME = str(config.get('receiver_name', 'Baiamonte AIS receiver')).strip() or 'Baiamonte AIS receiver'
     RECEIVER_MODE = str(config.get('receiver_mode', 'sdr')).strip().lower()
@@ -686,6 +687,7 @@ def dashboard_snapshot(area_id=None, compact=False):
             "dashboard_map_vessels": DASHBOARD_MAP_VESSELS,
             "tv_map_vessels": TV_MAP_VESSELS,
             "tv_live_traffic_only": TV_LIVE_TRAFFIC_ONLY,
+            "tv_target_size": TV_TARGET_SIZE,
             "rahamin_proxy_enabled": RAHAMIN_PROXY_ENABLED,
             "aishub_data_source": AISHUB_DATA_SOURCE,
             "aishub_username_in_use": bool(AISHUB_DATA_SOURCE == 'direct_aishub' and AISHUB_USERNAME),
@@ -733,7 +735,7 @@ def dashboard_snapshot(area_id=None, compact=False):
         if compact:
             compact_config_keys = {
                 "bounds", "area_id", "map_areas", "tv_default_map_area",
-                "tv_map_vessels", "tv_live_traffic_only", "tv_weather_overlay",
+                "tv_map_vessels", "tv_live_traffic_only", "tv_target_size", "tv_weather_overlay",
                 "tv_weather_opacity", "map_style", "timeout_minutes",
             }
             return {
