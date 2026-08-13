@@ -17,7 +17,8 @@ let manualCenter=null,manualZoom=null;
 const tvParams=new URLSearchParams(location.search);
 const requestedArea=(tvParams.get('area')||'').toLowerCase();
 const requestedZoomDelta=clampedParam(tvParams.get('map_zoom'),-6,20,0);
-const requestedTargetScale=clampedParam(tvParams.get('target_size'),30,180,70)/100;
+const requestedTargetSize=tvParams.has('target_size')?clampedParam(tvParams.get('target_size'),30,180,100):null;
+let activeTargetScale=1;
 window.BaiamonteNativeMapControls=true;
 let activeArea=requestedArea;
 let tvVesselsVisible=null;
@@ -196,14 +197,14 @@ function boatNode(vessel,view){
   const icon=vesselIcon(vessel);
   const safeName=escapeHtml(`${info.flag} ${vessel.name||`MMSI ${vessel.mmsi}`}`);
   node.classList.add(`boat-${icon.kind}`);
-  node.style.setProperty('--target-scale',String(requestedTargetScale));
+  node.style.setProperty('--target-scale',String(activeTargetScale));
   node.innerHTML=`<svg class="boat-icon" viewBox="0 0 40 56" style="--heading:${direction}deg" aria-hidden="true">${icon.svg}</svg><span class="boat-label">${safeName}</span>`;
   return node;
 }
 
 function vesselIsOnScreen(vessel,view,width,height){
   const point=project(Number(vessel.latitude),Number(vessel.longitude),view.zoom);
-  const x=point.x-view.originX,y=point.y-view.originY,margin=28*requestedTargetScale;
+  const x=point.x-view.originX,y=point.y-view.originY,margin=28*activeTargetScale;
   return x>=-margin&&x<=width+margin&&y>=-margin&&y<=height+margin;
 }
 
@@ -232,6 +233,7 @@ function render(data){
   const width=map.clientWidth,height=map.clientHeight;
   if(width<64||height<64)return;
   const cfg=data.config;
+  activeTargetScale=(requestedTargetSize===null?clamp(Number(cfg.tv_target_size)||100,30,180):requestedTargetSize)/100;
   if(tvVesselsVisible===null)tvVesselsVisible=cfg.tv_map_vessels!==false;
   document.querySelector('#tv-vessels-toggle').setAttribute('aria-pressed',String(tvVesselsVisible));
   const exploreButton=document.querySelector('#tv-map-explore');

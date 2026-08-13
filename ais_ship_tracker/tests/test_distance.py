@@ -91,6 +91,7 @@ class DistanceTests(unittest.TestCase):
         self.assertTrue(snapshot["config"]["dashboard_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_map_vessels"])
         self.assertTrue(snapshot["config"]["tv_live_traffic_only"])
+        self.assertEqual(snapshot["config"]["tv_target_size"], 100)
         self.assertTrue(snapshot["config"]["rahamin_proxy_enabled"])
         self.assertEqual(snapshot["config"]["aishub_data_source"], "rahamin_proxy")
         self.assertFalse(snapshot["config"]["aishub_username_in_use"])
@@ -627,7 +628,9 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('data-mmsi="${escapeHtml(vessel.mmsi)}"', television_script)
         self.assertIn("tvParams.get('map_zoom')", television_script)
         self.assertIn("tvParams.get('target_size')", television_script)
-        self.assertIn("clampedParam(tvParams.get('target_size'),30,180,70)", television_script)
+        self.assertIn("tvParams.has('target_size')", television_script)
+        self.assertIn("clampedParam(tvParams.get('target_size'),30,180,100)", television_script)
+        self.assertIn("Number(cfg.tv_target_size)||100", television_script)
         self.assertIn("area.id==='baiamonte'?2:0", television_script)
         self.assertIn("return{lat:37.55,lon:15.16}", television_script)
         self.assertNotIn('class="boat-position-line"', television_script)
@@ -635,6 +638,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn("dashboard_map_vessels: true", config)
         self.assertIn("tv_map_vessels: true", config)
         self.assertIn("tv_live_traffic_only: true", config)
+        self.assertIn("tv_target_size: 100", config)
 
     def test_overview_and_tv_maps_reject_stale_weather_and_recenter(self):
         web = TRACKER.parent / "web"

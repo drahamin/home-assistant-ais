@@ -44,6 +44,9 @@ configuration:
   tv_live_traffic_only:
     name: TV Live Traffic Only
     description: Keep the TV count and vessel list matched to boats actually inside the displayed map instead of approach traffic outside its edges.
+  tv_target_size:
+    name: TV Map Target Size
+    description: Vessel symbol size on /tv from 30 to 180 percent. Use 100 for normal browsers or increase it for a distant TV.
   baiamonte_approach_km:
     name: Baiamonte Approach Range
     description: Extra kilometres around the Sicily map requested for inbound-vessel detection.

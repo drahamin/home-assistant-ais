@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.25
+
+- Adds a Home Assistant **TV Map Target Size** setting from 30% to 180% for `/tv` vessel symbols.
+- Uses a more readable 100% default for direct desktop and television browsers instead of the previous compact 70% fallback.
+- Keeps the existing `target_size` URL parameter as a per-display override, so Vineyard and other embedded dashboards can retain their own scale.
+
 ## 2.7.24
 
 - Keeps dashboard and TV vessel symbols on their true reported coordinates instead of moving them across land to avoid overlap.
