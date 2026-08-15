@@ -2,6 +2,7 @@ const $=selector=>document.querySelector(selector),$$=selector=>[...document.que
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const fmt=value=>value===null||value===undefined||value===''?'—':value;
 const parseAisTime=value=>{if(value===null||value===undefined||value==='')return NaN;const text=String(value).trim();if(/^\d+(?:\.\d+)?$/.test(text)){const numeric=Number(text);return numeric<1e12?numeric*1000:numeric}return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)?text:`${text}Z`)};
+const vesselSeenAt=vessel=>parseAisTime(vessel.last_seen||vessel.source_last_seen||'');
 const ago=value=>{if(!value)return'just now';const seconds=Math.max(0,(Date.now()-parseAisTime(value))/1000);if(seconds<60)return`${Math.floor(seconds)}s ago`;if(seconds<3600)return`${Math.floor(seconds/60)}m ago`;return`${Math.floor(seconds/3600)}h ago`};
 let state=null,refreshRunning=false,refreshFailures=0,selectedMapMmsi=null,activeMapArea=null,mapVesselsVisible=null;
 let mapDisplayMode='labels';
@@ -12,7 +13,7 @@ try{mapDisplayMode=localStorage.getItem('baiamonteAisMapDisplay')==='focus'?'foc
 function mapIsVisible(){return $('#overview').classList.contains('active')&&$('#sea-map').clientWidth>0&&$('#sea-map').clientHeight>0}
 function mapAreas(cfg){return (cfg.map_areas||[{id:'baiamonte',name:'Baiamonte Sicily',bounds:cfg.bounds,enabled:true}]).filter(area=>area.enabled!==false)}
 function selectedArea(cfg){const areas=mapAreas(cfg);return areas.find(area=>area.id===activeMapArea)||areas.find(area=>area.id===cfg.default_map_area)||areas[0]}
-function vesselsForArea(vessels,area,timeoutMinutes=30){const cutoff=Date.now()-Math.max(1,Number(timeoutMinutes)||30)*60000;return vessels.filter(v=>{const seen=parseAisTime(v.source_last_seen||v.last_seen||'');return String(v.area_id||'baiamonte')===area.id&&Number.isFinite(seen)&&seen>=cutoff})}
+function vesselsForArea(vessels,area,timeoutMinutes=30){const cutoff=Date.now()-Math.max(1,Number(timeoutMinutes)||30)*60000;return vessels.filter(v=>{const seen=vesselSeenAt(v);return String(v.area_id||'baiamonte')===area.id&&Number.isFinite(seen)&&seen>=cutoff})}
 function rerenderVisibleMap(){if(!state||!mapIsVisible())return;const area=selectedArea(state.config);requestAnimationFrame(()=>requestAnimationFrame(()=>renderMap(vesselsForArea(state.vessels||[],area,state.config.timeout_minutes),area.bounds,state.config)))}
 function setMapArea(areaId){activeMapArea=areaId;selectedMapMmsi=null;resetOverviewMap();try{localStorage.setItem('baiamonteAisArea',areaId)}catch(error){}if(state)render(state)}
 function renderAreaSwitch(cfg){const areas=mapAreas(cfg),area=selectedArea(cfg);activeMapArea=area.id;$('#map-area-switch').innerHTML=areas.map(item=>`<button type="button" data-area="${esc(item.id)}" aria-pressed="${item.id===area.id}">${esc(item.name)}</button>`).join('');$$('#map-area-switch [data-area]').forEach(node=>node.onclick=()=>setMapArea(node.dataset.area));$('#map-area-title').textContent=`${area.name} vessel positions`;$('#tv-link').href=`tv?area=${encodeURIComponent(area.id)}`;return area}
