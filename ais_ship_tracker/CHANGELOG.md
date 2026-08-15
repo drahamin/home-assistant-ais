@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.27
+
+- Restores AIS vessel markers on the dashboard and TV map by treating timezone-less receiver timestamps as UTC instead of Samsung/Rome local time.
+- Emits explicit UTC timestamps for new local AIS contacts and status snapshots so browsers apply the stale-contact window consistently.
+- Preserves offset-aware and Unix timestamps from private proxy feeds.
+
 ## 2.7.26
 
 - Fixes Marine VHF playback being disconnected by a browser-generated pause event while a new live source is starting.

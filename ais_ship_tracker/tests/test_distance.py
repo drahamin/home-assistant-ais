@@ -624,6 +624,8 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertIn('id="tv-map-reset" aria-label="Reset and lock map at the fixed AIS home location">Reset</button>', television)
         self.assertIn("vesselIsOnScreen", television_script)
         self.assertIn("source_last_seen||v.last_seen", television_script)
+        self.assertIn("parseAisTime", television_script)
+        self.assertNotIn("const seen=Date.parse(v.source_last_seen||v.last_seen||'')", television_script)
         self.assertIn("stale after", television_script)
         self.assertIn('data-mmsi="${escapeHtml(vessel.mmsi)}"', television_script)
         self.assertIn("tvParams.get('map_zoom')", television_script)
@@ -652,11 +654,20 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2726', dashboard)
+        self.assertIn('app.js?v=2727', dashboard)
         self.assertNotIn("declutterOverviewPoint", dashboard_script)
         self.assertNotIn("marker-position-line", dashboard_script)
         self.assertIn("source_last_seen||v.last_seen", dashboard_script)
+        self.assertIn("parseAisTime", dashboard_script)
+        self.assertNotIn("const seen=Date.parse(v.source_last_seen||v.last_seen||'')", dashboard_script)
         self.assertIn("--overview-inverse-scale", dashboard_script)
+
+    def test_status_timestamps_are_explicit_utc(self):
+        source = TRACKER.read_text()
+        self.assertIn("def utc_now_iso()", source)
+        self.assertIn('replace("+00:00", "Z")', source)
+        self.assertIn('merged["last_seen"] = utc_now_iso()', source)
+        self.assertIn('"generated_at": utc_now_iso()', source)
 
     def test_dashboard_and_tv_treat_each_private_area_proxy_as_live(self):
         dashboard_script = (TRACKER.parent / "web" / "app.js").read_text()

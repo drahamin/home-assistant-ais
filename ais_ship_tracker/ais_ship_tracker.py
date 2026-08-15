@@ -21,13 +21,16 @@ import glob
 import select
 import termios
 import fcntl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.23"
+VERSION = "2.7.27"
 receiver_logs = deque(maxlen=80)
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 BAIAMONTE_BOUNDS = {
     "latitude_south": 35.85,
@@ -531,7 +534,7 @@ def remember_dashboard_vessel(ship_data):
         previous = dashboard_vessels.get(mmsi, {})
         merged = {**previous, **ship_data, **static_ship_data.get(ship_data.get("mmsi"), {})}
         merged["mmsi"] = mmsi
-        merged["last_seen"] = datetime.now().isoformat(timespec="seconds")
+        merged["last_seen"] = utc_now_iso()
         dashboard_vessels[mmsi] = merged
         if not previous:
             dashboard_events.appendleft({
@@ -730,7 +733,7 @@ def dashboard_snapshot(area_id=None, compact=False):
             "events": events,
             "config": config_snapshot,
             "rahamin_proxy": dict(rahamin_proxy_state),
-            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "generated_at": utc_now_iso(),
         }
         if compact:
             compact_config_keys = {
