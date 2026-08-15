@@ -37,6 +37,7 @@ const apiPath=location.pathname.replace(/\/(?:tv|t)\/?$/,'')+'/api/status';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 function clampedParam(value,min,max,fallback){const parsed=Number(value);return Number.isFinite(parsed)?Math.min(max,Math.max(min,parsed)):fallback}
 function parseAisTime(value){if(value===null||value===undefined||value==='')return NaN;const text=String(value).trim();if(/^\d+(?:\.\d+)?$/.test(text)){const numeric=Number(text);return numeric<1e12?numeric*1000:numeric}return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)?text:`${text}Z`)}
+function vesselSeenAt(vessel){return parseAisTime(vessel.last_seen||vessel.source_last_seen||'')}
 const escapeHtml=value=>String(value===null||value===undefined?'':value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const flagInfo=mmsi=>window.BaiamonteVesselFlag(mmsi);
 function tvAreas(config){const fallback=[{id:'baiamonte',name:'Baiamonte Sicily',bounds:config.bounds,enabled:true}],areas=(config.map_areas||fallback).filter(function(area){return area.enabled!==false});return areas.length?areas:fallback}
@@ -49,7 +50,7 @@ function tvHomeCenter(config,area){
   if(area.id==='baiamonte'){
     const cutoff=Date.now()-Math.max(1,Number(config.timeout_minutes)||30)*60000;
     const nearest=((latest&&latest.vessels)||[]).filter(function(vessel){
-      const seen=parseAisTime(vessel.source_last_seen||vessel.last_seen||'');
+      const seen=vesselSeenAt(vessel);
       return String(vessel.area_id||'baiamonte')==='baiamonte'&&Number.isFinite(Number(vessel.latitude))&&Number.isFinite(Number(vessel.longitude))&&Number.isFinite(seen)&&seen>=cutoff;
     }).sort(function(a,b){return Number(a.distance_km||99999)-Number(b.distance_km||99999)})[0];
     if(nearest)return{lat:Number(nearest.latitude),lon:Number(nearest.longitude)};
@@ -249,7 +250,7 @@ function render(data){
   boats.innerHTML='';
   const areaVessels=(data.vessels||[]).filter(v=>String(v.area_id||'baiamonte')===area.id&&Number.isFinite(Number(v.latitude))&&Number.isFinite(Number(v.longitude)));
   const freshCutoff=Date.now()-Math.max(1,Number(cfg.timeout_minutes)||30)*60000;
-  const freshVessels=areaVessels.filter(function(v){const seen=parseAisTime(v.source_last_seen||v.last_seen||'');return Number.isFinite(seen)&&seen>=freshCutoff});
+  const freshVessels=areaVessels.filter(function(v){const seen=vesselSeenAt(v);return Number.isFinite(seen)&&seen>=freshCutoff});
   const visible=freshVessels.filter(v=>vesselIsOnScreen(v,view,width,height));
   if(tvVesselsVisible){const mapped=visible.slice().sort(function(a,b){const rank={in_area:0,inbound:1,nearby:2,unknown:3};return (rank[a.area_status]===undefined?3:rank[a.area_status])-(rank[b.area_status]===undefined?3:rank[b.area_status])||Number(a.distance_km||99999)-Number(b.distance_km||99999)});mapped.forEach(vessel=>boats.appendChild(boatNode(vessel,view)));layoutTvLabels(boats.querySelectorAll('.boat'),width,height)}
   empty.classList.toggle('show',tvVesselsVisible&&visible.length===0);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.28
+
+- Uses the AIS app's verified local ingestion time as the map freshness clock before consulting a proxy's source timestamp.
+- Keeps live Sicily targets visible when an upstream proxy reports timezone-less timestamps in its own local timezone.
+
 ## 2.7.27
 
 - Restores AIS vessel markers on the dashboard and TV map by treating timezone-less receiver timestamps as UTC instead of Samsung/Rome local time.

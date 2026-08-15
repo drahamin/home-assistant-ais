@@ -26,7 +26,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.27"
+VERSION = "2.7.28"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
