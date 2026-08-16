@@ -26,7 +26,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.29"
+VERSION = "2.7.30"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -1330,6 +1330,17 @@ def source_timestamp_is_fresh(value, reference_value=None, timeout_minutes=None)
         return False
 
 
+def source_timestamp_has_timezone(value):
+    """Return whether a source timestamp can be compared to the host clock."""
+    if value in (None, ""):
+        return False
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        return parsed.tzinfo is not None and parsed.utcoffset() is not None
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def proxy_value(record, *names):
     """Read a Rahamin dashboard or standard AIS field without case assumptions."""
     for name in names:
@@ -1490,7 +1501,15 @@ def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=No
     # clock against the current time before comparing an individual contact to
     # that clock, otherwise an old snapshot can repeatedly replace live local
     # receiver positions.
-    if source_generated_at not in (None, "") and not source_timestamp_is_fresh(source_generated_at):
+    # Only compare a proxy snapshot with this host's clock when the source
+    # supplied an explicit UTC offset. The Rahamin proxy currently emits local
+    # wall-clock timestamps without an offset; interpreting that value in the
+    # Home Assistant host timezone makes a healthy Miami feed appear hours old.
+    # Individual contacts are still checked against the snapshot clock below.
+    if (
+        source_timestamp_has_timezone(source_generated_at)
+        and not source_timestamp_is_fresh(source_generated_at)
+    ):
         return False
     if not source_timestamp_is_fresh(source_seen_at, source_generated_at):
         return False

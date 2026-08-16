@@ -341,3 +341,7 @@
 
 ## 1.0.0
 * Initial release
+# 2.7.30
+
+- Accept fresh private-proxy snapshots whose timestamps use the source server's local clock without a UTC offset.
+- Continue rejecting stale individual vessels by comparing them with the proxy snapshot time, while retaining absolute stale-snapshot protection for timezone-aware sources.
