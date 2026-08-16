@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.29
+
+- Rejects an entire private-proxy snapshot when its own generation time is stale, preventing old cached vessel positions from replacing the live Baiamonte receiver feed.
+- Runs stale-vessel cleanup in private-proxy-only mode as well as direct AISHub mode, so the TV and dashboard maps recover cleanly after an upstream outage.
+
 ## 2.7.28
 
 - Uses the AIS app's verified local ingestion time as the map freshness clock before consulting a proxy's source timestamp.
