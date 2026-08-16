@@ -347,6 +347,22 @@ class AisCatcherTests(unittest.TestCase):
         self.assertTrue(imported)
         self.assertEqual(tracker.dashboard_vessels["247123458"]["source_last_seen"], generated_at)
 
+    def test_private_status_proxy_accepts_fresh_naive_remote_clock(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123460", "name": "REMOTE CLOCK", "latitude": 38.13, "longitude": 15.06,
+            "last_seen": "2026-08-16T16:23:11",
+        }, "baiamonte", "2026-08-16T16:25:19")
+        self.assertTrue(imported)
+        self.assertIn("247123460", tracker.dashboard_vessels)
+
+    def test_private_status_proxy_rejects_stale_contact_on_naive_remote_clock(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123461", "name": "STALE REMOTE", "latitude": 38.13, "longitude": 15.06,
+            "last_seen": "2026-08-16T15:25:19",
+        }, "baiamonte", "2026-08-16T16:25:19")
+        self.assertFalse(imported)
+        self.assertNotIn("247123461", tracker.dashboard_vessels)
+
     def test_private_status_proxy_rejects_entire_stale_snapshot(self):
         imported = tracker.process_rahamin_proxy_record({
             "mmsi": "247123459", "name": "CACHED PROXY", "latitude": 37.62, "longitude": 15.18,
