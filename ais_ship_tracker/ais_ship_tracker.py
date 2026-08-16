@@ -26,7 +26,7 @@ from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.28"
+VERSION = "2.7.29"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -1485,6 +1485,13 @@ def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=No
     if not area or not area.get("enabled"):
         return False
     source_seen_at = proxy_value(record, "source_last_seen", "last_seen", "timestamp", "TIME")
+    # A cached proxy payload can contain internally consistent timestamps long
+    # after the upstream receiver has stopped updating.  Verify the payload
+    # clock against the current time before comparing an individual contact to
+    # that clock, otherwise an old snapshot can repeatedly replace live local
+    # receiver positions.
+    if source_generated_at not in (None, "") and not source_timestamp_is_fresh(source_generated_at):
+        return False
     if not source_timestamp_is_fresh(source_seen_at, source_generated_at):
         return False
     # The private source already scopes /api/status?area=... to its configured
@@ -2369,6 +2376,12 @@ def start_gps():
 
 def start_tracker():
     global last_purge_time, last_known_error, aishub_area_cursor
+    # Cleanup must also run in private-proxy-only mode.  Previously both early
+    # returns below skipped the only purge call, leaving stale vessels visible
+    # indefinitely after an upstream outage.
+    if (datetime.now() - last_purge_time).total_seconds() >= 60:
+        purge_old_ships()
+        last_purge_time = datetime.now()
     enabled_areas = [
         area for area in MAP_AREAS.values()
         if area["enabled"] and not (rahamin_proxy_state["enabled"] and RAHAMIN_PROXY_URL)
@@ -2436,9 +2449,6 @@ def start_tracker():
             retry_delay = max(900, AISHUB_POLL_INTERVAL)
             log("ℹ️ AISHub credentials were rejected; the next API retry is delayed for 15 minutes. Receiver and private proxy maps continue normally.")
 
-    if (datetime.now() - last_purge_time).total_seconds() >= 60:
-        purge_old_ships()
-        last_purge_time = datetime.now()
     time.sleep(retry_delay)
 
 def graceful_shutdown(signum, frame):

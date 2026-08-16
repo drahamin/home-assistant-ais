@@ -330,20 +330,30 @@ class AisCatcherTests(unittest.TestCase):
         self.assertEqual(tracker.dashboard_events[0]["area_name"], "Baiamonte Sicily")
 
     def test_private_status_proxy_rejects_stale_timestamped_contact(self):
+        generated_at = tracker.utc_now_iso()
         imported = tracker.process_rahamin_proxy_record({
             "mmsi": "247123457", "name": "STALE PROXY", "latitude": 37.62, "longitude": 15.18,
             "last_seen": "2026-08-12T10:00:00+00:00",
-        }, "baiamonte", "2026-08-12T11:00:00+00:00")
+        }, "baiamonte", generated_at)
         self.assertFalse(imported)
         self.assertNotIn("247123457", tracker.dashboard_vessels)
 
     def test_private_status_proxy_keeps_fresh_timestamped_contact(self):
+        generated_at = tracker.utc_now_iso()
         imported = tracker.process_rahamin_proxy_record({
             "mmsi": "247123458", "name": "FRESH PROXY", "latitude": 37.62, "longitude": 15.18,
-            "last_seen": "2026-08-12T10:50:00+00:00",
-        }, "baiamonte", "2026-08-12T11:00:00+00:00")
+            "last_seen": generated_at,
+        }, "baiamonte", generated_at)
         self.assertTrue(imported)
-        self.assertEqual(tracker.dashboard_vessels["247123458"]["source_last_seen"], "2026-08-12T10:50:00+00:00")
+        self.assertEqual(tracker.dashboard_vessels["247123458"]["source_last_seen"], generated_at)
+
+    def test_private_status_proxy_rejects_entire_stale_snapshot(self):
+        imported = tracker.process_rahamin_proxy_record({
+            "mmsi": "247123459", "name": "CACHED PROXY", "latitude": 37.62, "longitude": 15.18,
+            "last_seen": "2026-08-12T10:00:00+00:00",
+        }, "baiamonte", "2026-08-12T10:00:30+00:00")
+        self.assertFalse(imported)
+        self.assertNotIn("247123459", tracker.dashboard_vessels)
 
     def test_private_proxy_area_url_preserves_existing_query(self):
         previous_url = tracker.RAHAMIN_PROXY_URL
