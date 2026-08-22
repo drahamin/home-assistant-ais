@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.31
+
+- Rejects malformed, out-of-area, and confidently inland AIS positions before they enter the live vessel cache or Home Assistant entities.
+- Uses a conservative coastline-aware land test so legitimate vessels in ports and close coastal waters remain visible.
+- Purges older invalid cached targets and reports rejection diagnostics in the full status response.
+
 ## 2.7.29
 
 - Rejects an entire private-proxy snapshot when its own generation time is stale, preventing old cached vessel positions from replacing the live Baiamonte receiver feed.

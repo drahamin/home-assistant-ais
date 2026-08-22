@@ -31,7 +31,7 @@ except ImportError:
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.30"
+VERSION = "2.7.31"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -549,7 +549,7 @@ def position_is_confidently_inland(latitude, longitude, clearance_km=3.0):
     )
 
 
-def validate_dashboard_position(latitude, longitude, preferred_area_id=None):
+def validate_dashboard_position(latitude, longitude, preferred_area_id=None, trust_preferred_area=False):
     """Return the matching operating area, or a reason the AIS fix is implausible."""
     latitude = clean_number(latitude)
     longitude = clean_number(longitude)
@@ -566,7 +566,7 @@ def validate_dashboard_position(latitude, longitude, preferred_area_id=None):
         area for area_id, area in MAP_AREAS.items()
         if area.get("enabled") and area_id != preferred_area_id
     )
-    area = next(
+    area = preferred if trust_preferred_area and preferred and preferred.get("enabled") else next(
         (candidate for candidate in candidates if point_inside_bounds(latitude, longitude, expanded_area_bounds(candidate))),
         None,
     )
@@ -600,7 +600,7 @@ def remember_dashboard_vessel(ship_data):
     latitude = clean_number(ship_data.get("latitude"))
     longitude = clean_number(ship_data.get("longitude"))
     area, rejection_reason = validate_dashboard_position(
-        latitude, longitude, ship_data.get("area_id")
+        latitude, longitude, ship_data.get("area_id"), bool(ship_data.get("_trusted_area_scope"))
     )
     if rejection_reason:
         record_position_rejection(
@@ -611,6 +611,7 @@ def remember_dashboard_vessel(ship_data):
         return False
 
     normalized = dict(ship_data)
+    normalized.pop("_trusted_area_scope", None)
     normalized.update({
         "area_id": area["id"],
         "area_name": area["name"],
@@ -1653,6 +1654,7 @@ def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=No
         "area_status": vessel_area_status(latitude, longitude, sog, cog, area),
         "icon": str(proxy_value(record, "icon") or "mdi:ferry"),
         "source_last_seen": source_seen_at,
+        "_trusted_area_scope": True,
     }
     static = {
         "destination": proxy_value(record, "destination", "DEST"),
