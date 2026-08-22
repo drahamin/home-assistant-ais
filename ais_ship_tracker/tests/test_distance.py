@@ -42,7 +42,18 @@ tracker = load_tracker()
 
 class DistanceTests(unittest.TestCase):
     def setUp(self):
+        self._position_is_confidently_inland = tracker.position_is_confidently_inland
+        tracker.position_is_confidently_inland = lambda latitude, longitude, clearance_km=3.0: False
         tracker.dashboard_vessels.clear()
+        tracker.position_filter_state.update({
+            "rejected_total": 0,
+            "rejected_by_reason": {},
+            "last_rejected": None,
+        })
+        tracker._position_is_confidently_inland.cache_clear()
+
+    def tearDown(self):
+        tracker.position_is_confidently_inland = self._position_is_confidently_inland
 
     def test_distance_is_great_circle_kilometres(self):
         self.assertAlmostEqual(tracker.distance_km(37.75, 15.00, 37.75, 15.10), 8.79, delta=0.1)
@@ -80,6 +91,45 @@ class DistanceTests(unittest.TestCase):
         self.assertNotIn("events", snapshot)
         self.assertNotIn("receiver_log", snapshot)
         self.assertNotIn("flightaware_weather", snapshot)
+
+    def test_position_outside_every_operating_area_is_rejected(self):
+        accepted = tracker.remember_dashboard_vessel({
+            "mmsi": "247000001", "name": "Impossible target",
+            "latitude": 40.0, "longitude": 18.0, "area_id": "baiamonte",
+        })
+        self.assertFalse(accepted)
+        self.assertNotIn("247000001", tracker.dashboard_vessels)
+        self.assertEqual(
+            tracker.position_filter_state["last_rejected"]["reason"],
+            "outside_operating_area",
+        )
+
+    def test_confidently_inland_position_is_rejected(self):
+        previous = tracker.position_is_confidently_inland
+        tracker.position_is_confidently_inland = lambda latitude, longitude, clearance_km=3.0: True
+        try:
+            accepted = tracker.remember_dashboard_vessel({
+                "mmsi": "247000002", "name": "Inland target",
+                "latitude": 37.75, "longitude": 15.05, "area_id": "baiamonte",
+            })
+        finally:
+            tracker.position_is_confidently_inland = previous
+        self.assertFalse(accepted)
+        self.assertNotIn("247000002", tracker.dashboard_vessels)
+        self.assertEqual(
+            tracker.position_filter_state["last_rejected"]["reason"],
+            "inland_position",
+        )
+
+    def test_snapshot_purges_preexisting_invalid_cached_positions(self):
+        tracker.dashboard_vessels["247000003"] = {
+            "mmsi": "247000003", "name": "Cached bad target",
+            "latitude": 40.0, "longitude": 18.0, "area_id": "baiamonte",
+        }
+        snapshot = tracker.dashboard_snapshot()
+        self.assertEqual(snapshot["vessels"], [])
+        self.assertNotIn("247000003", tracker.dashboard_vessels)
+        self.assertEqual(snapshot["position_filter"]["rejected_total"], 1)
 
     def test_snapshot_includes_receiver_gps_weather_and_hardware_log(self):
         tracker.receiver_logs.clear()
@@ -135,9 +185,14 @@ class DistanceTests(unittest.TestCase):
 
 class AisCatcherTests(unittest.TestCase):
     def setUp(self):
+        self._position_is_confidently_inland = tracker.position_is_confidently_inland
+        tracker.position_is_confidently_inland = lambda latitude, longitude, clearance_km=3.0: False
         tracker.dashboard_vessels.clear()
         tracker.static_ship_data.clear()
         tracker.nmea_fragment_buffer.clear()
+
+    def tearDown(self):
+        tracker.position_is_confidently_inland = self._position_is_confidently_inland
 
     def test_nooelec_safe_default_command(self):
         command = tracker.build_ais_catcher_command("/usr/local/bin/AIS-catcher")
@@ -206,6 +261,8 @@ class AisCatcherTests(unittest.TestCase):
         dockerfile = (TRACKER.parent / "Dockerfile").read_text()
         self.assertIn("AISCATCHER_VERSION=v0.70", dockerfile)
         self.assertIn("pyais==3.2.1", dockerfile)
+        self.assertIn("global-land-mask==1.0.0", dockerfile)
+        self.assertIn("numpy==1.26.4", dockerfile)
         self.assertIn("librtlsdr0", dockerfile)
         self.assertIn("/usr/local/bin/AIS-catcher", dockerfile)
         self.assertIn("RTL_AIRBAND_VERSION=v5.2.0", dockerfile)
@@ -469,6 +526,13 @@ class MarineVhfTests(unittest.TestCase):
 
 
 class AisHubPayloadTests(unittest.TestCase):
+    def setUp(self):
+        self._position_is_confidently_inland = tracker.position_is_confidently_inland
+        tracker.position_is_confidently_inland = lambda latitude, longitude, clearance_km=3.0: False
+
+    def tearDown(self):
+        tracker.position_is_confidently_inland = self._position_is_confidently_inland
+
     def test_documented_metadata_and_records_shape(self):
         records = [{"MMSI": 123456789, "NAME": "Test Vessel"}]
         payload = [{"ERROR": False, "RECORDS": 1}, records]

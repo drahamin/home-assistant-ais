@@ -25,6 +25,11 @@ from datetime import datetime, timedelta, timezone
 from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
+try:
+    from global_land_mask import globe as global_land_globe
+except ImportError:
+    global_land_globe = None
+
 print("🚀 Starting Baiamonte AIS...", flush=True)
 VERSION = "2.7.30"
 receiver_logs = deque(maxlen=80)
@@ -271,6 +276,12 @@ nmea_fragment_buffer = {}
 dashboard_vessels = {}
 dashboard_events = deque(maxlen=40)
 dashboard_lock = threading.RLock()
+position_filter_state = {
+    "land_mask": "enabled" if global_land_globe is not None else "unavailable",
+    "rejected_total": 0,
+    "rejected_by_reason": {},
+    "last_rejected": None,
+}
 DASHBOARD_ROOT = Path(__file__).resolve().parent / "web"
 aishub_state = {
     "state": "Starting",
@@ -508,31 +519,109 @@ def flightaware_weather():
         flightaware_weather_cache.update({"payload": payload, "expires": time.time() + 120, "error": str(exc)})
         return payload
 
+@lru_cache(maxsize=8192)
+def _position_is_confidently_inland(latitude_key, longitude_key, clearance_key):
+    """Use a conservative land mask that keeps harbours and coastal traffic."""
+    if global_land_globe is None:
+        return False
+    latitude = float(latitude_key)
+    longitude = float(longitude_key)
+    clearance_km = float(clearance_key)
+    samples = [(latitude, longitude)]
+    for radius_km in (clearance_km / 2, clearance_km):
+        latitude_delta = radius_km / 111.32
+        longitude_delta = radius_km / max(20.0, 111.32 * math.cos(math.radians(latitude)))
+        for bearing_degrees in range(0, 360, 45):
+            bearing = math.radians(bearing_degrees)
+            samples.append((
+                latitude + math.cos(bearing) * latitude_delta,
+                longitude + math.sin(bearing) * longitude_delta,
+            ))
+    try:
+        return all(bool(global_land_globe.is_land(sample_lat, sample_lon)) for sample_lat, sample_lon in samples)
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
+def position_is_confidently_inland(latitude, longitude, clearance_km=3.0):
+    return _position_is_confidently_inland(
+        round(float(latitude), 4), round(float(longitude), 4), round(float(clearance_km), 1)
+    )
+
+
+def validate_dashboard_position(latitude, longitude, preferred_area_id=None):
+    """Return the matching operating area, or a reason the AIS fix is implausible."""
+    latitude = clean_number(latitude)
+    longitude = clean_number(longitude)
+    if latitude is None or longitude is None:
+        return None, "missing_position"
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None, "invalid_coordinates"
+
+    candidates = []
+    preferred = MAP_AREAS.get(preferred_area_id)
+    if preferred and preferred.get("enabled"):
+        candidates.append(preferred)
+    candidates.extend(
+        area for area_id, area in MAP_AREAS.items()
+        if area.get("enabled") and area_id != preferred_area_id
+    )
+    area = next(
+        (candidate for candidate in candidates if point_inside_bounds(latitude, longitude, expanded_area_bounds(candidate))),
+        None,
+    )
+    if area is None:
+        return None, "outside_operating_area"
+    if position_is_confidently_inland(latitude, longitude):
+        return None, "inland_position"
+    return area, None
+
+
+def record_position_rejection(mmsi, latitude, longitude, reason, source=None):
+    with dashboard_lock:
+        counts = position_filter_state["rejected_by_reason"]
+        counts[reason] = counts.get(reason, 0) + 1
+        position_filter_state["rejected_total"] += 1
+        position_filter_state["last_rejected"] = {
+            "mmsi": str(mmsi or ""),
+            "latitude": latitude,
+            "longitude": longitude,
+            "reason": reason,
+            "source": source,
+            "time": datetime.now().isoformat(timespec="seconds"),
+        }
+
+
 def remember_dashboard_vessel(ship_data):
-    """Keep the latest safe telemetry for the ingress overview."""
+    """Keep only positioned telemetry that is plausible for a configured map area."""
     mmsi = str(ship_data.get("mmsi", ""))
     if not mmsi:
-        return
-    if not ship_data.get("area_id"):
-        latitude = clean_number(ship_data.get("latitude"))
-        longitude = clean_number(ship_data.get("longitude"))
-        if latitude is not None and longitude is not None:
-            for area_id, area in MAP_AREAS.items():
-                if point_inside_bounds(latitude, longitude, expanded_area_bounds(area)):
-                    ship_data["area_id"] = area_id
-                    ship_data["area_name"] = area["name"]
-                    ship_data["station"] = area["station"]
-                    ship_data["area_status"] = vessel_area_status(
-                        latitude, longitude, ship_data.get("sog"), ship_data.get("cog"), area
-                    )
-                    break
-        if not ship_data.get("area_id"):
-            ship_data["area_id"] = "baiamonte"
-            ship_data["area_name"] = MAP_AREAS["baiamonte"]["name"]
-            ship_data["station"] = MAP_AREAS["baiamonte"]["station"]
+        return False
+    latitude = clean_number(ship_data.get("latitude"))
+    longitude = clean_number(ship_data.get("longitude"))
+    area, rejection_reason = validate_dashboard_position(
+        latitude, longitude, ship_data.get("area_id")
+    )
+    if rejection_reason:
+        record_position_rejection(
+            mmsi, latitude, longitude, rejection_reason, ship_data.get("source")
+        )
+        with dashboard_lock:
+            dashboard_vessels.pop(mmsi, None)
+        return False
+
+    normalized = dict(ship_data)
+    normalized.update({
+        "area_id": area["id"],
+        "area_name": area["name"],
+        "station": area["station"],
+        "area_status": vessel_area_status(
+            latitude, longitude, ship_data.get("sog"), ship_data.get("cog"), area
+        ),
+    })
     with dashboard_lock:
         previous = dashboard_vessels.get(mmsi, {})
-        merged = {**previous, **ship_data, **static_ship_data.get(ship_data.get("mmsi"), {})}
+        merged = {**previous, **normalized, **static_ship_data.get(ship_data.get("mmsi"), {})}
         merged["mmsi"] = mmsi
         merged["last_seen"] = utc_now_iso()
         dashboard_vessels[mmsi] = merged
@@ -540,10 +629,11 @@ def remember_dashboard_vessel(ship_data):
             dashboard_events.appendleft({
                 "kind": "arrival",
                 "message": f"{merged.get('name', 'Unknown vessel')} entered {merged.get('area_name', 'the AIS watch area')}",
-                "area_id": merged.get("area_id", "baiamonte"),
-                "area_name": merged.get("area_name", MAP_AREAS["baiamonte"]["name"]),
+                "area_id": merged["area_id"],
+                "area_name": merged["area_name"],
                 "time": merged["last_seen"],
             })
+    return True
 
 def distance_km(lat1, lon1, lat2, lon2):
     """Return the great-circle distance between two WGS84 positions."""
@@ -651,7 +741,8 @@ def dashboard_snapshot(area_id=None, compact=False):
         gps_reference_lat = location["latitude"]
         gps_reference_lon = location["longitude"]
         vessels = []
-        for vessel in dashboard_vessels.values():
+        rejected_cached = []
+        for vessel_key, vessel in dashboard_vessels.items():
             item = dict(vessel)
             item_area_id = str(item.get("area_id") or "baiamonte")
             if selected_area_id and item_area_id != selected_area_id:
@@ -659,7 +750,17 @@ def dashboard_snapshot(area_id=None, compact=False):
             latitude = clean_number(item.get("latitude"))
             longitude = clean_number(item.get("longitude"))
             if latitude is not None and longitude is not None:
-                area = MAP_AREAS.get(item.get("area_id"), MAP_AREAS["baiamonte"])
+                area, rejection_reason = validate_dashboard_position(
+                    latitude, longitude, item.get("area_id")
+                )
+                if rejection_reason:
+                    rejected_cached.append((vessel_key, item, rejection_reason))
+                    continue
+                item.update({
+                    "area_id": area["id"],
+                    "area_name": area["name"],
+                    "station": area["station"],
+                })
                 reference_lat, reference_lon = (
                     (gps_reference_lat, gps_reference_lon)
                     if area["id"] == "baiamonte"
@@ -669,6 +770,12 @@ def dashboard_snapshot(area_id=None, compact=False):
             else:
                 item["distance_km"] = None
             vessels.append(item)
+        for vessel_key, item, rejection_reason in rejected_cached:
+            dashboard_vessels.pop(vessel_key, None)
+            record_position_rejection(
+                item.get("mmsi", vessel_key), item.get("latitude"), item.get("longitude"),
+                rejection_reason, item.get("source"),
+            )
         vessels.sort(key=lambda vessel: vessel.get("last_seen", ""), reverse=True)
         vessels.sort(key=lambda vessel: (
             vessel.get("distance_km") is None,
@@ -731,6 +838,13 @@ def dashboard_snapshot(area_id=None, compact=False):
             "vessels": vessels,
             "nearest_vessels": nearest_vessels,
             "events": events,
+            "position_filter": {
+                "land_mask": position_filter_state["land_mask"],
+                "rejected_total": position_filter_state["rejected_total"],
+                "rejected_by_reason": dict(position_filter_state["rejected_by_reason"]),
+                "last_rejected": dict(position_filter_state["last_rejected"])
+                if position_filter_state["last_rejected"] else None,
+            },
             "config": config_snapshot,
             "rahamin_proxy": dict(rahamin_proxy_state),
             "generated_at": utc_now_iso(),
@@ -1410,9 +1524,9 @@ def process_aishub_record(record, area_id="baiamonte"):
     """Convert one human-readable AISHub vessel record into HA telemetry."""
     mmsi = str(record.get("MMSI", "")).strip()
     if len(mmsi) != 9 or not mmsi.isdigit():
-        return
+        return False
     if watchlist_mmsis and mmsi not in watchlist_mmsis:
-        return
+        return False
 
     nav_status = record.get("NAVSTAT")
     try:
@@ -1466,7 +1580,8 @@ def process_aishub_record(record, area_id="baiamonte"):
         "vessel_type": get_vessel_type_string(vessel_type_number),
     }
     static_ship_data[mmsi] = {key: value for key, value in static_data.items() if value is not None}
-    remember_dashboard_vessel(ship_data)
+    if not remember_dashboard_vessel(ship_data):
+        return False
 
     now = datetime.now()
     is_new = mmsi not in seen_ships
@@ -1479,6 +1594,7 @@ def process_aishub_record(record, area_id="baiamonte"):
     if last_updated is None or (now - last_updated).total_seconds() >= 60:
         update_map_entity(ship_data)
         last_map_update[mmsi] = now
+    return True
 
 
 def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=None):
@@ -1549,7 +1665,8 @@ def process_rahamin_proxy_record(record, area_id="miami", source_generated_at=No
         "vessel_type": proxy_value(record, "vessel_type", "TYPE"),
     }
     static_ship_data.setdefault(mmsi, {}).update({key: value for key, value in static.items() if value not in (None, "")})
-    remember_dashboard_vessel(ship_data)
+    if not remember_dashboard_vessel(ship_data):
+        return False
     now = datetime.now()
     seen_ships[mmsi] = now
     last_updated = last_map_update.get(mmsi)
@@ -1766,7 +1883,8 @@ def process_local_ais_message(message):
         return False
     mmsi = ship_data["mmsi"]
     is_new = mmsi not in seen_ships
-    remember_dashboard_vessel(ship_data)
+    if not remember_dashboard_vessel(ship_data):
+        return False
     now = datetime.now()
     if is_new:
         log(f"🚢 NEW LOCAL SHIP: {ship_data['name']} ({ship_data['source']} | MMSI: {mmsi})")
