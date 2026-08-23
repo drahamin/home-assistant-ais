@@ -33,7 +33,7 @@ except (ImportError, OSError, ValueError, KeyError):
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.33"
+VERSION = "2.7.34"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -910,7 +910,7 @@ def compress_http_payload(payload, accept_encoding):
                     quality = 0.0
                 quality = max(0.0, min(1.0, quality))
                 break
-        if coding == "gzip":
+        if coding in ("gzip", "x-gzip"):
             gzip_quality = quality
         elif coding == "*":
             wildcard_quality = quality

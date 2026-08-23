@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.34
+
+- Treats the legacy HTTP `x-gzip` content-coding token as a gzip alias, including its negotiated quality value.
+
 ## 2.7.33
 
 - Honors HTTP clients that explicitly reject gzip with `Accept-Encoding: gzip;q=0` while retaining compressed status responses for compatible browsers.
