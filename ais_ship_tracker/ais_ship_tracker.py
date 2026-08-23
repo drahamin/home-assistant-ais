@@ -33,7 +33,7 @@ except (ImportError, OSError, ValueError, KeyError):
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.34"
+VERSION = "2.7.35"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -893,8 +893,9 @@ def dashboard_snapshot(area_id=None, compact=False):
 
 def compress_http_payload(payload, accept_encoding):
     """Return a browser payload and its optional content encoding."""
-    gzip_quality = None
+    gzip_qualities = {}
     wildcard_quality = None
+    identity_quality = None
     for entry in str(accept_encoding or "").lower().split(","):
         parts = [part.strip() for part in entry.split(";")]
         coding = parts[0]
@@ -911,13 +912,41 @@ def compress_http_payload(payload, accept_encoding):
                 quality = max(0.0, min(1.0, quality))
                 break
         if coding in ("gzip", "x-gzip"):
-            gzip_quality = quality
+            gzip_qualities[coding] = max(gzip_qualities.get(coding, 0.0), quality)
+        elif coding == "identity":
+            identity_quality = max(identity_quality or 0.0, quality)
         elif coding == "*":
-            wildcard_quality = quality
+            wildcard_quality = max(wildcard_quality or 0.0, quality)
 
-    accepts_gzip = gzip_quality if gzip_quality is not None else wildcard_quality
-    if len(payload) >= 1024 and accepts_gzip is not None and accepts_gzip > 0:
-        return gzip.compress(payload, compresslevel=5), "gzip"
+    selected_encoding = None
+    selected_quality = 0.0
+    if gzip_qualities:
+        acceptable = [
+            (quality, coding)
+            for coding, quality in gzip_qualities.items()
+            if quality > 0
+        ]
+        if acceptable:
+            # Prefer the highest quality, then the canonical token on a tie.
+            selected_quality, selected_encoding = max(
+                acceptable,
+                key=lambda item: (item[0], item[1] == "gzip"),
+            )
+    elif wildcard_quality is not None and wildcard_quality > 0:
+        selected_encoding = "gzip"
+        selected_quality = wildcard_quality
+
+    if identity_quality is None:
+        # Identity is acceptable by default. A wildcard only excludes it when
+        # its quality is zero and no explicit identity preference is present.
+        identity_quality = 0.0 if wildcard_quality == 0.0 else 1.0
+
+    if (
+        len(payload) >= 1024
+        and selected_encoding
+        and selected_quality >= identity_quality
+    ):
+        return gzip.compress(payload, compresslevel=5), selected_encoding
     return payload, None
 
 class DashboardHandler(BaseHTTPRequestHandler):
