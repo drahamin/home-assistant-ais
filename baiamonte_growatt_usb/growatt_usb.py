@@ -41,6 +41,7 @@ ENTITY_HEARTBEAT_SECONDS = 300
 ENERGY_SAVE_INTERVAL_SECONDS = 60
 SETTINGS_REFRESH_SECONDS = 900
 FIRMWARE_REFRESH_SECONDS = 21600
+FIRMWARE_RETRY_SECONDS = 900
 
 STATUS: dict[str, object] = {
     "service": "starting",
@@ -977,16 +978,19 @@ def read_firmware_now() -> dict[str, dict[str, object]]:
     with STATUS_LOCK:
         device = STATUS.get("device")
         protocol = STATUS.get("protocol")
+        active_baud = STATUS.get("active_baud")
+        active_slave_id = STATUS.get("active_slave_id")
     if not device or not protocol:
         raise ConnectionError("The Growatt USB connection must be online before reading firmware versions")
     if str(protocol) == MODBUS_PROTOCOL:
         firmware = run_modbus_firmware(
-            str(device), int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
+            str(device), int(active_baud or options.get("modbus_baud_rate", 9600)),
+            int(active_slave_id or options.get("modbus_slave_id", 1)),
         )
         log("Growatt RS485 firmware versions refreshed")
     else:
         firmware = run_direct_firmware(
-            str(device), str(protocol), int(options.get("baud_rate", 2400)),
+            str(device), str(protocol), int(active_baud or options.get("baud_rate", 2400)),
             str(options.get("transport", "auto")),
         )
         log("Growatt firmware versions refreshed")
@@ -1148,6 +1152,14 @@ def retry_delay(poll_interval: int, failures: int, maximum: int = 300) -> int:
     """Back off expensive protocol discovery while remaining manually wakeable."""
     exponent = min(max(0, failures - 1), 8)
     return min(maximum, max(poll_interval, poll_interval * (2 ** exponent)))
+
+
+def firmware_poll_due(now: float, last_success: float, last_attempt: float) -> bool:
+    """Refresh infrequently after success but retry a failed optional read sooner."""
+    return (
+        now - last_success >= FIRMWARE_REFRESH_SECONDS
+        and now - last_attempt >= FIRMWARE_RETRY_SECONDS
+    )
 
 
 def classify_health(
@@ -1366,6 +1378,7 @@ def poll_loop() -> None:
     last_slow_poll = 0.0
     last_settings_poll = 0.0
     last_firmware_poll = 0.0
+    last_firmware_attempt = 0.0
     with STATUS_LOCK:
         STATUS.update({"service": "running", "energy_today_kwh": float(energy.get("wh", 0.0)) / 1000.0})
     if setting_catalog(options)["writable"]:
@@ -1430,8 +1443,9 @@ def poll_loop() -> None:
                 except Exception as exc:
                     log(f"Optional settings inquiry was not accepted: {exc}", "warning")
             current_firmware: dict[str, dict[str, object]] = {}
-            if time.time() - last_firmware_poll >= FIRMWARE_REFRESH_SECONDS:
-                last_firmware_poll = time.time()
+            firmware_now = time.time()
+            if firmware_poll_due(firmware_now, last_firmware_poll, last_firmware_attempt):
+                last_firmware_attempt = firmware_now
                 try:
                     if protocol == MODBUS_PROTOCOL:
                         current_firmware = run_modbus_firmware(
@@ -1439,9 +1453,10 @@ def poll_loop() -> None:
                         )
                     else:
                         current_firmware = run_direct_firmware(
-                            device, protocol, int(options.get("baud_rate", 2400)),
+                            device, protocol, int(active_baud or options.get("baud_rate", 2400)),
                             str(options.get("transport", "auto")),
                         )
+                    last_firmware_poll = firmware_now
                 except Exception as exc:
                     log(f"Optional firmware version inquiry was not accepted: {exc}", "warning")
             update_energy(energy, readings, interval)
