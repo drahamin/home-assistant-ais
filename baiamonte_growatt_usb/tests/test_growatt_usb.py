@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "growatt_usb.py"
 SPEC = importlib.util.spec_from_file_location("growatt_usb", MODULE_PATH)
@@ -15,6 +15,49 @@ SPEC.loader.exec_module(growatt)
 
 
 class GrowattUsbTests(unittest.TestCase):
+    def test_retry_delay_backs_off_and_caps_at_five_minutes(self):
+        self.assertEqual(growatt.retry_delay(10, 1), 10)
+        self.assertEqual(growatt.retry_delay(10, 4), 80)
+        self.assertEqual(growatt.retry_delay(10, 20), 300)
+
+    @patch.object(growatt.time, "monotonic", return_value=100.0)
+    @patch.object(growatt, "candidate_devices", return_value=["/dev/ttyUSB0"])
+    def test_dashboard_device_discovery_cache_avoids_repeated_globs(self, candidates, _monotonic):
+        growatt.DEVICE_CACHE.update({"configured": None, "at": 0.0, "devices": []})
+        self.assertEqual(growatt.cached_candidate_devices("auto"), ["/dev/ttyUSB0"])
+        self.assertEqual(growatt.cached_candidate_devices("auto"), ["/dev/ttyUSB0"])
+        candidates.assert_called_once_with("auto")
+
+    def test_home_assistant_publish_is_rate_limited_and_heartbeated(self):
+        old_token = growatt.TOKEN
+        growatt.TOKEN = "test"
+        growatt.PUBLISHED_STATES.clear()
+        response = MagicMock()
+        response.__enter__.return_value = response
+        try:
+            with patch.object(growatt.time, "monotonic", side_effect=[100.0, 110.0, 131.0, 440.0]), patch.object(growatt.urllib.request, "urlopen", return_value=response) as opened:
+                self.assertTrue(growatt.publish_state("sensor.test", 1, {"name": "Test"}, 30))
+                self.assertFalse(growatt.publish_state("sensor.test", 2, {"name": "Test"}, 30))
+                self.assertTrue(growatt.publish_state("sensor.test", 2, {"name": "Test"}, 30))
+                self.assertTrue(growatt.publish_state("sensor.test", 2, {"name": "Test"}, 30))
+                self.assertEqual(opened.call_count, 3)
+        finally:
+            growatt.TOKEN = old_token
+            growatt.PUBLISHED_STATES.clear()
+
+    def test_energy_state_is_buffered_between_disk_writes(self):
+        energy = {"date": growatt.datetime.now().astimezone().date().isoformat(), "wh": 0.0, "last_power": 0.0, "last_at": None}
+        old_save = growatt.LAST_ENERGY_SAVE
+        growatt.LAST_ENERGY_SAVE = 0.0
+        try:
+            with patch.object(growatt.time, "monotonic", side_effect=[100.0, 100.0, 110.0, 170.0, 170.0]), patch.object(growatt.Path, "write_text", return_value=1) as write:
+                growatt.update_energy(energy, {"pv_input_power": {"value": 1000}}, 10)
+                growatt.update_energy(energy, {"pv_input_power": {"value": 1000}}, 10)
+                growatt.update_energy(energy, {"pv_input_power": {"value": 1000}}, 10)
+                self.assertEqual(write.call_count, 2)
+        finally:
+            growatt.LAST_ENERGY_SAVE = old_save
+
     def test_parse_json_units(self):
         output = 'warning on stderr\n{"ac_output_active_power":{"value":823,"unit":"W"},"Battery Capacity":{"value":76,"unit":"%"}}\n'
         parsed = growatt.parse_mpp_json(output)

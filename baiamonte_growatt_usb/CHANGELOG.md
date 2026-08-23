@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.6
+
+- Adds exponential retry backoff up to five minutes when the inverter is unavailable, while Refresh and Rescan still retry immediately.
+- Publishes changed Home Assistant sensor states at a configurable 30-second minimum and unchanged states only as a five-minute heartbeat.
+- Buffers the daily-energy state and writes it once per minute instead of on every inverter poll.
+- Reduces periodic settings reads to every 15 minutes and firmware-version reads to every six hours; both remain available immediately from the dashboard.
+- Prevents unsupported optional warning, settings, and firmware inquiries from being retried and logged on every live poll.
+- Caches unchanged app options and short-lived USB discovery results to reduce filesystem work.
+- Refreshes the dashboard every five seconds while visible, every 30 seconds while hidden, and temporarily every second during an address scan.
+
 ## 1.3.5
 
 - Makes the dashboard substantially more compact on phones with a two-column live-power layout, condensed connection details, and reduced spacing.
