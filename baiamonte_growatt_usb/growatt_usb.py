@@ -33,6 +33,14 @@ WAKE = threading.Event()
 STATUS_LOCK = threading.Lock()
 DEVICE_IO_LOCK = threading.Lock()
 EVENTS: deque[dict[str, object]] = deque(maxlen=80)
+PUBLISHED_STATES: dict[str, tuple[object, str, float]] = {}
+OPTIONS_CACHE: dict[str, object] = {"path": None, "mtime_ns": None, "value": {}}
+DEVICE_CACHE: dict[str, object] = {"configured": None, "at": 0.0, "devices": []}
+LAST_ENERGY_SAVE = 0.0
+ENTITY_HEARTBEAT_SECONDS = 300
+ENERGY_SAVE_INTERVAL_SECONDS = 60
+SETTINGS_REFRESH_SECONDS = 900
+FIRMWARE_REFRESH_SECONDS = 21600
 
 STATUS: dict[str, object] = {
     "service": "starting",
@@ -543,11 +551,21 @@ def log(message: str, level: str = "info") -> None:
 
 
 def load_options() -> dict[str, object]:
-    if not OPTIONS_PATH.exists():
-        return {}
     try:
-        return json.loads(OPTIONS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        stat = OPTIONS_PATH.stat()
+    except OSError:
+        OPTIONS_CACHE.update({"path": str(OPTIONS_PATH), "mtime_ns": None, "value": {}})
+        return {}
+    if OPTIONS_CACHE.get("path") == str(OPTIONS_PATH) and OPTIONS_CACHE.get("mtime_ns") == stat.st_mtime_ns:
+        return dict(OPTIONS_CACHE.get("value", {}))
+    try:
+        value = json.loads(OPTIONS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("app options must be a JSON object")
+        OPTIONS_CACHE.update({"path": str(OPTIONS_PATH), "mtime_ns": stat.st_mtime_ns, "value": value})
+        return dict(value)
+    except (OSError, ValueError) as exc:
+        OPTIONS_CACHE.update({"path": str(OPTIONS_PATH), "mtime_ns": stat.st_mtime_ns, "value": {}})
         log(f"Could not read app options: {exc}", "error")
         return {}
 
@@ -585,6 +603,16 @@ def candidate_devices(configured: str = "auto") -> list[str]:
         seen_targets.add(target)
         result.append(path)
     return result
+
+
+def cached_candidate_devices(configured: str = "auto", max_age: float = 5.0) -> list[str]:
+    """Avoid repeated /dev globbing for every dashboard request."""
+    now = time.monotonic()
+    if DEVICE_CACHE.get("configured") == configured and now - float(DEVICE_CACHE.get("at", 0.0)) < max_age:
+        return list(DEVICE_CACHE.get("devices", []))
+    devices = candidate_devices(configured)
+    DEVICE_CACHE.update({"configured": configured, "at": now, "devices": list(devices)})
+    return devices
 
 
 def protocols(configured: str = "auto") -> list[str]:
@@ -725,9 +753,23 @@ def discover(options: dict[str, object]) -> tuple[str, str, dict[str, dict[str, 
     raise ConnectionError(f"USB/RS485 devices were found, but no Growatt response was received ({summary})")
 
 
-def publish_state(entity_id: str, value: object, attributes: dict[str, object]) -> None:
+def publish_state(
+    entity_id: str,
+    value: object,
+    attributes: dict[str, object],
+    min_interval_seconds: int = 30,
+) -> bool:
     if not TOKEN:
-        return
+        return False
+    now = time.monotonic()
+    signature = json.dumps(attributes, sort_keys=True, separators=(",", ":"), default=str)
+    previous = PUBLISHED_STATES.get(entity_id)
+    if previous:
+        previous_value, previous_signature, previous_at = previous
+        unchanged = previous_value == value and previous_signature == signature
+        minimum = ENTITY_HEARTBEAT_SECONDS if unchanged else max(0, min_interval_seconds)
+        if now - previous_at < minimum:
+            return False
     request = urllib.request.Request(
         f"{API_BASE}/{entity_id}",
         data=json.dumps({"state": value, "attributes": attributes}).encode(),
@@ -737,11 +779,14 @@ def publish_state(entity_id: str, value: object, attributes: dict[str, object]) 
     try:
         with urllib.request.urlopen(request, timeout=5):
             pass
+        PUBLISHED_STATES[entity_id] = (value, signature, now)
+        return True
     except (urllib.error.URLError, TimeoutError) as exc:
         log(f"Home Assistant state update failed: {exc}", "warning")
+        return False
 
 
-def publish_sensor(key: str, value: object, unit: str | None = None) -> None:
+def publish_sensor(key: str, value: object, unit: str | None = None, min_interval_seconds: int = 30) -> None:
     definition = SENSORS.get(key)
     if definition:
         name, default_unit, device_class, state_class, icon = definition
@@ -760,20 +805,26 @@ def publish_sensor(key: str, value: object, unit: str | None = None) -> None:
         attributes = {"friendly_name": f"Growatt {key.replace('_', ' ').title()}", "attribution": "Local read-only Growatt USB telemetry"}
         if unit:
             attributes["unit_of_measurement"] = unit
-    publish_state(f"sensor.{ENTITY_PREFIX}_{key}", value, attributes)
+    publish_state(f"sensor.{ENTITY_PREFIX}_{key}", value, attributes, min_interval_seconds)
 
 
-def publish_all(readings: dict[str, dict[str, object]], status: dict[str, object], enabled: bool) -> None:
+def publish_all(
+    readings: dict[str, dict[str, object]],
+    status: dict[str, object],
+    enabled: bool,
+    min_interval_seconds: int = 30,
+) -> None:
     if not enabled:
         return
     for key in SENSORS:
         if key in readings:
-            publish_sensor(key, readings[key].get("value"), readings[key].get("unit"))
-    publish_sensor("mode", status.get("mode", "Unknown"))
+            publish_sensor(key, readings[key].get("value"), readings[key].get("unit"), min_interval_seconds)
+    publish_sensor("mode", status.get("mode", "Unknown"), min_interval_seconds=min_interval_seconds)
     publish_state(
         f"binary_sensor.{ENTITY_PREFIX}_connected",
         "on" if status.get("connected") else "off",
         {"friendly_name": "Growatt USB Connected", "device_class": "connectivity", "icon": "mdi:usb-port", "device": status.get("device"), "protocol": status.get("protocol")},
+        0,
     )
 
 
@@ -1052,9 +1103,22 @@ def load_energy() -> dict[str, object]:
     return data
 
 
+def save_energy(energy: dict[str, object]) -> bool:
+    global LAST_ENERGY_SAVE
+    try:
+        STATE_PATH.write_text(json.dumps(energy), encoding="utf-8")
+        LAST_ENERGY_SAVE = time.monotonic()
+        return True
+    except OSError as exc:
+        log(f"Could not save daily energy estimate: {exc}", "warning")
+        return False
+
+
 def update_energy(energy: dict[str, object], readings: dict[str, dict[str, object]], poll_interval: int) -> None:
+    global LAST_ENERGY_SAVE
     today = datetime.now().astimezone().date().isoformat()
-    if energy.get("date") != today:
+    date_changed = energy.get("date") != today
+    if date_changed:
         energy.clear()
         energy.update({"date": today, "wh": 0.0, "last_power": 0.0, "last_at": None})
     now = time.time()
@@ -1065,14 +1129,23 @@ def update_energy(energy: dict[str, object], readings: dict[str, dict[str, objec
         energy["wh"] = float(energy.get("wh", 0.0)) + ((float(energy.get("last_power", 0.0)) + power) / 2.0) * elapsed / 3600.0
     energy.update({"last_power": power, "last_at": now})
     STATUS["energy_today_kwh"] = float(energy.get("wh", 0.0)) / 1000.0
-    try:
-        STATE_PATH.write_text(json.dumps(energy), encoding="utf-8")
-    except OSError as exc:
-        log(f"Could not save daily energy estimate: {exc}", "warning")
+    if date_changed or time.monotonic() - LAST_ENERGY_SAVE >= ENERGY_SAVE_INTERVAL_SECONDS:
+        save_energy(energy)
 
 
-def classify_health(status: dict[str, object], options: dict[str, object]) -> tuple[str, str, list[str]]:
-    devices = candidate_devices(str(options.get("device", "auto")))
+def retry_delay(poll_interval: int, failures: int, maximum: int = 300) -> int:
+    """Back off expensive protocol discovery while remaining manually wakeable."""
+    exponent = min(max(0, failures - 1), 8)
+    return min(maximum, max(poll_interval, poll_interval * (2 ** exponent)))
+
+
+def classify_health(
+    status: dict[str, object],
+    options: dict[str, object],
+    devices: list[str] | None = None,
+) -> tuple[str, str, list[str]]:
+    if devices is None:
+        devices = candidate_devices(str(options.get("device", "auto")))
     if not devices:
         return "usb_missing", "No compatible USB or RS485 adapter is visible to the app.", [
             "Reconnect the Growatt RJ45-to-USB RS485 cable at both ends.",
@@ -1119,18 +1192,19 @@ def dashboard_status() -> dict[str, object]:
         result = dict(STATUS)
         result["readings"] = dict(STATUS.get("readings", {}))
         result["warnings"] = dict(STATUS.get("warnings", {}))
-    health, diagnosis, steps = classify_health(result, options)
+    devices = cached_candidate_devices(str(options.get("device", "auto")))
+    health, diagnosis, steps = classify_health(result, options, devices)
     result.update({
         "health": health, "diagnosis": diagnosis, "troubleshooting": steps,
         "read_only": bool(options.get("read_only", True)), "uptime_seconds": int(time.time() - STARTED_AT),
-        "detected_devices": candidate_devices(str(options.get("device", "auto"))),
+        "detected_devices": devices,
         "configured_device": options.get("device", "auto"),
         "configured_transport": options.get("transport", "auto"),
         "configured_protocol": options.get("protocol", "auto"),
         "baud_rate": int(result.get("active_baud") or (options.get("modbus_baud_rate", 9600) if result.get("protocol") == MODBUS_PROTOCOL else options.get("baud_rate", 2400))),
         "modbus_slave_id": int(result.get("active_slave_id") or options.get("modbus_slave_id", 1)),
         "poll_interval_seconds": int(options.get("poll_interval_seconds", 10)),
-        "events": list(EVENTS), "server_time": now_iso(),
+        "events": list(EVENTS)[:30], "server_time": now_iso(),
         "setting_catalog": setting_catalog(options),
         "firmware_tools": {
             "enabled": bool(options.get("firmware_tools_enabled", True)),
@@ -1190,6 +1264,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.endswith("/api/rescan"):
             with STATUS_LOCK:
                 STATUS.update({"connected": False, "device": None, "protocol": None, "last_error": "Manual USB rescan requested"})
+            DEVICE_CACHE.update({"configured": None, "at": 0.0, "devices": []})
             WAKE.set()
             self.send_json({"ok": True, "message": "USB rescan requested"}, 202)
             return
@@ -1270,6 +1345,7 @@ def poll_loop() -> None:
     options = load_options()
     interval = max(5, int(options.get("poll_interval_seconds", 10)))
     publish_enabled = bool(options.get("publish_to_home_assistant", True))
+    publish_interval = max(5, int(options.get("home_assistant_publish_interval_seconds", 30)))
     energy = load_energy()
     device = None
     protocol = None
@@ -1287,6 +1363,7 @@ def poll_loop() -> None:
         log("Baiamonte Growatt USB started in read-only monitoring mode")
 
     while RUNNING:
+        wait_seconds = interval
         with STATUS_LOCK:
             STATUS["last_attempt_at"] = now_iso()
         try:
@@ -1318,16 +1395,17 @@ def poll_loop() -> None:
                     )
                 mode = str(mode_data.get("device_mode", {}).get("value") or mode_data.get("mode", {}).get("value") or "Unknown")
                 if profile.get("warnings") and time.time() - last_slow_poll >= 60:
+                    last_slow_poll = time.time()
                     try:
                         warnings = run_query(
                             device, protocol, int(options.get("baud_rate", 2400)), str(profile["warnings"]), timeout=8,
                             transport=str(options.get("transport", "auto")),
                         )
-                        last_slow_poll = time.time()
                     except Exception as exc:
                         log(f"Optional warning inquiry was not accepted: {exc}", "warning")
             current_settings: dict[str, dict[str, object]] = {}
-            if (protocol == MODBUS_PROTOCOL or profile.get("settings")) and time.time() - last_settings_poll >= 300:
+            if (protocol == MODBUS_PROTOCOL or profile.get("settings")) and time.time() - last_settings_poll >= SETTINGS_REFRESH_SECONDS:
+                last_settings_poll = time.time()
                 try:
                     if protocol == MODBUS_PROTOCOL:
                         current_settings = run_modbus_settings(
@@ -1338,11 +1416,11 @@ def poll_loop() -> None:
                             device, protocol, int(options.get("baud_rate", 2400)), str(profile["settings"]), timeout=12,
                             transport=str(options.get("transport", "auto")),
                         )
-                    last_settings_poll = time.time()
                 except Exception as exc:
                     log(f"Optional settings inquiry was not accepted: {exc}", "warning")
             current_firmware: dict[str, dict[str, object]] = {}
-            if time.time() - last_firmware_poll >= 300:
+            if time.time() - last_firmware_poll >= FIRMWARE_REFRESH_SECONDS:
+                last_firmware_poll = time.time()
                 try:
                     if protocol == MODBUS_PROTOCOL:
                         current_firmware = run_modbus_firmware(
@@ -1350,7 +1428,6 @@ def poll_loop() -> None:
                         )
                     else:
                         current_firmware = read_firmware_now()
-                    last_firmware_poll = time.time()
                 except Exception as exc:
                     log(f"Optional firmware version inquiry was not accepted: {exc}", "warning")
             update_energy(energy, readings, interval)
@@ -1362,6 +1439,7 @@ def poll_loop() -> None:
                     "identity": last_identity, "mode": mode, "readings": readings,
                     "warnings": warnings or existing_warnings, "last_success_at": now_iso(),
                     "last_success_epoch": time.time(), "last_error": None,
+                    "retry_in_seconds": None,
                     "consecutive_failures": 0,
                     "successful_polls": int(STATUS.get("successful_polls", 0)) + 1,
                 })
@@ -1370,20 +1448,25 @@ def poll_loop() -> None:
                 if current_firmware:
                     STATUS.update({"firmware": current_firmware, "firmware_updated_at": now_iso()})
                 snapshot = dict(STATUS)
-            publish_all(readings, snapshot, publish_enabled)
+            publish_all(readings, snapshot, publish_enabled, publish_interval)
         except Exception as exc:
             with STATUS_LOCK:
                 failures = int(STATUS.get("consecutive_failures", 0)) + 1
-                STATUS.update({"connected": False, "last_error": str(exc), "consecutive_failures": failures})
+                wait_seconds = retry_delay(interval, failures)
+                STATUS.update({
+                    "connected": False, "last_error": str(exc), "consecutive_failures": failures,
+                    "retry_in_seconds": wait_seconds,
+                })
                 snapshot = dict(STATUS)
             log(f"Growatt USB poll failed: {exc}", "warning")
-            publish_all({}, snapshot, publish_enabled)
+            publish_all({}, snapshot, publish_enabled, publish_interval)
             device = None
             protocol = None
             active_baud = None
             active_slave_id = None
-        WAKE.wait(interval)
+        WAKE.wait(wait_seconds)
         WAKE.clear()
+    save_energy(energy)
 
 
 def stop(_signum: int, _frame: object) -> None:
@@ -1401,7 +1484,7 @@ def main() -> int:
     worker.start()
     log("Baiamonte Growatt dashboard ready on Home Assistant ingress")
     while RUNNING:
-        time.sleep(1)
+        time.sleep(5)
     server.shutdown()
     worker.join(timeout=5)
     log("Baiamonte Growatt USB stopped")

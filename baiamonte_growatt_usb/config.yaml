@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.3.5"
+version: "1.3.6"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -29,6 +29,7 @@ options:
   poll_interval_seconds: 10
   stale_after_seconds: 45
   publish_to_home_assistant: true
+  home_assistant_publish_interval_seconds: 30
   read_only: true
   allow_setting_changes: false
   firmware_tools_enabled: true
@@ -43,6 +44,7 @@ schema:
   poll_interval_seconds: "int"
   stale_after_seconds: "int"
   publish_to_home_assistant: "bool"
+  home_assistant_publish_interval_seconds: "int"
   read_only: "bool"
   allow_setting_changes: "bool"
   firmware_tools_enabled: "bool"
@@ -75,6 +77,9 @@ configuration:
   publish_to_home_assistant:
     name: Create Home Assistant sensors
     description: Publish local inverter readings as sensor.baiamonte_growatt_* entities.
+  home_assistant_publish_interval_seconds:
+    name: Home Assistant publish interval
+    description: Minimum seconds between changed sensor updates. Thirty seconds reduces database and network load while the app continues reading the inverter normally.
   read_only:
     name: Read-only safety lock
     description: Keep enabled for monitoring only. Disable this and separately enable setting changes to use the commissioning controls.
