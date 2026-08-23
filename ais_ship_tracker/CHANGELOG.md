@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.35
+
+- Negotiates `gzip`, `x-gzip`, and identity independently and deterministically, honoring relative quality values regardless of header order.
+
 ## 2.7.34
 
 - Treats the legacy HTTP `x-gzip` content-coding token as a gzip alias, including its negotiated quality value.

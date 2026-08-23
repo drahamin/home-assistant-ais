@@ -121,7 +121,7 @@ class DistanceTests(unittest.TestCase):
     def test_legacy_x_gzip_alias_is_supported(self):
         payload = (b'{"vessels":[]}' * 200)
         encoded, encoding = tracker.compress_http_payload(payload, "x-gzip, identity;q=0")
-        self.assertEqual(encoding, "gzip")
+        self.assertEqual(encoding, "x-gzip")
         self.assertEqual(gzip.decompress(encoded), payload)
 
     def test_legacy_x_gzip_quality_zero_is_honored(self):
@@ -129,6 +129,36 @@ class DistanceTests(unittest.TestCase):
         encoded, encoding = tracker.compress_http_payload(payload, "x-gzip;q=0")
         self.assertIsNone(encoding)
         self.assertEqual(encoded, payload)
+
+    def test_gzip_alias_quality_is_independent_of_header_order(self):
+        payload = (b'{"vessels":[]}' * 200)
+        for header in ("gzip;q=0, x-gzip;q=1", "x-gzip;q=1, gzip;q=0"):
+            with self.subTest(header=header):
+                encoded, encoding = tracker.compress_http_payload(payload, header)
+                self.assertEqual(encoding, "x-gzip")
+                self.assertEqual(gzip.decompress(encoded), payload)
+
+        for header in ("gzip;q=1, x-gzip;q=0", "x-gzip;q=0, gzip;q=1"):
+            with self.subTest(header=header):
+                encoded, encoding = tracker.compress_http_payload(payload, header)
+                self.assertEqual(encoding, "gzip")
+                self.assertEqual(gzip.decompress(encoded), payload)
+
+    def test_higher_identity_quality_prevents_compression(self):
+        payload = (b'{"vessels":[]}' * 200)
+        for header in ("identity;q=1, gzip;q=0.1", "gzip;q=0.1, identity;q=1"):
+            with self.subTest(header=header):
+                encoded, encoding = tracker.compress_http_payload(payload, header)
+                self.assertIsNone(encoding)
+                self.assertEqual(encoded, payload)
+
+    def test_gzip_is_selected_when_identity_quality_is_lower(self):
+        payload = (b'{"vessels":[]}' * 200)
+        encoded, encoding = tracker.compress_http_payload(
+            payload, "identity;q=0.1, gzip;q=0.8"
+        )
+        self.assertEqual(encoding, "gzip")
+        self.assertEqual(gzip.decompress(encoded), payload)
 
     def test_position_outside_every_operating_area_is_rejected(self):
         accepted = tracker.remember_dashboard_vessel({
@@ -793,7 +823,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2734', dashboard)
+        self.assertIn('app.js?v=2735', dashboard)
         self.assertNotIn("declutterOverviewPoint", dashboard_script)
         self.assertNotIn("marker-position-line", dashboard_script)
         self.assertIn("vessel.last_seen||vessel.source_last_seen", dashboard_script)
