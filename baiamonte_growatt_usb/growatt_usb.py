@@ -950,6 +950,28 @@ def read_settings_now() -> dict[str, dict[str, object]]:
     return settings
 
 
+def run_direct_firmware(
+    device: str,
+    protocol: str,
+    baud: int,
+    transport: str = "auto",
+) -> dict[str, dict[str, object]]:
+    """Read firmware through an already discovered direct-USB connection."""
+    commands = ["QVFW", "QVFW2"] if protocol.startswith(("PI30", "PI41")) else ["VFW"]
+    firmware: dict[str, dict[str, object]] = {}
+    errors = []
+    for command in commands:
+        try:
+            firmware.update(run_query(
+                device, protocol, baud, command, timeout=10, transport=transport,
+            ))
+        except Exception as exc:
+            errors.append(f"{command}: {exc}")
+    if not firmware:
+        raise RuntimeError("Firmware version inquiries failed: " + " | ".join(errors))
+    return firmware
+
+
 def read_firmware_now() -> dict[str, dict[str, object]]:
     options = load_options()
     with STATUS_LOCK:
@@ -961,26 +983,15 @@ def read_firmware_now() -> dict[str, dict[str, object]]:
         firmware = run_modbus_firmware(
             str(device), int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
         )
-        with STATUS_LOCK:
-            STATUS.update({"firmware": firmware, "firmware_updated_at": now_iso()})
         log("Growatt RS485 firmware versions refreshed")
-        return firmware
-    commands = ["QVFW", "QVFW2"] if str(protocol).startswith(("PI30", "PI41")) else ["VFW"]
-    firmware: dict[str, dict[str, object]] = {}
-    errors = []
-    for command in commands:
-        try:
-            firmware.update(run_query(
-                str(device), str(protocol), int(options.get("baud_rate", 2400)), command, timeout=10,
-                transport=str(options.get("transport", "auto")),
-            ))
-        except Exception as exc:
-            errors.append(f"{command}: {exc}")
-    if not firmware:
-        raise RuntimeError("Firmware version inquiries failed: " + " | ".join(errors))
+    else:
+        firmware = run_direct_firmware(
+            str(device), str(protocol), int(options.get("baud_rate", 2400)),
+            str(options.get("transport", "auto")),
+        )
+        log("Growatt firmware versions refreshed")
     with STATUS_LOCK:
         STATUS.update({"firmware": firmware, "firmware_updated_at": now_iso()})
-    log("Growatt firmware versions refreshed")
     return firmware
 
 
@@ -1427,7 +1438,10 @@ def poll_loop() -> None:
                             device, int(options.get("modbus_baud_rate", 9600)), int(options.get("modbus_slave_id", 1)),
                         )
                     else:
-                        current_firmware = read_firmware_now()
+                        current_firmware = run_direct_firmware(
+                            device, protocol, int(options.get("baud_rate", 2400)),
+                            str(options.get("transport", "auto")),
+                        )
                 except Exception as exc:
                     log(f"Optional firmware version inquiry was not accepted: {exc}", "warning")
             update_energy(energy, readings, interval)

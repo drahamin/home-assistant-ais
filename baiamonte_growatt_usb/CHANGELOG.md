@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.7
+
+- Fixes the first direct-USB firmware inquiry after startup by using the connection discovered in the active poll instead of waiting for shared dashboard status to be updated.
+- Keeps the six-hour firmware refresh cooldown without leaving firmware information empty after a successful initial connection.
+
 ## 1.3.6
 
 - Adds exponential retry backoff up to five minutes when the inverter is unavailable, while Refresh and Rescan still retry immediately.
