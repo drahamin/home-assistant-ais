@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- Moved Home Assistant entity writes off the CAN receive loop so API delays cannot interrupt serial reception.
+- Coalesced pending and unchanged entity states to one newest value per entity.
+- Added exponential retry backoff and rate-limited error logging when Home Assistant is busy.
+- Reduced connection-status writes from every 2 seconds to every 10 seconds while keeping the local dashboard live.
+- Paused rapid dashboard polling in hidden tabs and avoided rebuilding unchanged data panels.
+- Added tests for non-blocking publication, state coalescing, and background delivery.
+
 ## 0.2.1
 
 - Added a CANable V2.0 Pro device-light panel to the Overview.

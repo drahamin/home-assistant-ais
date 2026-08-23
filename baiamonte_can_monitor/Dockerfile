@@ -13,7 +13,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir "python-can[gs_usb]==4.6.1" pyserial==3.5
 
-COPY can_decoder.py can_monitor.py /
+COPY can_decoder.py can_monitor.py state_publisher.py /
 COPY web /web
 
 CMD ["python", "-u", "/can_monitor.py"]

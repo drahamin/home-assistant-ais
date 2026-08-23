@@ -3,6 +3,14 @@ const navButtons = [...document.querySelectorAll('.nav')];
 const titles = {overview:'Overview',battery:'Battery data',traffic:'CAN traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
 const $ = id => document.getElementById(id);
 let latest = null;
+let refreshTimer = null;
+const renderedHtml = new Map();
+
+function replaceHtml(id, html){
+  if(renderedHtml.get(id)===html)return;
+  $(id).innerHTML=html;
+  renderedHtml.set(id,html);
+}
 
 function showPage(id){
   pages.forEach(page=>page.classList.toggle('active',page.id===id));
@@ -53,14 +61,14 @@ function renderBattery(readings){
     ['Remaining capacity','remaining_capacity','Frame 0x314'],['Full capacity','full_charge_capacity','Frame 0x314'],['Charge limit','charge_current_limit','Frame 0x311'],['Discharge limit','discharge_current_limit','Frame 0x311'],
     ['Charge voltage limit','charge_voltage_limit','Frame 0x311'],['Cell difference','cell_voltage_difference','Frame 0x314'],['Chemistry','battery_chemistry','Frame 0x319'],['Manufacturer','battery_manufacturer','Frame 0x320']
   ];
-  $('battery-grid').innerHTML=cards.map(([label,key,source])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>${source}</p></article>`).join('');
+  replaceHtml('battery-grid',cards.map(([label,key,source])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>${source}</p></article>`).join(''));
   const cells=[];
   for(let i=1;i<=16;i++)if(readings[`cell_${i}_voltage`])cells.push({number:i,...readings[`cell_${i}_voltage`]});
-  $('cell-grid').innerHTML=cells.length?cells.map(cell=>`<div class="cell"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for cell-voltage frames 0x315–0x318.</div>';
+  replaceHtml('cell-grid',cells.length?cells.map(cell=>`<div class="cell"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for cell-voltage frames 0x315–0x318.</div>');
   if(cells.length){const values=cells.map(cell=>Number(cell.value));$('cell-spread').textContent=`${((Math.max(...values)-Math.min(...values))*1000).toFixed(0)} mV spread`;}
 }
 function renderFrames(frames){
-  $('frame-list').innerHTML=frames.length?frames.map(frame=>`<div class="frame-row"><b>${frame.id}</b><code>${frame.data}</code><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>';
+  replaceHtml('frame-list',frames.length?frames.map(frame=>`<div class="frame-row"><b>${frame.id}</b><code>${frame.data}</code><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
 }
 const idNames={'0x311':'Charge and discharge limits','0x312':'Protection and alarm flags','0x313':'Voltage, current, SOC and temperature','0x314':'Capacity, cell spread and cycles','0x315':'Cell voltages 1–4','0x316':'Cell voltages 5–8','0x317':'Cell voltages 9–12','0x318':'Cell voltages 13–16','0x319':'Battery requests and cell extremes','0x320':'Battery manufacturer and versions'};
 function renderTraffic(data){
@@ -73,8 +81,8 @@ function renderTraffic(data){
   $('minute-frames').textContent=`${Number(data.frames_last_minute||0).toLocaleString()} frames`;
   $('traffic-meter').style.width=`${Math.min(100,Number(data.frames_last_minute||0)/6)}%`;
   $('id-count').textContent=`${ids.length} ID${ids.length===1?'':'s'}`;
-  $('traffic-id-grid').innerHTML=ids.length?ids.map(item=>`<div class="traffic-id"><b>${item.id}</b><span>${idNames[item.id]||'Unmapped CAN message'}</span><small>${Number(item.count).toLocaleString()} received</small></div>`).join(''):'<div class="empty">No CAN identifiers received yet.</div>';
-  $('traffic-frame-list').innerHTML=frames.length?frames.map(frame=>`<div class="traffic-frame"><b>${frame.id}</b><code>${frame.data}</code><span>${(frame.decoded||[]).map(key=>key.replaceAll('_',' ')).join(', ')||'Raw frame'}</span><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>';
+  replaceHtml('traffic-id-grid',ids.length?ids.map(item=>`<div class="traffic-id"><b>${item.id}</b><span>${idNames[item.id]||'Unmapped CAN message'}</span><small>${Number(item.count).toLocaleString()} received</small></div>`).join(''):'<div class="empty">No CAN identifiers received yet.</div>');
+  replaceHtml('traffic-frame-list',frames.length?frames.map(frame=>`<div class="traffic-frame"><b>${frame.id}</b><code>${frame.data}</code><span>${(frame.decoded||[]).map(key=>key.replaceAll('_',' ')).join(', ')||'Raw frame'}</span><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
 }
 function renderDeviceLights(data){
   const adapter=Boolean(data.adapter_connected), traffic=Boolean(data.bus_active);
@@ -121,11 +129,12 @@ function render(data){
   $('last-frame').textContent=age(data.last_frame_at);
   $('uptime').textContent=duration(data.uptime_seconds||0);
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
-  $('check-list').innerHTML=checksFor(data.health).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join('');
+  replaceHtml('check-list',checksFor(data.health).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
   renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }
 async function refresh(){
+  if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;}
   $('refresh').disabled=true;
   try{
     const response=await fetch('api/status',{cache:'no-store'});
@@ -136,7 +145,13 @@ async function refresh(){
     $('diagnosis').textContent='The dashboard cannot reach the local monitor status API. Restart the app and reload this page.';
     ['hero-light','side-light'].forEach(id=>$(id).className='error');
     renderDeviceLights({adapter_connected:false,bus_active:false});
-  }finally{$('refresh').disabled=false;}
+  }finally{
+    $('refresh').disabled=false;
+    refreshTimer=setTimeout(refresh,document.hidden?30000:3000);
+  }
 }
 $('refresh').addEventListener('click',refresh);
-refresh();setInterval(refresh,3000);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)refresh();
+});
+refresh();

@@ -10,8 +10,6 @@ import signal
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from collections import Counter, deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +19,7 @@ from urllib.parse import urlparse
 import can
 
 from can_decoder import Reading, decode_frame
+from state_publisher import StatePublisher
 
 
 ENTITY_PREFIX = "baiamonte_can"
@@ -45,6 +44,7 @@ STATUS: dict[str, object] = {
 RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
 FRAME_TIMES: deque[float] = deque(maxlen=4000)
 ID_COUNTS: Counter[str] = Counter()
+PUBLISHER: StatePublisher | None = None
 
 
 def log(message: str) -> None:
@@ -153,7 +153,7 @@ def friendly_name(key: str) -> str:
 
 
 def publish(key: str, reading: Reading, binary: bool = False) -> None:
-    if not TOKEN:
+    if PUBLISHER is None:
         return
     domain = "binary_sensor" if binary else "sensor"
     attributes: dict[str, object] = {
@@ -167,19 +167,10 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
         attributes["device_class"] = reading.device_class
     if reading.state_class:
         attributes["state_class"] = reading.state_class
-    payload = json.dumps({"state": reading.value, "attributes": attributes}).encode()
-    request = urllib.request.Request(
-        f"{API_BASE}/{domain}.{ENTITY_PREFIX}_{key}",
-        data=payload,
-        method="POST",
-        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+    PUBLISHER.queue(
+        f"{domain}.{ENTITY_PREFIX}_{key}",
+        {"state": reading.value, "attributes": attributes},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=5):
-            pass
-    except (urllib.error.URLError, TimeoutError) as exc:
-        log(f"Home Assistant state update failed: {exc}")
-        update_status(last_error=f"Home Assistant state update failed: {exc}")
 
 
 def publish_connection(connected: bool, adapter: str, frames: int, last_id: int | None) -> None:
@@ -292,6 +283,7 @@ def stop(_signum, _frame) -> None:
 
 
 def main() -> int:
+    global PUBLISHER
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     options = load_options()
@@ -299,6 +291,13 @@ def main() -> int:
     interval = max(1, int(options.get("publish_interval_seconds", 2)))
     bitrate = int(options.get("bitrate", 500000))
     dashboard = start_dashboard(int(options.get("dashboard_port", 8098)))
+    PUBLISHER = StatePublisher(
+        API_BASE,
+        TOKEN,
+        log,
+        error_callback=lambda error: update_status(last_error=error),
+    )
+    PUBLISHER.start()
     update_status(service="running", bitrate=bitrate)
     log("Starting Baiamonte CAN Monitor; transmit code is disabled")
     publish_connection(False, "searching", 0, None)
@@ -309,6 +308,7 @@ def main() -> int:
     last_frame_at = 0.0
     last_publish_at = 0.0
     last_status_at = 0.0
+    status_interval = max(10, interval)
     last_id = None
     pending: dict[str, Reading] = {}
 
@@ -375,7 +375,7 @@ def main() -> int:
             pending.clear()
             last_publish_at = now
 
-        if now - last_status_at >= interval:
+        if now - last_status_at >= status_interval:
             publish_connection(connected, adapter_name, frame_count, last_id)
             last_status_at = now
 
@@ -383,6 +383,8 @@ def main() -> int:
         receiver.shutdown()
     publish_connection(False, "stopped", frame_count, last_id)
     update_status(service="stopped", adapter_connected=False, bus_active=False)
+    if PUBLISHER is not None:
+        PUBLISHER.stop()
     dashboard.shutdown()
     log("Stopped")
     return 0
