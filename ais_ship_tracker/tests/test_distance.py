@@ -100,6 +100,26 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual(gzip.decompress(encoded), payload)
         self.assertLess(len(encoded), len(payload) // 4)
 
+    def test_gzip_with_zero_quality_is_not_compressed(self):
+        payload = b"x" * 2048
+        encoded, encoding = tracker.compress_http_payload(payload, "br, gzip;q=0")
+        self.assertIsNone(encoding)
+        self.assertEqual(encoded, payload)
+
+    def test_explicit_gzip_rejection_overrides_wildcard(self):
+        payload = b"x" * 2048
+        encoded, encoding = tracker.compress_http_payload(payload, "gzip;q=0, *;q=0.8")
+        self.assertIsNone(encoding)
+        self.assertEqual(encoded, payload)
+
+    def test_positive_gzip_quality_and_wildcard_allow_compression(self):
+        payload = b"x" * 2048
+        for accept_encoding in ("GZip; q=0.5", "br;q=1, *;q=0.2"):
+            with self.subTest(accept_encoding=accept_encoding):
+                encoded, encoding = tracker.compress_http_payload(payload, accept_encoding)
+                self.assertEqual(encoding, "gzip")
+                self.assertEqual(gzip.decompress(encoded), payload)
+
     def test_small_status_payload_is_not_compressed(self):
         payload = b'{}'
         encoded, encoding = tracker.compress_http_payload(payload, "gzip")

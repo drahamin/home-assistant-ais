@@ -891,9 +891,32 @@ def dashboard_snapshot(area_id=None, compact=False):
         return snapshot
 
 
+def accepts_gzip(accept_encoding):
+    """Return whether an Accept-Encoding value permits gzip coding."""
+    qualities = {}
+    for member in str(accept_encoding or "").split(","):
+        parts = [part.strip() for part in member.split(";")]
+        coding = parts[0].lower()
+        if not coding:
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            name, separator, value = parameter.partition("=")
+            if separator and name.strip().lower() == "q":
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 0.0
+                if not 0.0 <= quality <= 1.0:
+                    quality = 0.0
+                break
+        qualities[coding] = quality
+    return qualities.get("gzip", qualities.get("*", 0.0)) > 0.0
+
+
 def compress_http_payload(payload, accept_encoding):
     """Return a browser payload and its optional content encoding."""
-    if len(payload) >= 1024 and "gzip" in str(accept_encoding or "").lower():
+    if len(payload) >= 1024 and accepts_gzip(accept_encoding):
         return gzip.compress(payload, compresslevel=5), "gzip"
     return payload, None
 
