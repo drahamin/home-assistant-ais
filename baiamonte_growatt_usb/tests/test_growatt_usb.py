@@ -20,6 +20,13 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(growatt.retry_delay(10, 4), 80)
         self.assertEqual(growatt.retry_delay(10, 20), 300)
 
+    def test_failed_firmware_poll_retries_before_six_hour_refresh(self):
+        now = 100000.0
+        self.assertTrue(growatt.firmware_poll_due(now, 0.0, 0.0))
+        self.assertFalse(growatt.firmware_poll_due(now + 899, 0.0, now))
+        self.assertTrue(growatt.firmware_poll_due(now + 900, 0.0, now))
+        self.assertFalse(growatt.firmware_poll_due(now + 900, now, now))
+
     @patch.object(growatt, "run_query")
     def test_initial_direct_usb_firmware_read_uses_discovered_connection(self, query):
         query.side_effect = [
@@ -35,6 +42,23 @@ class GrowattUsbTests(unittest.TestCase):
             self.assertEqual(query.call_count, 2)
             self.assertEqual(query.call_args_list[0].args[:4], ("/dev/ttyUSB0", "PI30", 2400, "QVFW"))
             self.assertEqual(query.call_args_list[1].args[:4], ("/dev/ttyUSB0", "PI30", 2400, "QVFW2"))
+        finally:
+            with growatt.STATUS_LOCK:
+                growatt.STATUS.clear()
+                growatt.STATUS.update(old)
+
+    @patch.object(growatt, "run_direct_firmware", return_value={"firmware": {"value": "1.0", "unit": None}})
+    @patch.object(growatt, "load_options", return_value={"baud_rate": 2400, "transport": "auto"})
+    def test_manual_firmware_read_prefers_active_recovered_baud(self, _options, direct_firmware):
+        with growatt.STATUS_LOCK:
+            old = dict(growatt.STATUS)
+            growatt.STATUS.update({
+                "connected": True, "device": "/dev/ttyUSB0", "protocol": growatt.RAW_PI_PROTOCOL,
+                "active_baud": 19200,
+            })
+        try:
+            growatt.read_firmware_now()
+            direct_firmware.assert_called_once_with("/dev/ttyUSB0", growatt.RAW_PI_PROTOCOL, 19200, "auto")
         finally:
             with growatt.STATUS_LOCK:
                 growatt.STATUS.clear()

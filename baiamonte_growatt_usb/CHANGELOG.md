@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.8
+
+- Uses the active baud rate discovered during raw-PI recovery for startup and manual firmware inquiries instead of retrying the configured rate that already failed.
+- Retries a failed optional firmware inquiry after 15 minutes while retaining the six-hour refresh interval after a successful read.
+- Uses the active Modbus baud rate and inverter address for manual firmware refreshes as well.
+
 ## 1.3.7
 
 - Fixes the first direct-USB firmware inquiry after startup by using the connection discovered in the active poll instead of waiting for shared dashboard status to be updated.
