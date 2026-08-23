@@ -20,6 +20,26 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(growatt.retry_delay(10, 4), 80)
         self.assertEqual(growatt.retry_delay(10, 20), 300)
 
+    @patch.object(growatt, "run_query")
+    def test_initial_direct_usb_firmware_read_uses_discovered_connection(self, query):
+        query.side_effect = [
+            {"main_cpu_firmware_version": {"value": "00072.40", "unit": None}},
+            {"secondary_cpu_firmware_version": {"value": "00001.01", "unit": None}},
+        ]
+        with growatt.STATUS_LOCK:
+            old = dict(growatt.STATUS)
+            growatt.STATUS.update({"connected": False, "device": None, "protocol": None})
+        try:
+            firmware = growatt.run_direct_firmware("/dev/ttyUSB0", "PI30", 2400, "serial")
+            self.assertEqual(firmware["main_cpu_firmware_version"]["value"], "00072.40")
+            self.assertEqual(query.call_count, 2)
+            self.assertEqual(query.call_args_list[0].args[:4], ("/dev/ttyUSB0", "PI30", 2400, "QVFW"))
+            self.assertEqual(query.call_args_list[1].args[:4], ("/dev/ttyUSB0", "PI30", 2400, "QVFW2"))
+        finally:
+            with growatt.STATUS_LOCK:
+                growatt.STATUS.clear()
+                growatt.STATUS.update(old)
+
     @patch.object(growatt.time, "monotonic", return_value=100.0)
     @patch.object(growatt, "candidate_devices", return_value=["/dev/ttyUSB0"])
     def test_dashboard_device_discovery_cache_avoids_repeated_globs(self, candidates, _monotonic):
