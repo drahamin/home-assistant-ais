@@ -33,7 +33,7 @@ except (ImportError, OSError, ValueError, KeyError):
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.32"
+VERSION = "2.7.33"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -893,7 +893,30 @@ def dashboard_snapshot(area_id=None, compact=False):
 
 def compress_http_payload(payload, accept_encoding):
     """Return a browser payload and its optional content encoding."""
-    if len(payload) >= 1024 and "gzip" in str(accept_encoding or "").lower():
+    gzip_quality = None
+    wildcard_quality = None
+    for entry in str(accept_encoding or "").lower().split(","):
+        parts = [part.strip() for part in entry.split(";")]
+        coding = parts[0]
+        if not coding:
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            name, separator, value = parameter.partition("=")
+            if separator and name.strip() == "q":
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 0.0
+                quality = max(0.0, min(1.0, quality))
+                break
+        if coding == "gzip":
+            gzip_quality = quality
+        elif coding == "*":
+            wildcard_quality = quality
+
+    accepts_gzip = gzip_quality if gzip_quality is not None else wildcard_quality
+    if len(payload) >= 1024 and accepts_gzip is not None and accepts_gzip > 0:
         return gzip.compress(payload, compresslevel=5), "gzip"
     return payload, None
 
