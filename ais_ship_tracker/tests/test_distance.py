@@ -1,4 +1,5 @@
 import importlib.util
+import gzip
 import json
 import os
 import tempfile
@@ -92,6 +93,19 @@ class DistanceTests(unittest.TestCase):
         self.assertNotIn("receiver_log", snapshot)
         self.assertNotIn("flightaware_weather", snapshot)
 
+    def test_large_status_payload_is_gzip_compressed_for_browsers(self):
+        payload = (b'{"vessels":[]}' * 200)
+        encoded, encoding = tracker.compress_http_payload(payload, "br, gzip")
+        self.assertEqual(encoding, "gzip")
+        self.assertEqual(gzip.decompress(encoded), payload)
+        self.assertLess(len(encoded), len(payload) // 4)
+
+    def test_small_status_payload_is_not_compressed(self):
+        payload = b'{}'
+        encoded, encoding = tracker.compress_http_payload(payload, "gzip")
+        self.assertIsNone(encoding)
+        self.assertEqual(encoded, payload)
+
     def test_position_outside_every_operating_area_is_rejected(self):
         accepted = tracker.remember_dashboard_vessel({
             "mmsi": "247000001", "name": "Impossible target",
@@ -182,6 +196,13 @@ class DistanceTests(unittest.TestCase):
         self.assertEqual(snapshot["config"]["aishub_data_source"], "direct_aishub")
         self.assertTrue(snapshot["config"]["aishub_username_in_use"])
 
+    def test_pasted_aishub_feed_url_is_normalized_for_udp(self):
+        configured = load_tracker({
+            "aishub_feed_host": "http://data.aishub.net/",
+            "aishub_feed_port": 2261,
+        })
+        self.assertEqual(configured.AISHUB_FEED_HOST, "data.aishub.net")
+
 
 class AisCatcherTests(unittest.TestCase):
     def setUp(self):
@@ -263,6 +284,9 @@ class AisCatcherTests(unittest.TestCase):
         self.assertIn("pyais==3.2.1", dockerfile)
         self.assertIn("global-land-mask==1.0.0", dockerfile)
         self.assertIn("numpy==1.26.4", dockerfile)
+        self.assertIn("AS land-mask-build", dockerfile)
+        self.assertIn("COPY --from=land-mask-build /compact-land-mask.zip", dockerfile)
+        self.assertEqual(dockerfile.count("RUN pip install --no-cache-dir pyais==3.2.1"), 1)
         self.assertIn("librtlsdr0", dockerfile)
         self.assertIn("/usr/local/bin/AIS-catcher", dockerfile)
         self.assertIn("RTL_AIRBAND_VERSION=v5.2.0", dockerfile)
@@ -745,7 +769,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2728', dashboard)
+        self.assertIn('app.js?v=2732', dashboard)
         self.assertNotIn("declutterOverviewPoint", dashboard_script)
         self.assertNotIn("marker-position-line", dashboard_script)
         self.assertIn("vessel.last_seen||vessel.source_last_seen", dashboard_script)

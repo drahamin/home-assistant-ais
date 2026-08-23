@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.32
+
+- Replaces the 980 MB runtime NumPy land-mask allocation with a 1.3 MB banded archive that keeps only nearby latitude bands in memory while preserving inland-target rejection.
+- Compresses large dashboard and TV status responses for browsers and scopes recurring dashboard requests to the selected map area.
+- Reuses dashboard map tiles, weather layers, and vessel markers instead of recreating them every ten seconds, and builds the full fleet card grid only while Live Traffic is open.
+- Prefers an identified GPS/GNSS serial device, removes duplicate aliases, backs off failed probes, and avoids repeatedly opening unrelated USB serial hardware.
+- Normalizes a pasted AISHub feed URL to its UDP hostname so `http://data.aishub.net/` no longer produces repeated DNS failures.
+
 ## 2.7.31
 
 - Rejects malformed, out-of-area, and confidently inland AIS positions before they enter the live vessel cache or Home Assistant entities.

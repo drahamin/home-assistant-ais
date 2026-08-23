@@ -22,8 +22,24 @@ def candidates(requested):
         return [requested]
     by_id = sorted(glob.glob("/dev/serial/by-id/*"))
     preferred = [path for path in by_id if any(hint in path.lower() for hint in PREFERRED_HINTS)]
+    # A descriptive GPS/GNSS by-id path is authoritative. Probing every other
+    # serial adapter can contend with inverters, radios, and other HA apps.
+    if preferred:
+        return unique_devices(preferred)
     generic = sorted(glob.glob("/dev/ttyACM*")) + sorted(glob.glob("/dev/ttyUSB*"))
-    return preferred + [path for path in by_id + generic if path not in preferred]
+    return unique_devices(by_id + generic)
+
+
+def unique_devices(devices):
+    """Remove aliases that resolve to the same physical serial device."""
+    result, resolved = [], set()
+    for device in devices:
+        identity = os.path.realpath(device)
+        if identity in resolved:
+            continue
+        resolved.add(identity)
+        result.append(device)
+    return result
 
 
 def configure(fd, baud):
@@ -118,6 +134,7 @@ def main():
     parser.add_argument("--baud", type=int, default=9600)
     parser.add_argument("--output", type=Path, default=Path("/run/baiamonte/gps.json"))
     args = parser.parse_args()
+    failure_counts, last_reported = {}, {}
     while True:
         found = False
         for device in candidates(args.device):
@@ -127,10 +144,16 @@ def main():
             try:
                 watch_device(device, args.baud, args.output)
             except (OSError, termios.error) as error:
-                print("Baiamonte GPS could not use %s: %s" % (device, error), flush=True)
+                failure_counts[device] = failure_counts.get(device, 0) + 1
+                message = str(error)
+                previous_message, previous_time = last_reported.get(device, (None, 0))
+                if message != previous_message or time.monotonic() - previous_time >= 300:
+                    print("Baiamonte GPS could not use %s: %s; retrying with backoff" % (device, error), flush=True)
+                    last_reported[device] = (message, time.monotonic())
         if not found:
             print("Baiamonte GPS waiting for a USB serial receiver", flush=True)
-        time.sleep(5)
+        failures = max(failure_counts.values(), default=1)
+        time.sleep(min(60, 5 * (2 ** min(3, failures - 1))))
 
 
 if __name__ == "__main__":
