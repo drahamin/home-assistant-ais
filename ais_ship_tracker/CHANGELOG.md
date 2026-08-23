@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.33
+
+- Honors HTTP clients that explicitly reject gzip with `Accept-Encoding: gzip;q=0` while retaining compressed status responses for compatible browsers.
+
 ## 2.7.32
 
 - Replaces the 980 MB runtime NumPy land-mask allocation with a 1.3 MB banded archive that keeps only nearby latitude bands in memory while preserving inland-target rejection.

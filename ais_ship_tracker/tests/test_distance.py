@@ -106,6 +106,18 @@ class DistanceTests(unittest.TestCase):
         self.assertIsNone(encoding)
         self.assertEqual(encoded, payload)
 
+    def test_gzip_quality_zero_is_honored(self):
+        payload = (b'{"vessels":[]}' * 200)
+        encoded, encoding = tracker.compress_http_payload(payload, "br, gzip;q=0")
+        self.assertIsNone(encoding)
+        self.assertEqual(encoded, payload)
+
+    def test_explicit_gzip_quality_overrides_wildcard(self):
+        payload = (b'{"vessels":[]}' * 200)
+        encoded, encoding = tracker.compress_http_payload(payload, "*;q=1, gzip;q=0")
+        self.assertIsNone(encoding)
+        self.assertEqual(encoded, payload)
+
     def test_position_outside_every_operating_area_is_rejected(self):
         accepted = tracker.remember_dashboard_vessel({
             "mmsi": "247000001", "name": "Impossible target",
@@ -769,7 +781,7 @@ class DashboardAssetTests(unittest.TestCase):
         self.assertEqual(dashboard_script.count("overviewMap.addEventListener('wheel'"), 1)
         self.assertIn("token!==weatherRenderToken", television_script)
         self.assertNotIn("tvResetTimer", television_script)
-        self.assertIn('app.js?v=2732', dashboard)
+        self.assertIn('app.js?v=2733', dashboard)
         self.assertNotIn("declutterOverviewPoint", dashboard_script)
         self.assertNotIn("marker-position-line", dashboard_script)
         self.assertIn("vessel.last_seen||vessel.source_last_seen", dashboard_script)
