@@ -25,7 +25,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **AIS Network Data Source:** keep **Rahamin Miami single-key proxy** for the shared Miami/Sicily installation. Choose Direct AISHub only if this app must operate without the Miami Pi.
 - **AISHub Username:** used only in Direct AISHub fallback mode; leave it blank for the single-key proxy setup.
 - **Share Receiver Data with AISHub:** off by default. Enable only after AISHub supplies the contributor feed destination.
-- **AISHub Feed Host:** the raw NMEA contribution hostname or IP supplied by AISHub. Do not enter the AISHub API URL or a ShipXplorer address.
+- **AISHub Feed Host:** the raw NMEA contribution hostname or IP supplied by AISHub. A pasted URL such as `http://data.aishub.net/` is normalized to its UDP hostname automatically; do not enter a ShipXplorer address.
 - **AISHub Feed Port:** your dedicated AISHub UDP port.
 - **AIS Receiver Name:** the label shown in logs and Home Assistant status.
 - **AIS Receiver Connection:** included AIS-catcher/RTL-SDR decoder, UDP listener, TCP client, or attached serial radio.
@@ -37,7 +37,7 @@ The app recognizes `!AIVDM`, `!AIVDO`, `!BSVDM`, and `!ABVDM` sentences. Open th
 - **Marine VHF USB Recovery:** optionally allows manual recovery and up to 0–5 automatic device resets without touching the AIS radio.
 - **Marine Frequencies / Labels:** matching comma-separated scan lists, with up to 12 frequencies between 156 and 163 MHz. Confirm the correct local channel plan.
 - **Marine Gain / PPM / Squelch:** tuner settings for the second receiver. Start at gain `28`, PPM `0`, and automatic squelch. Use the manual dBFS threshold only for a channel that cannot work with adaptive squelch.
-- **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking.
+- **Use Attached USB GPS:** automatically uses a fresh NMEA fix for the estate position, map, and distance ranking. Auto mode prefers a descriptive GPS/GNSS `/dev/serial/by-id` device and does not probe unrelated serial adapters when one is present. Select the stable by-id path explicitly when another app also uses serial hardware.
 - **Live Rain Radar on Dashboard / TV:** enable RainViewer independently for each surface.
 - **FlightAware Airport Weather:** optional AeroAPI v4 observations, using an API key and ICAO airport code such as `LICC`.
 - **Bounding Box:** the west, south, east, and north limits of the vessel watch area.
@@ -64,6 +64,8 @@ The Overview map offers **Vessels**, **Labels**, and **Selected** controls. Vess
 Vessel flags are derived from the MMSI Maritime Identification Digits when the transmitting identity contains an allocated MID. The same flag appears on overview map labels, recent contacts, Live traffic cards, and the TV vessel list. Special group, coast-station, SAR-aircraft, and AIS aid-to-navigation MMSI formats are recognized when possible. Unknown or malformed identities use a neutral flag rather than guessing a registry.
 
 The **Watch Area** page includes the hardware receiver log, GPS/reference position, receiver profile, and optional FlightAware airport observation.
+
+The app uses a compact, banded one-kilometre land mask. It preserves the inland-target filter without loading the original full-world 980 MB NumPy array. Dashboard and TV status responses use browser-supported gzip compression and recurring dashboard refreshes request only the selected Sicily or Miami area.
 
 ## Troubleshooting
 

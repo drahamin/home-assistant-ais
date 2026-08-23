@@ -14,10 +14,15 @@ RUN git clone --branch "${RTL_AIRBAND_VERSION}" --depth 1 https://github.com/rtl
     && cmake -B build -DPLATFORM=generic -DCMAKE_BUILD_TYPE=Release -DNFM=TRUE -DBUILD_UNITTESTS=FALSE \
     && cmake --build build --parallel 2
 
+FROM python:3.11-slim-bookworm AS land-mask-build
+RUN pip install --no-cache-dir global-land-mask==1.0.0 numpy==1.26.4
+COPY build_compact_land_mask.py /build_compact_land_mask.py
+RUN python /build_compact_land_mask.py /compact-land-mask.zip
+
 FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN pip install --no-cache-dir pyais==3.2.1 global-land-mask==1.0.0 numpy==1.26.4
+RUN pip install --no-cache-dir pyais==3.2.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends icecast2 librtlsdr0 libsqlite3-0 libusb-1.0-0 libmp3lame0 libshout3 libconfig++9v5 libfftw3-double3 libfftw3-single3 \
     && rm -rf /var/lib/apt/lists/*
@@ -26,9 +31,11 @@ COPY --from=ais-catcher-build /src/AIS-catcher/build/AIS-catcher /usr/local/bin/
 COPY --from=ais-catcher-build /src/AIS-catcher/LICENSE /usr/share/licenses/AIS-catcher/LICENSE
 COPY --from=ais-catcher-build /src/RTLSDR-Airband/build/src/rtl_airband /usr/local/bin/rtl_airband
 COPY --from=ais-catcher-build /src/RTLSDR-Airband/LICENSE /usr/share/licenses/RTLSDR-Airband/LICENSE
+COPY --from=land-mask-build /compact-land-mask.zip /compact-land-mask.zip
 
 COPY ais_ship_tracker.py /
 COPY gps_reader.py /
+COPY compact_land_mask.py /
 COPY web /web
 
 CMD ["python", "-u", "/ais_ship_tracker.py"]

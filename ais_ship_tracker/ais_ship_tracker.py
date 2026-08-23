@@ -21,17 +21,19 @@ import glob
 import select
 import termios
 import fcntl
+import gzip
 from datetime import datetime, timedelta, timezone
 from pyais import decode as decode_ais_nmea
 from pyais.exceptions import AISBaseException
 
 try:
-    from global_land_mask import globe as global_land_globe
-except ImportError:
+    from compact_land_mask import CompactLandMask
+    global_land_globe = CompactLandMask(os.environ.get("BAIAMONTE_LAND_MASK", "/compact-land-mask.zip"))
+except (ImportError, OSError, ValueError, KeyError):
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.31"
+VERSION = "2.7.32"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -56,6 +58,15 @@ WEATHER_TILE_PATTERN = re.compile(
 
 def valid_weather_tile_path(path):
     return WEATHER_TILE_PATTERN.fullmatch(path) is not None
+
+
+def normalize_udp_host(value):
+    """Accept a bare UDP hostname or safely extract one from a pasted URL."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = urllib.parse.urlparse(raw if "://" in raw else "//" + raw)
+    return parsed.hostname or raw.strip("/")
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -88,7 +99,7 @@ try:
     AISHUB_USERNAME = str(config.get('aishub_username', '')).strip()
     AISHUB_API_URL = str(config.get('aishub_api_url', 'https://data.aishub.net/ws.php')).strip()
     AISHUB_POLL_INTERVAL = max(60, get_safe_int('aishub_poll_interval', 60))
-    AISHUB_FEED_HOST = str(config.get('aishub_feed_host', '')).strip()
+    AISHUB_FEED_HOST = normalize_udp_host(config.get('aishub_feed_host', ''))
     AISHUB_FEED_PORT = get_safe_int('aishub_feed_port', 0)
     AISHUB_SHARING_ENABLED = str(config.get('aishub_sharing_enabled', False)).lower() in ['true', '1', 't', 'y', 'yes']
     BAIAMONTE_API_ENABLED = str(config.get('baiamonte_api_enabled', True)).lower() in ['true', '1', 't', 'y', 'yes']
@@ -277,7 +288,7 @@ dashboard_vessels = {}
 dashboard_events = deque(maxlen=40)
 dashboard_lock = threading.RLock()
 position_filter_state = {
-    "land_mask": "enabled" if global_land_globe is not None else "unavailable",
+    "land_mask": "compact" if global_land_globe is not None else "unavailable",
     "rejected_total": 0,
     "rejected_by_reason": {},
     "last_rejected": None,
@@ -879,7 +890,29 @@ def dashboard_snapshot(area_id=None, compact=False):
         })
         return snapshot
 
+
+def compress_http_payload(payload, accept_encoding):
+    """Return a browser payload and its optional content encoding."""
+    if len(payload) >= 1024 and "gzip" in str(accept_encoding or "").lower():
+        return gzip.compress(payload, compresslevel=5), "gzip"
+    return payload, None
+
 class DashboardHandler(BaseHTTPRequestHandler):
+    def send_bytes(self, payload, content_type, cache_control="no-store", allow_compression=False):
+        encoding = None
+        if allow_compression:
+            payload, encoding = compress_http_payload(payload, self.headers.get("Accept-Encoding", ""))
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", cache_control)
+        if allow_compression:
+            self.send_header("Vary", "Accept-Encoding")
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
         request_path = self.path.split("?", 1)[0].rstrip("/")
         if request_path == "/api/marine-radio/recover":
@@ -971,12 +1004,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             requested_area = str(query.get("area", [""])[0]).strip().lower()
             compact = str(query.get("view", [""])[0]).strip().lower() == "tv"
             payload = json.dumps(dashboard_snapshot(requested_area, compact=compact), separators=(",", ":")).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            self.send_bytes(payload, "application/json", allow_compression=True)
             return
 
         if request_path.rstrip("/").endswith(("/tv", "/t")):
