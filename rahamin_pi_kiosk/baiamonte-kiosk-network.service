@@ -1,0 +1,14 @@
+[Unit]
+Description=Select direct Baiamonte LAN or CloudConnexa kiosk path
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/baiamonte-tv-kiosk/baiamonte-kiosk-network
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,5 +1,9 @@
 # Baiamonte Home Assistant Apps
 
+## Rahamin Pi TV Kiosk
+
+The [Rahamin Pi kiosk installer](rahamin_pi_kiosk) uses the direct dashboard on Baiamonte Wi-Fi or Ethernet with OpenVPN stopped. Away from the estate it starts a dedicated CloudConnexa client and launches Chromium only after the private Baiamonte Home Assistant dashboard is available. CloudConnexa and a managed browser policy restrict the kiosk to the Baiamonte dashboard.
+
 ## Baiamonte Netatmo
 
 **Baiamonte Netatmo** keeps the existing Netatmo cloud connection but prefers direct HomeKit or Matter entities on the local network. It automatically pairs matching entities, shows the active route for every device, and can retry commands through the cloud when the local route is unavailable.

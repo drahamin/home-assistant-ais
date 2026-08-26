@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+STATE_FILE="/run/baiamonte-kiosk-dashboard-url"
+DASHBOARD_URL="${BAIAMONTE_DASHBOARD_URL:-$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)}"
+PROFILE_DIR="${HOME}/.config/chromium-baiamonte-kiosk"
+
+if [ -z "$DASHBOARD_URL" ]; then
+  DASHBOARD_URL="http://ha.dashboard.baiamonte:8123"
+fi
+
+exec /usr/bin/chromium \
+  --ozone-platform=wayland \
+  --enable-features=UseOzonePlatform \
+  --user-data-dir="$PROFILE_DIR" \
+  --kiosk \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-session-crashed-bubble \
+  --disable-infobars \
+  --disable-translate \
+  --disable-pinch \
+  --overscroll-history-navigation=0 \
+  --autoplay-policy=no-user-gesture-required \
+  "$DASHBOARD_URL"

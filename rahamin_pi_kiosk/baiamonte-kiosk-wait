@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+STATE_FILE="/run/baiamonte-kiosk-dashboard-url"
+
+while :; do
+  DASHBOARD_URL=$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)
+  if [ -n "$DASHBOARD_URL" ] \
+    && curl --silent --show-error --output /dev/null --max-time 8 "$DASHBOARD_URL"; then
+    exit 0
+  fi
+  sleep 5
+done

@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+LOCAL_URL="${BAIAMONTE_LOCAL_URL:-http://192.168.0.10:8123}"
+VPN_URL="${BAIAMONTE_VPN_URL:-http://ha.dashboard.baiamonte:8123}"
+VPN_SERVICE="openvpn-client@baiamonte-kiosk.service"
+KIOSK_SERVICE="baiamonte-tv-kiosk.service"
+STATE_FILE="/run/baiamonte-kiosk-dashboard-url"
+CURRENT=""
+
+is_baiamonte_local() {
+  curl --fail --silent --show-error --max-time 4 "$LOCAL_URL/manifest.json" 2>/dev/null \
+    | grep -qi 'Home Assistant'
+}
+
+publish_url() {
+  NEXT_URL=$1
+  if [ "$NEXT_URL" = "$CURRENT" ] && [ -s "$STATE_FILE" ]; then
+    return
+  fi
+  umask 022
+  printf '%s\n' "$NEXT_URL" >"$STATE_FILE.tmp"
+  mv -f "$STATE_FILE.tmp" "$STATE_FILE"
+  CURRENT=$NEXT_URL
+  systemctl try-restart "$KIOSK_SERVICE" >/dev/null 2>&1 || true
+}
+
+while :; do
+  if is_baiamonte_local; then
+    systemctl stop "$VPN_SERVICE" >/dev/null 2>&1 || true
+    publish_url "$LOCAL_URL"
+  else
+    systemctl start "$VPN_SERVICE"
+    publish_url "$VPN_URL"
+  fi
+  sleep 15
+done
+
