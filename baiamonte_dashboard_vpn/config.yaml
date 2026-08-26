@@ -1,0 +1,41 @@
+name: "Baiamonte Dashboard VPN"
+version: "0.1.0"
+slug: "baiamonte_dashboard_vpn"
+description: "Always-on CloudConnexa access for Baiamonte Home Assistant TV dashboards"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch:
+  - "aarch64"
+  - "amd64"
+image: "ghcr.io/drahamin/home-assistant-dashboard-vpn"
+startup: "services"
+boot: "auto"
+init: false
+homeassistant_api: true
+ingress: true
+ingress_port: 8098
+panel_icon: "mdi:television-lock"
+panel_title: "Dashboard VPN"
+panel_admin: true
+watchdog: "http://[HOST]:[PORT:8098]/api/health"
+privileged:
+  - "NET_ADMIN"
+devices:
+  - "/dev/net/tun:/dev/net/tun:rwm"
+options:
+  dashboard_url: "http://dashboard.baiamonte:8123"
+  reconnect_delay_seconds: 10
+  publish_to_home_assistant: true
+schema:
+  dashboard_url: "url"
+  reconnect_delay_seconds: "int"
+  publish_to_home_assistant: "bool"
+configuration:
+  dashboard_url:
+    name: TV dashboard URL
+    description: Private CloudConnexa Host hostname that kiosk TVs open after the VPN connects. The app proxies it to Home Assistant without exposing a host port.
+  reconnect_delay_seconds:
+    name: Reconnect delay
+    description: Seconds to wait before restarting a disconnected connector. Ten seconds is recommended.
+  publish_to_home_assistant:
+    name: Create Home Assistant status sensor
+    description: Publish sensor.baiamonte_dashboard_vpn with tunnel and kiosk connection details.

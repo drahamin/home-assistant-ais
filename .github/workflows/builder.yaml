@@ -38,6 +38,20 @@ jobs:
       app_description: Local Growatt SPF USB telemetry and guided diagnostics
     secrets: inherit
 
+  build-dashboard-vpn:
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      publish: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      app_path: ./baiamonte_dashboard_vpn
+      image_name: home-assistant-dashboard-vpn
+      app_name: Baiamonte Dashboard VPN
+      app_description: Always-on CloudConnexa tunnel and private dashboard proxy
+    secrets: inherit
+
   build-netatmo-bridge:
     permissions:
       contents: read
