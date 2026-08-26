@@ -1,0 +1,21 @@
+{
+  "BrowserSignin": 0,
+  "DeveloperToolsAvailability": 2,
+  "DefaultBrowserSettingEnabled": false,
+  "EditBookmarksEnabled": false,
+  "HomepageIsNewTabPage": false,
+  "HomepageLocation": "http://ha.dashboard.baiamonte:8123",
+  "IncognitoModeAvailability": 1,
+  "PasswordManagerEnabled": false,
+  "RestoreOnStartup": 4,
+  "RestoreOnStartupURLs": [
+    "http://ha.dashboard.baiamonte:8123"
+  ],
+  "URLAllowlist": [
+    "http://192.168.0.10:8123/*",
+    "http://ha.dashboard.baiamonte:8123/*"
+  ],
+  "URLBlocklist": [
+    "*"
+  ]
+}

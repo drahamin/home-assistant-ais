@@ -1,0 +1,31 @@
+[Unit]
+Description=Baiamonte Home Assistant TV kiosk
+Wants=network-online.target baiamonte-kiosk-network.service
+After=network-online.target baiamonte-kiosk-network.service systemd-user-sessions.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=rahamin
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Environment=HOME=/home/rahamin
+Environment=XDG_RUNTIME_DIR=/run/baiamonte-tv-kiosk
+RuntimeDirectory=baiamonte-tv-kiosk
+RuntimeDirectoryMode=0700
+ExecStartPre=/usr/local/lib/baiamonte-tv-kiosk/baiamonte-kiosk-wait
+ExecStart=/usr/bin/cage -s -- /usr/local/lib/baiamonte-tv-kiosk/baiamonte-kiosk-browser
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/home/rahamin/.config/chromium-baiamonte-kiosk
+
+[Install]
+WantedBy=graphical.target
