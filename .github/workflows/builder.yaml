@@ -37,3 +37,17 @@ jobs:
       app_name: Baiamonte Growatt USB
       app_description: Local Growatt SPF USB telemetry and guided diagnostics
     secrets: inherit
+
+  build-netatmo-bridge:
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      publish: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      app_path: ./baiamonte_netatmo_bridge
+      image_name: home-assistant-netatmo-bridge
+      app_name: Baiamonte Netatmo
+      app_description: Local-first Legrand and Netatmo control with cloud fallback
+    secrets: inherit
