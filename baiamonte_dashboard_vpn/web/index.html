@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Baiamonte Dashboard VPN</title>
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="mark">B</div>
+      <div><p class="eyebrow">TENUTA BAIAMONTE</p><h1>Dashboard VPN</h1></div>
+      <span id="state" class="state setup">SETUP</span>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">PRIVATE TV ACCESS</p>
+      <h2>One secure path to the estate dashboards.</h2>
+      <p>Home Assistant keeps an outbound, always-on CloudConnexa tunnel. No dashboard port needs to be exposed to the public internet.</p>
+      <div class="route"><span>TV kiosk</span><b>→</b><span>CloudConnexa</span><b>→</b><span>Home Assistant</span></div>
+    </section>
+
+    <section class="grid">
+      <article>
+        <p class="eyebrow">CONNECTION</p>
+        <h3 id="connection-title">Waiting for setup</h3>
+        <dl>
+          <div><dt>Connector profile</dt><dd id="profile">Not installed</dd></div>
+          <div><dt>Tunnel</dt><dd id="tunnel">Offline</dd></div>
+          <div><dt>Last message</dt><dd id="message">Waiting for a connector profile.</dd></div>
+        </dl>
+        <button id="reconnect" class="secondary">Reconnect</button>
+      </article>
+
+      <article>
+        <p class="eyebrow">TV KIOSK URL</p>
+        <h3>Open after VPN connects</h3>
+        <div class="url-row"><code id="dashboard-url">—</code><button id="copy" class="secondary">Copy</button></div>
+        <ol>
+          <li>Install OpenVPN Connect on the Android or Google TV kiosk.</li>
+          <li>Import the kiosk user profile from <b>baiamonte-dashboard.openvpn.com</b>.</li>
+          <li>Connect the VPN, then open the private dashboard URL above in kiosk mode.</li>
+        </ol>
+      </article>
+    </section>
+
+    <section id="setup-card" class="setup-card">
+      <p class="eyebrow">ONE-TIME HA CONNECTOR SETUP</p>
+      <h3>Enter the CloudConnexa Host Connector setup token</h3>
+      <p>In CloudConnexa, open the <b>ha-baiamonte</b> Linux Connector and select <b>Generate Token</b>. The token is used once to download and decrypt the official profile. It is never stored, returned by the API, or written to logs.</p>
+      <input id="token-input" type="password" autocomplete="off" placeholder="CloudConnexa setup token">
+      <div class="actions"><button id="install-token">Install & connect</button><span id="form-message"></span></div>
+      <details>
+        <summary>Advanced: install an existing .ovpn profile</summary>
+        <textarea id="profile-input" spellcheck="false" placeholder="client&#10;remote ...&#10;..."></textarea>
+        <button id="save" class="secondary">Save profile & connect</button>
+      </details>
+    </section>
+
+    <footer>Cloud ID <b>baiamonte-dashboard</b> · status entity <b>sensor.baiamonte_dashboard_vpn</b></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
