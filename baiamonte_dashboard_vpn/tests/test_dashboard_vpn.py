@@ -18,6 +18,12 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ProfileTests(unittest.TestCase):
+    def test_connected_event_is_authoritative_when_status_file_lags(self):
+        connector = MODULE.Connector()
+        connector.connected_at = "2026-08-26T00:00:00+00:00"
+        with patch.object(MODULE, "STATUS_PATH", Path("/missing/openvpn.status")):
+            self.assertTrue(connector.is_connected())
+
     def test_accepts_basic_connector_profile(self):
         profile = "client\nproto udp\nremote example.openvpn.com 1194\n" + ("# filler\n" * 20)
         self.assertEqual((True, ""), MODULE.valid_profile(profile))

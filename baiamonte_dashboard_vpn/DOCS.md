@@ -25,7 +25,7 @@ The setup token is held only in memory for the profile download. The decrypted p
 1. Create or invite a dedicated CloudConnexa user for the TV.
 2. Install OpenVPN Connect on the Android/Google TV device.
 3. Import the profile from `https://baiamonte-dashboard.openvpn.com` and connect.
-4. Open `http://dashboard.baiamonte:8123` in the kiosk browser. Change the app's **TV dashboard URL** setting if the CloudConnexa hostname differs.
+4. Open `http://ha.dashboard.baiamonte:8123` in the kiosk browser. Change the app's **TV dashboard URL** setting if the CloudConnexa hostname differs.
 5. Configure OpenVPN Connect and the kiosk browser to start after device reboot if supported by the TV platform.
 
 The TV profile is a user profile; the HA profile is an unattended Host Connector profile. They are intentionally different.
@@ -43,5 +43,5 @@ The TV profile is a user profile; the HA profile is an unattended Host Connector
 
 - **Profile rejected:** confirm you downloaded an OpenVPN Host Connector `.ovpn` profile, not a TV user profile or token.
 - **Connecting but not connected:** check the app log for an authentication or remote-endpoint error and deploy a fresh Connector profile if needed.
-- **TV VPN connects but the dashboard does not open:** verify the Host domain is `dashboard.baiamonte`, the TV group can access it, and the HA dashboard URL/port is correct.
+- **TV VPN connects but the dashboard does not open:** verify the Host domain is `dashboard.baiamonte`, the `ha.dashboard.baiamonte` Application exists, the TV group can access it, and the HA dashboard port is 8123.
 - **After HA reboot:** the app starts automatically and uses the stored profile. The status sensor should return to `connected` without manual action.

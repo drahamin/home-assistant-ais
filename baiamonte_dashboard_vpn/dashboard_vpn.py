@@ -48,7 +48,7 @@ def now_iso() -> str:
 
 def load_options() -> dict[str, Any]:
     options: dict[str, Any] = {
-        "dashboard_url": "http://dashboard.baiamonte:8123",
+        "dashboard_url": "http://ha.dashboard.baiamonte:8123",
         "reconnect_delay_seconds": 10,
         "publish_to_home_assistant": True,
     }
@@ -204,6 +204,8 @@ class Connector:
                 process.wait(timeout=2)
 
     def is_connected(self) -> bool:
+        if self.connected_at is not None:
+            return True
         try:
             text = STATUS_PATH.read_text(encoding="utf-8", errors="replace")
         except OSError:

@@ -1,5 +1,5 @@
 name: "Baiamonte Dashboard VPN"
-version: "0.1.0"
+version: "0.1.1"
 slug: "baiamonte_dashboard_vpn"
 description: "Always-on CloudConnexa access for Baiamonte Home Assistant TV dashboards"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -22,7 +22,7 @@ privileged:
 devices:
   - "/dev/net/tun:/dev/net/tun:rwm"
 options:
-  dashboard_url: "http://dashboard.baiamonte:8123"
+  dashboard_url: "http://ha.dashboard.baiamonte:8123"
   reconnect_delay_seconds: 10
   publish_to_home_assistant: true
 schema:
