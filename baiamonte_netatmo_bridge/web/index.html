@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#11100e">
+  <title>Baiamonte Netatmo</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="mark">B</div>
+      <div><small>TENUTA BAIAMONTE · HOME OPERATIONS</small><h1>Baiamonte Netatmo</h1></div>
+      <button id="refresh">Refresh</button>
+    </header>
+    <main>
+      <section class="hero">
+        <div><span class="eyebrow">LOCAL-FIRST CONTROL</span><h2>Your switches keep working when the cloud doesn’t.</h2><p>Commands use HomeKit or Matter on your network first, with the existing Netatmo integration available as an automatic backup.</p></div>
+        <div class="route-orbit"><i class="local">HOME</i><b>↔</b><i class="cloud">CLOUD</i></div>
+      </section>
+      <section class="summary">
+        <article><small>ACTIVE ROUTE</small><b id="health">Starting</b></article>
+        <article><small>LOCAL DEVICES</small><b id="local-count">—</b></article>
+        <article><small>CLOUD DEVICES</small><b id="cloud-count">—</b></article>
+        <article><small>DUAL-PATH</small><b id="paired-count">—</b></article>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><small>LIVE ROUTING TABLE</small><h2>Devices</h2></div><span id="updated">Waiting for Home Assistant</span></div>
+        <div id="notice" class="notice">Discovering HomeKit/Matter and Netatmo entities…</div>
+        <div id="devices" class="devices"></div>
+      </section>
+      <section class="grid">
+        <article class="panel"><small>HOW IT WORKS</small><h3>Local first, cloud ready</h3><ol><li>Pair the Netatmo gateway with Home Assistant’s HomeKit Device or Matter integration.</li><li>Keep the normal Netatmo integration for remote access and fallback.</li><li>This app matches both copies and selects the healthiest route.</li></ol></article>
+        <article class="panel"><small>IMPORTANT LIMIT</small><h3>Local support comes from the hardware</h3><p>If a model exposes no HomeKit, Matter, or LAN protocol, software cannot make it local. The device remains visible here as cloud-only instead of being misrepresented.</p></article>
+      </section>
+      <section class="panel events-panel"><div class="panel-head"><div><small>DIAGNOSTICS</small><h2>Recent activity</h2></div></div><div id="events" class="events"></div></section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

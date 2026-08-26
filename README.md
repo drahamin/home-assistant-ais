@@ -1,5 +1,11 @@
 # Baiamonte Home Assistant Apps
 
+## Baiamonte Netatmo
+
+**Baiamonte Netatmo** keeps the existing Netatmo cloud connection but prefers direct HomeKit or Matter entities on the local network. It automatically pairs matching entities, shows the active route for every device, and can retry commands through the cloud when the local route is unavailable.
+
+The physical gateway must expose HomeKit, Matter, or another supported LAN protocol for true offline control; cloud-only models remain clearly labeled. See [baiamonte_netatmo_bridge/DOCS.md](baiamonte_netatmo_bridge/DOCS.md) for pairing, migration, and manual mapping.
+
 ## Baiamonte Growatt USB
 
 **Baiamonte Growatt USB** replaces the manually installed direct USB reader for the Growatt SPF 5000 ES. It provides local inverter telemetry, Home Assistant entities, automatic USB and protocol discovery, a guarded commissioning editor, a branded ingress dashboard, and guided troubleshooting. Monitoring remains read-only by default.

@@ -1,0 +1,59 @@
+name: "Baiamonte Netatmo"
+version: "0.1.0"
+slug: "baiamonte_netatmo_bridge"
+description: "Local-first control for Legrand/Netatmo devices with cloud fallback"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch:
+  - "aarch64"
+  - "amd64"
+image: "ghcr.io/drahamin/home-assistant-netatmo-bridge"
+startup: "application"
+boot: "auto"
+init: false
+homeassistant_api: true
+ingress: true
+ingress_port: 8096
+panel_icon: "mdi:home-switch"
+panel_title: "Netatmo"
+panel_admin: true
+stage: "experimental"
+watchdog: "http://[HOST]:[PORT:8096]/api/health"
+options:
+  prefer_local: true
+  cloud_fallback: true
+  auto_pair: true
+  poll_interval_seconds: 10
+  local_platforms: "homekit_controller,matter"
+  cloud_platforms: "netatmo"
+  device_pairs: []
+schema:
+  prefer_local: "bool"
+  cloud_fallback: "bool"
+  auto_pair: "bool"
+  poll_interval_seconds: "int"
+  local_platforms: "str"
+  cloud_platforms: "str"
+  device_pairs:
+    - "str"
+configuration:
+  prefer_local:
+    name: Prefer local control
+    description: Use the local HomeKit or Matter entity whenever it is available.
+  cloud_fallback:
+    name: Allow Netatmo cloud fallback
+    description: If local control is unavailable or fails, retry the command through the Netatmo entity.
+  auto_pair:
+    name: Automatically pair matching names
+    description: Match local and cloud entities that have the same friendly name and domain.
+  poll_interval_seconds:
+    name: Status refresh interval
+    description: Seconds between Home Assistant state and route checks. Five seconds is the minimum.
+  local_platforms:
+    name: Local integration platforms
+    description: Comma-separated Home Assistant entity platforms treated as local. Defaults to homekit_controller and matter.
+  cloud_platforms:
+    name: Cloud integration platforms
+    description: Comma-separated Home Assistant entity platforms treated as cloud. Defaults to netatmo.
+  device_pairs:
+    name: Manual entity pairs
+    description: "Optional entries in the form Name|local_entity_id|cloud_entity_id. Either entity may be left blank."
