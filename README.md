@@ -1,5 +1,11 @@
 # Baiamonte Home Assistant Apps
 
+## Baiamonte Tuya
+
+**Baiamonte Tuya** provides one local-first operating view for Tuya-family devices. It automatically discovers entities from Tuya Local or LocalTuya, supports explicitly enrolled Matter and ZHA entities, pairs them with optional official Tuya cloud copies, and sends restricted commands through the local route first.
+
+The app runs through authenticated Home Assistant ingress and uses the existing CloudConnexa route for remote access. Tuya keys remain in the device integration and are never sent to its browser dashboard. See [baiamonte_tuya/DOCS.md](baiamonte_tuya/DOCS.md) for the pilot, device migration, and offline acceptance test.
+
 ## Rahamin Pi TV Kiosk
 
 The [Rahamin Pi kiosk installer](rahamin_pi_kiosk) uses the direct dashboard on Baiamonte Wi-Fi or Ethernet with OpenVPN stopped. Away from the estate it starts a dedicated CloudConnexa client and launches Chromium only after the private Baiamonte Home Assistant dashboard is available. CloudConnexa and a managed browser policy restrict the kiosk to the Baiamonte dashboard.

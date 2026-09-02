@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#15130f">
+  <title>Baiamonte Tuya</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="mark" aria-hidden="true">B</div>
+      <div><small>TENUTA BAIAMONTE · ESTATE OPERATIONS</small><h1>Baiamonte Tuya</h1></div>
+      <button id="refresh" type="button">Refresh</button>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <span class="eyebrow">LOCAL-FIRST ESTATE CONTROL</span>
+          <h2>On-site control, even when the internet is gone.</h2>
+          <p>Matter, Zigbee, and Tuya LAN stay inside Baiamonte. The official Tuya cloud is visible only as an optional fallback.</p>
+        </div>
+        <div class="path" aria-hidden="true"><i>DEVICE</i><b>→</b><i>HA</i><b>→</b><i>YOU</i></div>
+      </section>
+
+      <section class="summary" aria-label="Route summary">
+        <article><small>ACTIVE MODE</small><b id="health">Starting</b></article>
+        <article><small>LOCAL READY</small><b id="local-count">—</b></article>
+        <article><small>CLOUD READY</small><b id="cloud-count">—</b></article>
+        <article><small>OFFLINE</small><b id="offline-count">—</b></article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div><small>CONTROL ROUTES</small><h2>Devices</h2></div>
+          <div class="filters" role="group" aria-label="Filter devices">
+            <button class="filter active" data-filter="all" type="button">All</button>
+            <button class="filter" data-filter="local" type="button">Local</button>
+            <button class="filter" data-filter="cloud" type="button">Cloud</button>
+            <button class="filter" data-filter="offline" type="button">Offline</button>
+          </div>
+        </div>
+        <div id="notice" class="notice">Waiting for Home Assistant…</div>
+        <div id="devices" class="devices" aria-live="polite"></div>
+      </section>
+
+      <section class="grid">
+        <article class="panel"><small>OFFLINE READINESS</small><h3 id="readiness-title">Checking routes</h3><p id="readiness-copy">The pilot is ready for a WAN-disconnect test when every important device shows a local route.</p></article>
+        <article class="panel"><small>SECURITY BOUNDARY</small><h3>Keys stay in Home Assistant</h3><p>This view receives entity states and sends allowlisted commands. It never receives Tuya local keys, cloud credentials, or raw device diagnostics.</p></article>
+      </section>
+
+      <section class="panel events-panel">
+        <div class="panel-head"><div><small>DIAGNOSTICS</small><h2>Recent activity</h2></div><span id="updated">Not refreshed</span></div>
+        <div id="events" class="events"></div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
