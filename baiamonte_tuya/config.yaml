@@ -1,0 +1,70 @@
+name: "Baiamonte Tuya"
+version: "0.1.0"
+slug: "baiamonte_tuya"
+description: "Local-first Tuya operations with optional cloud fallback"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch:
+  - "aarch64"
+  - "amd64"
+image: "ghcr.io/drahamin/home-assistant-tuya"
+startup: "application"
+boot: "auto"
+init: false
+homeassistant_api: true
+ingress: true
+ingress_port: 8095
+panel_icon: "mdi:home-lightning-bolt-outline"
+panel_title: "Tuya"
+panel_admin: true
+stage: "experimental"
+watchdog: "http://[HOST]:[PORT:8095]/api/health"
+options:
+  prefer_local: true
+  cloud_fallback: true
+  controls_enabled: true
+  auto_pair: true
+  poll_interval_seconds: 10
+  discover_local_platforms: "tuya_local,localtuya"
+  cloud_platforms: "tuya"
+  managed_entities: []
+  device_pairs: []
+schema:
+  prefer_local: "bool"
+  cloud_fallback: "bool"
+  controls_enabled: "bool"
+  auto_pair: "bool"
+  poll_interval_seconds: "int"
+  discover_local_platforms: "str"
+  cloud_platforms: "str"
+  managed_entities:
+    - "str"
+  device_pairs:
+    - "str"
+configuration:
+  prefer_local:
+    name: Prefer local control
+    description: Send commands to the local Home Assistant entity whenever it is available.
+  cloud_fallback:
+    name: Allow cloud fallback
+    description: Retry through the paired official Tuya entity when the local route is unavailable or fails.
+  controls_enabled:
+    name: Enable dashboard controls
+    description: Allow the authenticated ingress dashboard to send the restricted set of supported commands.
+  auto_pair:
+    name: Automatically pair Tuya entities
+    description: Pair local and official Tuya entities with the same normalized name and Home Assistant domain.
+  poll_interval_seconds:
+    name: Status refresh interval
+    description: Seconds between Home Assistant state and route checks. Five seconds is the minimum.
+  discover_local_platforms:
+    name: Local Tuya integration platforms
+    description: Platforms discovered automatically. Defaults to tuya_local and localtuya; do not add matter or zha globally.
+  cloud_platforms:
+    name: Cloud integration platforms
+    description: Platforms treated as cloud routes. Defaults to the official tuya integration.
+  managed_entities:
+    name: Additional local entities
+    description: Explicit Matter, ZHA, or other local entity IDs to include without importing their entire integration.
+  device_pairs:
+    name: Manual route pairs
+    description: "Optional entries in the form Name|local_entity_id|cloud_entity_id. Either entity may be blank."
