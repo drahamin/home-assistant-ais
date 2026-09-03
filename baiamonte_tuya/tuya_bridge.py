@@ -116,6 +116,15 @@ def match_key(state: dict[str, Any]) -> tuple[str, str]:
     name = friendly_name(state).casefold()
     name = re.sub(r"\b(tuya|smart\s*life|matter|zigbee|zha|local|cloud|lan|wi-?fi)\b", " ", name)
     name = re.sub(r"[^a-z0-9]+", " ", name).strip()
+    # Tuya Local and the official Tuya integration often expose the same DP
+    # under slightly different friendly names.  Normalize those known suffixes
+    # so a failed local route can still use its live cloud counterpart instead
+    # of being presented as a separate, offline device.
+    if domain == "switch":
+        name = re.sub(r"\s+switch$", "", name)
+    elif domain == "sensor":
+        name = re.sub(r"\s+phase\s+a\s+(current|power|voltage)$", r" \1", name)
+        name = re.sub(r"\s+total\s+energy$", " energy", name)
     return domain, name
 
 

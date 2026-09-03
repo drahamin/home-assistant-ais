@@ -68,6 +68,30 @@ class RouteTests(unittest.TestCase):
         self.assertEqual("local", routes[0].active_path)
         self.assertEqual("switch.courtyard", routes[0].cloud_entity)
 
+    def test_pairs_tuya_local_and_cloud_feature_aliases(self):
+        states = [
+            state("switch.bluetti_main_breaker", "unavailable", "Bluetti Main Breaker"),
+            state("switch.bluetti_main_breaker_switch", "on", "Bluetti Main Breaker Switch"),
+            state("sensor.bluetti_main_breaker_current", "unavailable", "Bluetti Main Breaker Current"),
+            state("sensor.bluetti_main_breaker_phase_a_current", "2.1", "Bluetti Main Breaker Phase A current"),
+            state("sensor.bluetti_main_breaker_energy", "unavailable", "Bluetti Main Breaker Energy"),
+            state("sensor.bluetti_main_breaker_total_energy", "1816", "Bluetti Main Breaker Total energy"),
+        ]
+        registry_rows = [
+            registry("switch.bluetti_main_breaker", "tuya_local"),
+            registry("switch.bluetti_main_breaker_switch", "tuya"),
+            registry("sensor.bluetti_main_breaker_current", "tuya_local"),
+            registry("sensor.bluetti_main_breaker_phase_a_current", "tuya"),
+            registry("sensor.bluetti_main_breaker_energy", "tuya_local"),
+            registry("sensor.bluetti_main_breaker_total_energy", "tuya"),
+        ]
+
+        routes = self.bridge.build_routes(states, registry_rows)
+
+        self.assertEqual(3, len(routes))
+        self.assertTrue(all(route.active_path == "cloud" for route in routes))
+        self.assertTrue(all(route.local_entity and route.cloud_entity for route in routes))
+
     def test_does_not_auto_import_all_matter_or_zha_entities(self):
         states = [
             state("light.unrelated_matter", name="Unrelated Matter Light"),

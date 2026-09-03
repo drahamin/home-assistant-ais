@@ -1,5 +1,5 @@
 name: "Baiamonte Tuya"
-version: "0.1.1"
+version: "0.1.2"
 slug: "baiamonte_tuya"
 description: "Local-first Tuya operations with optional cloud fallback"
 url: "https://github.com/drahamin/home-assistant-ais"
