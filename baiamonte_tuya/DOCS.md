@@ -36,6 +36,8 @@ For remote use, connect through the existing Baiamonte CloudConnexa route and op
 
 Automatic local discovery intentionally defaults to the `tuya_local` and `localtuya` entity platforms. Matter and ZHA can contain unrelated estate equipment, so those entities require explicit enrollment in **Additional local entities** or a manual pair.
 
+The **Excluded device name terms** option keeps devices from shared Tuya accounts out of the Baiamonte view. Matching is case-insensitive. Miami and Office Blinds are excluded by default; an explicit manual pair can override the exclusion when intentional.
+
 Automatic pairing compares entity domain and a normalized friendly name. Use manual pairs for duplicate names, multi-channel devices, or any critical load. Manual pairs take priority.
 
 ## Controls and safety

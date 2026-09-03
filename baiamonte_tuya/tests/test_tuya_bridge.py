@@ -49,6 +49,7 @@ class RouteTests(unittest.TestCase):
             "auto_pair": True,
             "discover_local_platforms": "tuya_local,localtuya",
             "cloud_platforms": "tuya",
+            "excluded_name_terms": [],
             "managed_entities": [],
             "device_pairs": [],
         })
@@ -77,6 +78,35 @@ class RouteTests(unittest.TestCase):
             registry("sensor.unrelated_zigbee", "zha"),
         ]
         self.assertEqual([], self.bridge.build_routes(states, registry_rows))
+
+    def test_excludes_devices_outside_the_estate_by_name(self):
+        self.bridge.options["excluded_name_terms"] = ["Miami", "Office Blinds"]
+        states = [
+            state("binary_sensor.miami_gateway", name="Miami Multimode gateway Problem"),
+            state("cover.office_blinds_left", name="Office Blinds Left"),
+            state("switch.baiamonte_lights", name="Baiamonte Lights"),
+        ]
+        registry_rows = [
+            registry("binary_sensor.miami_gateway", "tuya"),
+            registry("cover.office_blinds_left", "tuya"),
+            registry("switch.baiamonte_lights", "tuya"),
+        ]
+        routes = self.bridge.build_routes(states, registry_rows)
+        self.assertEqual(["Baiamonte Lights"], [route.name for route in routes])
+
+    def test_manual_pair_can_intentionally_override_name_exclusion(self):
+        self.bridge.options["excluded_name_terms"] = ["Miami"]
+        self.bridge.options["device_pairs"] = ["Approved remote|switch.miami_local|switch.miami_cloud"]
+        states = [
+            state("switch.miami_local", name="Miami Pump Local"),
+            state("switch.miami_cloud", name="Miami Pump Cloud"),
+        ]
+        registry_rows = [
+            registry("switch.miami_local", "tuya_local"),
+            registry("switch.miami_cloud", "tuya"),
+        ]
+        routes = self.bridge.build_routes(states, registry_rows)
+        self.assertEqual(["Approved remote"], [route.name for route in routes])
 
     def test_explicitly_enrolls_a_matter_entity_as_local(self):
         self.bridge.options["managed_entities"] = ["light.wine_room"]

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Add configurable name-based estate exclusions.
+- Exclude Miami and Office Blinds entities from Baiamonte automatic discovery by default.
+
 ## 0.1.0
 
 - Initial local-first routing for Tuya Local, LocalTuya, explicitly enrolled Matter/ZHA entities, and official Tuya cloud entities.

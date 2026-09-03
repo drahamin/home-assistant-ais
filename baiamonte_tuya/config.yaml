@@ -1,5 +1,5 @@
 name: "Baiamonte Tuya"
-version: "0.1.0"
+version: "0.1.1"
 slug: "baiamonte_tuya"
 description: "Local-first Tuya operations with optional cloud fallback"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -26,6 +26,9 @@ options:
   poll_interval_seconds: 10
   discover_local_platforms: "tuya_local,localtuya"
   cloud_platforms: "tuya"
+  excluded_name_terms:
+    - "Miami"
+    - "Office Blinds"
   managed_entities: []
   device_pairs: []
 schema:
@@ -36,6 +39,8 @@ schema:
   poll_interval_seconds: "int"
   discover_local_platforms: "str"
   cloud_platforms: "str"
+  excluded_name_terms:
+    - "str"
   managed_entities:
     - "str"
   device_pairs:
@@ -62,6 +67,9 @@ configuration:
   cloud_platforms:
     name: Cloud integration platforms
     description: Platforms treated as cloud routes. Defaults to the official tuya integration.
+  excluded_name_terms:
+    name: Excluded device name terms
+    description: Case-insensitive name fragments for devices outside Baiamonte, such as equipment at another property.
   managed_entities:
     name: Additional local entities
     description: Explicit Matter, ZHA, or other local entity IDs to include without importing their entire integration.
