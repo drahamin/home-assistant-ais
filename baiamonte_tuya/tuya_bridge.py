@@ -75,6 +75,7 @@ def load_options() -> dict[str, Any]:
         "poll_interval_seconds": 10,
         "discover_local_platforms": "tuya_local,localtuya",
         "cloud_platforms": "tuya",
+        "excluded_name_terms": ["Miami", "Office Blinds"],
         "managed_entities": [],
         "device_pairs": [],
     }
@@ -85,7 +86,7 @@ def load_options() -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         pass
     defaults["poll_interval_seconds"] = max(5, min(300, int(defaults["poll_interval_seconds"])))
-    for key in ("managed_entities", "device_pairs"):
+    for key in ("excluded_name_terms", "managed_entities", "device_pairs"):
         if not isinstance(defaults.get(key), list):
             defaults[key] = []
     return defaults
@@ -101,6 +102,12 @@ def is_available(state: dict[str, Any] | None) -> bool:
 
 def friendly_name(state: dict[str, Any]) -> str:
     return str(state.get("attributes", {}).get("friendly_name") or state.get("entity_id", ""))
+
+
+def is_excluded(state: dict[str, Any], terms: Any) -> bool:
+    """Return true when an automatically discovered entity is outside this estate."""
+    name = friendly_name(state).casefold()
+    return any(str(term).strip().casefold() in name for term in terms if str(term).strip())
 
 
 def match_key(state: dict[str, Any]) -> tuple[str, str]:
@@ -305,6 +312,8 @@ class Bridge:
         clouds_by_key: dict[tuple[str, str], list[str]] = {}
         for entity_id, state in states.items():
             if entity_id in used:
+                continue
+            if is_excluded(state, self.options.get("excluded_name_terms", [])):
                 continue
             platform = platforms.get(entity_id, "")
             if platform in local_platforms:
