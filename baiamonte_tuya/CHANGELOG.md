@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Pair equivalent Tuya Local and official Tuya breaker features whose names differ by `Switch`, `Phase A`, or `Total` suffixes.
+- Distinguish an absent counterpart from a configured endpoint that is genuinely unavailable.
+
 ## 0.1.1
 
 - Add configurable name-based estate exclusions.

@@ -37,7 +37,8 @@ function controlButtons(route, enabled) {
 }
 
 function endpoint(label, entity, platform, online) {
-  return `<div class="endpoint ${online ? "" : "off"}"><small>${esc(label)} · ${online ? "AVAILABLE" : "UNAVAILABLE"}</small><code title="${esc(entity || "Not configured")}">${esc(entity || "Not configured")}</code><span>${esc(platform || "—")}</span></div>`;
+  const status = !entity ? "NOT CONFIGURED" : online ? "AVAILABLE" : "UNAVAILABLE";
+  return `<div class="endpoint ${online ? "" : "off"}"><small>${esc(label)} · ${status}</small><code title="${esc(entity || "No counterpart")}">${esc(entity || "No counterpart")}</code><span>${esc(platform || "—")}</span></div>`;
 }
 
 function renderRoutes() {
