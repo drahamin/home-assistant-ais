@@ -79,6 +79,21 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(result["path"], "cloud")
         self.assertEqual(len(self.client.calls), 2)
 
+    def test_cross_domain_pair_uses_each_entity_domain(self):
+        self.bridge.status["routes"] = [{
+            "name": "Kitchen Overhead Light", "domain": "light",
+            "local_entity": "light.kitchen_overhead_local",
+            "cloud_entity": "switch.kitchen_overhead_cloud",
+            "local_available": True, "cloud_available": True,
+        }]
+        self.client.fail.add("light.kitchen_overhead_local")
+        result = self.bridge.control("Kitchen Overhead Light", "turn_on", {})
+        self.assertEqual(result["path"], "cloud")
+        self.assertEqual(self.client.calls, [
+            ("light", "turn_on", "light.kitchen_overhead_local", {}),
+            ("switch", "turn_on", "switch.kitchen_overhead_cloud", {}),
+        ])
+
     def test_unmanaged_entity_is_rejected(self):
         with self.assertRaises(KeyError):
             self.bridge.control("switch.not_managed", "turn_on", {})
