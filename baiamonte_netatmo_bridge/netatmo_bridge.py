@@ -276,8 +276,7 @@ class Bridge:
         route = next((item for item in routes if target in {item.get("name"), item.get("local_entity"), item.get("cloud_entity")}), None)
         if not route:
             raise KeyError("target is not a managed Netatmo route")
-        domain = str(route.get("domain") or "")
-        if not re.fullmatch(r"[a-z_]+", service) or not domain:
+        if not re.fullmatch(r"[a-z_]+", service):
             raise ValueError("invalid Home Assistant service")
 
         prefer_local = bool(self.options.get("prefer_local", True))
@@ -298,6 +297,9 @@ class Bridge:
         errors = []
         for path, entity_id in candidates:
             try:
+                domain = str(entity_id).partition(".")[0]
+                if not domain:
+                    raise ValueError("managed route has an invalid entity id")
                 self.client.call_service(domain, service, entity_id, data)
                 self.event(f"{route['name']}: {service} sent through {path}")
                 WAKE.set()
