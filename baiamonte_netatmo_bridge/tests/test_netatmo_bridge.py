@@ -55,6 +55,29 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(result["path"], "cloud")
         self.assertEqual(self.client.calls[0][2], "switch.cistern")
 
+    def test_pairs_homekit_light_to_netatmo_switch_by_device_serial(self):
+        states = [
+            {"entity_id": "light.switch_1_lightbulb", "state": "on", "attributes": {"friendly_name": "Switch 1 Lightbulb"}},
+            {"entity_id": "switch.kitchen_overhead", "state": "unavailable", "attributes": {"friendly_name": "Kitchen Overhead Light"}},
+            {"entity_id": "button.switch_1_identify", "state": "unknown", "attributes": {"friendly_name": "Switch 1 Identify"}},
+        ]
+        registry = [
+            {"entity_id": "light.switch_1_lightbulb", "platform": "homekit_controller", "device_id": "local-device"},
+            {"entity_id": "button.switch_1_identify", "platform": "homekit_controller", "device_id": "local-device"},
+            {"entity_id": "switch.kitchen_overhead", "platform": "netatmo", "device_id": "cloud-device"},
+        ]
+        devices = [
+            {"id": "local-device", "serial_number": "00:04:74:00:01:58:73:38", "identifiers": []},
+            {"id": "cloud-device", "identifiers": [["netatmo", "00:04:74:00:01:58:73:38"]]},
+        ]
+        routes = self.bridge.build_routes(states, registry, devices)
+        self.assertEqual(len(routes), 1)
+        self.assertEqual(routes[0].name, "Kitchen Overhead Light")
+        self.assertEqual(routes[0].local_entity, "light.switch_1_lightbulb")
+        self.assertEqual(routes[0].cloud_entity, "switch.kitchen_overhead")
+        self.assertTrue(routes[0].local_available)
+        self.assertFalse(routes[0].cloud_available)
+
     def test_cloud_route_is_active_when_cloud_is_preferred(self):
         self.bridge.options["prefer_local"] = False
         states = [
