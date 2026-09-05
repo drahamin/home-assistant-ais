@@ -1,5 +1,5 @@
 name: "Baiamonte Netatmo"
-version: "0.1.1"
+version: "0.1.2"
 slug: "baiamonte_netatmo_bridge"
 description: "Local-first control for Legrand/Netatmo devices with cloud fallback"
 url: "https://github.com/drahamin/home-assistant-ais"
