@@ -32,6 +32,7 @@ STARTED_AT = time.time()
 RUNNING = True
 WAKE = threading.Event()
 LOCK = threading.RLock()
+CONTROL_DOMAINS = {"switch", "light", "cover", "fan", "lock", "climate"}
 
 
 def now_iso() -> str:
@@ -111,7 +112,7 @@ class HomeAssistantClient:
         result = self.request("states")
         return result if isinstance(result, list) else []
 
-    def registry(self) -> list[dict[str, Any]]:
+    def registry(self, kind: str = "entity") -> list[dict[str, Any]]:
         if websocket is None:
             raise RuntimeError("websocket-client is not installed")
         ws = websocket.create_connection(self.ws_url, timeout=8)
@@ -123,7 +124,9 @@ class HomeAssistantClient:
             auth = json.loads(ws.recv())
             if auth.get("type") != "auth_ok":
                 raise PermissionError("Home Assistant rejected the app token")
-            ws.send(json.dumps({"id": 1, "type": "config/entity_registry/list"}))
+            if kind not in {"entity", "device"}:
+                raise ValueError("unsupported Home Assistant registry kind")
+            ws.send(json.dumps({"id": 1, "type": f"config/{kind}_registry/list"}))
             response = json.loads(ws.recv())
             if not response.get("success"):
                 raise RuntimeError("Home Assistant entity registry request failed")
@@ -192,7 +195,30 @@ class Bridge:
             state=str(chosen.get("state", "unavailable")), domain=chosen_id.partition(".")[0],
         )
 
-    def build_routes(self, all_states: list[dict[str, Any]], registry: list[dict[str, Any]]) -> list[Route]:
+    @staticmethod
+    def _device_keys(
+        entity_id: str,
+        entities: dict[str, dict[str, Any]],
+        devices: dict[str, dict[str, Any]],
+    ) -> set[str]:
+        device = devices.get(str(entities.get(entity_id, {}).get("device_id") or ""), {})
+        keys = set()
+        serial = str(device.get("serial_number") or "").strip().casefold()
+        if serial:
+            keys.add(serial)
+        for identifier in device.get("identifiers") or []:
+            if isinstance(identifier, (list, tuple)) and len(identifier) >= 2:
+                value = str(identifier[1]).strip().casefold()
+                if value:
+                    keys.add(value)
+        return keys
+
+    def build_routes(
+        self,
+        all_states: list[dict[str, Any]],
+        registry: list[dict[str, Any]],
+        device_registry: list[dict[str, Any]] | None = None,
+    ) -> list[Route]:
         states = {str(item.get("entity_id")): item for item in all_states if item.get("entity_id")}
         routes = self._manual_routes(states)
         used = {entity for route in routes for entity in (route.local_entity, route.cloud_entity) if entity}
@@ -201,11 +227,15 @@ class Bridge:
 
         local_platforms = platform_set(self.options.get("local_platforms"))
         cloud_platforms = platform_set(self.options.get("cloud_platforms"))
-        platforms = {str(item.get("entity_id")): str(item.get("platform", "")).lower() for item in registry}
+        entity_records = {str(item.get("entity_id")): item for item in registry}
+        device_records = {str(item.get("id")): item for item in (device_registry or [])}
+        platforms = {entity_id: str(item.get("platform", "")).lower() for entity_id, item in entity_records.items()}
         locals_by_key: dict[tuple[str, str], list[str]] = {}
         clouds_by_key: dict[tuple[str, str], list[str]] = {}
         for entity_id, state in states.items():
             if entity_id in used:
+                continue
+            if entity_id.partition(".")[0] not in CONTROL_DOMAINS:
                 continue
             platform = platforms.get(entity_id, "")
             if platform in local_platforms:
@@ -213,9 +243,30 @@ class Bridge:
             elif platform in cloud_platforms:
                 clouds_by_key.setdefault(match_key(state), []).append(entity_id)
 
+        # HomeKit and Netatmo use different names and sometimes different entity
+        # domains for the same Legrand accessory. Their device records retain the
+        # same hardware serial, which is the safest automatic pairing key.
+        local_ids = [entity for values in locals_by_key.values() for entity in values]
+        cloud_ids = [entity for values in clouds_by_key.values() for entity in values]
+        for local_id in local_ids:
+            if local_id in used:
+                continue
+            local_keys = self._device_keys(local_id, entity_records, device_records)
+            for cloud_id in cloud_ids:
+                if cloud_id in used:
+                    continue
+                if local_keys & self._device_keys(cloud_id, entity_records, device_records):
+                    routes.append(self._route(
+                        friendly_name(states.get(cloud_id, {})), local_id, cloud_id, states,
+                        prefer_local=bool(self.options.get("prefer_local", True)),
+                    ))
+                    used.update({local_id, cloud_id})
+                    break
+
         keys = sorted(set(locals_by_key) | set(clouds_by_key))
         for key in keys:
-            local_ids, cloud_ids = locals_by_key.get(key, []), clouds_by_key.get(key, [])
+            local_ids = [entity for entity in locals_by_key.get(key, []) if entity not in used]
+            cloud_ids = [entity for entity in clouds_by_key.get(key, []) if entity not in used]
             count = max(len(local_ids), len(cloud_ids))
             for index in range(count):
                 local_id = local_ids[index] if index < len(local_ids) else None
@@ -232,7 +283,8 @@ class Bridge:
             self.options = load_options()
             all_states = self.client.states()
             registry = self.client.registry()
-            routes = self.build_routes(all_states, registry)
+            device_registry = self.client.registry("device")
+            routes = self.build_routes(all_states, registry, device_registry)
             local_count = sum(route.local_available for route in routes)
             cloud_count = sum(route.cloud_available for route in routes)
             dual_count = sum(bool(route.local_entity and route.cloud_entity) for route in routes)
