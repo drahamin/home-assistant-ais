@@ -4,9 +4,11 @@ The app passively monitors the 500 kbit/s CAN link between the Growatt inverter 
 
 ## Safety
 
-The CAN adapter is opened in firmware listen-only mode. The app does not expose any transmit endpoint or control.
+The default `listen_only` mode opens the adapter in firmware listen-only mode for tapping an active Growatt-to-battery bus. When the Growatt communication interface is unavailable, `standalone_ack` lets the CAN controller acknowledge battery frames while the application remains receive-only. The app exposes no transmit endpoint or battery control.
 
 Keep the CANable 120Ω termination switch off when tapping the existing, already terminated inverter-to-battery bus.
+
+For a direct battery-to-CANable connection with no inverter on the bus, select `standalone_ack` and use the CANable as the terminated endpoint. This mode emits only protocol-level CAN acknowledgements; it does not send data frames or commands.
 
 ## Automatic updates
 

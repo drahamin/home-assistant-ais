@@ -35,6 +35,7 @@ STATUS: dict[str, object] = {
     "bus_active": False,
     "adapter": "searching",
     "bitrate": 500000,
+    "bus_mode": "listen_only",
     "frames_received": 0,
     "last_id": None,
     "last_frame_at": None,
@@ -192,8 +193,12 @@ def serial_candidates(configured: str) -> list[str]:
     return list(dict.fromkeys(stable + generic))
 
 
-def open_gs_usb(bitrate: int):
-    """Open candleLight in firmware-enforced listen-only mode."""
+def uses_listen_only(options: dict) -> bool:
+    return str(options.get("bus_mode", "listen_only")) != "standalone_ack"
+
+
+def open_gs_usb(options: dict, bitrate: int):
+    """Open candleLight passively or in acknowledgement-only receive mode."""
     import usb.core
     from gs_usb.constants import GS_CAN_MODE_HW_TIMESTAMP, GS_CAN_MODE_LISTEN_ONLY
     from gs_usb.gs_usb import GsUsb
@@ -204,13 +209,16 @@ def open_gs_usb(bitrate: int):
     if not devices:
         raise RuntimeError("no gs_usb/candleLight CAN adapter found")
     device = GsUsb(devices[0])
-    if not (device.device_capability.feature & GS_CAN_MODE_LISTEN_ONLY):
+    listen_only = uses_listen_only(options)
+    if listen_only and not (device.device_capability.feature & GS_CAN_MODE_LISTEN_ONLY):
         raise RuntimeError("CAN adapter firmware does not advertise listen-only support")
     if not device.set_bitrate(bitrate):
         raise RuntimeError(f"adapter cannot configure {bitrate} bit/s")
-    device.start(flags=GS_CAN_MODE_LISTEN_ONLY | GS_CAN_MODE_HW_TIMESTAMP)
-    log(f"Opened raw USB CAN adapter at {bitrate} bit/s in hardware listen-only mode")
-    return RawGsUsbReceiver(device), "gs_usb listen-only"
+    flags = GS_CAN_MODE_HW_TIMESTAMP | (GS_CAN_MODE_LISTEN_ONLY if listen_only else 0)
+    device.start(flags=flags)
+    mode_name = "listen-only" if listen_only else "standalone ACK-only receive"
+    log(f"Opened raw USB CAN adapter at {bitrate} bit/s in {mode_name} mode")
+    return RawGsUsbReceiver(device), f"gs_usb {mode_name}"
 
 
 class RawGsUsbReceiver:
@@ -242,6 +250,7 @@ def open_slcan(options: dict, bitrate: int):
     if not candidates:
         raise RuntimeError("no serial CANable found (auto mode excludes the Growatt ttyUSB0)")
     failures = []
+    listen_only = uses_listen_only(options)
     for path in candidates:
         try:
             bus = can.Bus(
@@ -249,10 +258,11 @@ def open_slcan(options: dict, bitrate: int):
                 channel=path,
                 tty_baudrate=int(options.get("serial_baudrate", 115200)),
                 bitrate=bitrate,
-                listen_only=True,
+                listen_only=listen_only,
             )
-            log(f"Opened {path} at {bitrate} bit/s using the slcan listen-only command")
-            return bus, f"slcan listen-only ({path})"
+            mode_name = "listen-only" if listen_only else "standalone ACK-only receive"
+            log(f"Opened {path} at {bitrate} bit/s in {mode_name} mode")
+            return bus, f"slcan {mode_name} ({path})"
         except Exception as exc:  # continue through explicitly bounded candidates
             failures.append(f"{path}: {exc}")
     raise RuntimeError("; ".join(failures))
@@ -264,7 +274,7 @@ def open_adapter(options: dict):
     errors = []
     if mode in {"auto", "gs_usb"}:
         try:
-            return open_gs_usb(bitrate)
+            return open_gs_usb(options, bitrate)
         except Exception as exc:
             errors.append(f"gs_usb: {exc}")
             if mode == "gs_usb":
@@ -290,6 +300,7 @@ def main() -> int:
     stale_after = max(5, int(options.get("stale_after_seconds", 30)))
     interval = max(1, int(options.get("publish_interval_seconds", 2)))
     bitrate = int(options.get("bitrate", 500000))
+    bus_mode = str(options.get("bus_mode", "listen_only"))
     dashboard = start_dashboard(int(options.get("dashboard_port", 8098)))
     PUBLISHER = StatePublisher(
         API_BASE,
@@ -298,8 +309,11 @@ def main() -> int:
         error_callback=lambda error: update_status(last_error=error),
     )
     PUBLISHER.start()
-    update_status(service="running", bitrate=bitrate)
-    log("Starting Baiamonte CAN Monitor; transmit code is disabled")
+    update_status(service="running", bitrate=bitrate, bus_mode=bus_mode)
+    if bus_mode == "standalone_ack":
+        log("Starting standalone battery receive mode; CAN acknowledgements enabled, data/control transmission disabled")
+    else:
+        log("Starting passive tap mode; transmit code is disabled")
     publish_connection(False, "searching", 0, None)
 
     receiver = None

@@ -48,8 +48,9 @@ function healthCopy(health){
     adapter_missing:['CAN adapter unavailable','Adapter missing','error']
   }[health]||['Checking monitor','Starting','warning'];
 }
-function checksFor(health){
+function checksFor(health,data={}){
   if(health==='adapter_missing')return ['Reconnect the CANable USB cable.','Confirm the device appears as /dev/ttyACM0 or gs_usb.','Keep adapter mode set to Auto, then restart the app.'];
+  if(health==='no_traffic'&&data.bus_mode==='standalone_ack')return ['Confirm the battery master is powered and its CAN output is enabled.','Keep the CANable 120Ω termination switch ON for the standalone endpoint.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
   if(health==='no_traffic')return ['Confirm inverter and battery master are powered.','Keep the CANable 120Ω termination switch OFF.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
   if(health==='stale')return ['Check whether the inverter or battery master restarted.','Inspect the CAN cable and both monitoring-tap terminals.','Review the most recent frame ID and timestamp below.'];
   return ['USB adapter is connected.','Valid CAN frames are arriving.','Decoded battery values are updating in Home Assistant.'];
@@ -129,7 +130,7 @@ function render(data){
   $('last-frame').textContent=age(data.last_frame_at);
   $('uptime').textContent=duration(data.uptime_seconds||0);
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
-  replaceHtml('check-list',checksFor(data.health).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
+  replaceHtml('check-list',checksFor(data.health,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
   renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }

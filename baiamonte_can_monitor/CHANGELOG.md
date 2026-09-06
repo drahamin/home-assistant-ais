@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Added a guarded `standalone_ack` mode for reading a battery when the inverter communication interface is unavailable.
+- The CAN controller can acknowledge received frames in standalone mode, while the application still contains no data-frame transmit or battery-control path.
+- Updated diagnostics for standalone termination and power checks.
+
 ## 0.2.2
 
 - Moved Home Assistant entity writes off the CAN receive loop so API delays cannot interrupt serial reception.
