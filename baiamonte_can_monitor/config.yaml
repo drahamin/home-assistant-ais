@@ -1,5 +1,5 @@
 name: "Baiamonte CAN Monitor"
-version: "0.3.0"
+version: "0.3.1"
 slug: "baiamonte_can_monitor"
 description: "Receive-only Growatt and Felicity battery CAN monitoring"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -24,6 +24,7 @@ watchdog: "http://[HOST]:[PORT:8098]/api/status"
 options:
   adapter: "auto"
   bus_mode: "listen_only"
+  growatt_heartbeat: false
   bitrate: 500000
   serial_device: "auto"
   serial_baudrate: 115200
@@ -32,6 +33,7 @@ options:
 schema:
   adapter: "list(auto|gs_usb|slcan)"
   bus_mode: "list(listen_only|standalone_ack)"
+  growatt_heartbeat: "bool"
   bitrate: "list(125000|250000|500000|1000000)"
   serial_device: "str"
   serial_baudrate: "list(115200|250000|500000|1000000|2000000)"
@@ -44,6 +46,9 @@ configuration:
   bus_mode:
     name: CAN participation mode
     description: Use listen_only when tapping an active inverter-to-battery bus. Use standalone_ack when the CANable is connected directly to the battery without a working inverter; it acknowledges CAN frames but the app never sends data or control commands.
+  growatt_heartbeat:
+    name: Growatt battery heartbeat
+    description: In standalone mode, send only the documented Growatt 0x301 heartbeat once per second so a compatible battery reports its status. No charge, discharge, firmware, or configuration commands are available.
   bitrate:
     name: CAN bus speed
     description: Growatt BMS CAN v1.04 uses 500000 bit/s.

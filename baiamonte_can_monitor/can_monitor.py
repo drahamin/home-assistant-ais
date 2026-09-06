@@ -23,6 +23,8 @@ from state_publisher import StatePublisher
 
 
 ENTITY_PREFIX = "baiamonte_can"
+GROWATT_HEARTBEAT_ID = 0x301
+GROWATT_HEARTBEAT_DATA = bytes.fromhex("11 22 33 44 55 66 77 88")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
 RUNNING = True
@@ -36,6 +38,9 @@ STATUS: dict[str, object] = {
     "adapter": "searching",
     "bitrate": 500000,
     "bus_mode": "listen_only",
+    "heartbeat_enabled": False,
+    "heartbeats_sent": 0,
+    "last_heartbeat_at": None,
     "frames_received": 0,
     "last_id": None,
     "last_frame_at": None,
@@ -89,7 +94,8 @@ def dashboard_status() -> dict[str, object]:
     status.update({
         "health": health,
         "diagnosis": diagnosis,
-        "receive_only": True,
+        "receive_only": not bool(status.get("heartbeat_enabled")),
+        "control_transmit": False,
         "uptime_seconds": max(0, int(time.time() - STARTED_AT)),
         "recent_frames": recent_frames,
         "frames_per_second": round(last_five / 5, 1),
@@ -197,6 +203,14 @@ def uses_listen_only(options: dict) -> bool:
     return str(options.get("bus_mode", "listen_only")) != "standalone_ack"
 
 
+def growatt_heartbeat() -> can.Message:
+    return can.Message(
+        arbitration_id=GROWATT_HEARTBEAT_ID,
+        is_extended_id=False,
+        data=GROWATT_HEARTBEAT_DATA,
+    )
+
+
 def open_gs_usb(options: dict, bitrate: int):
     """Open candleLight passively or in acknowledgement-only receive mode."""
     import usb.core
@@ -301,6 +315,7 @@ def main() -> int:
     interval = max(1, int(options.get("publish_interval_seconds", 2)))
     bitrate = int(options.get("bitrate", 500000))
     bus_mode = str(options.get("bus_mode", "listen_only"))
+    heartbeat_enabled = bus_mode == "standalone_ack" and bool(options.get("growatt_heartbeat", False))
     dashboard = start_dashboard(int(options.get("dashboard_port", 8098)))
     PUBLISHER = StatePublisher(
         API_BASE,
@@ -309,7 +324,12 @@ def main() -> int:
         error_callback=lambda error: update_status(last_error=error),
     )
     PUBLISHER.start()
-    update_status(service="running", bitrate=bitrate, bus_mode=bus_mode)
+    update_status(
+        service="running",
+        bitrate=bitrate,
+        bus_mode=bus_mode,
+        heartbeat_enabled=heartbeat_enabled,
+    )
     if bus_mode == "standalone_ack":
         log("Starting standalone battery receive mode; CAN acknowledgements enabled, data/control transmission disabled")
     else:
@@ -324,6 +344,8 @@ def main() -> int:
     last_status_at = 0.0
     status_interval = max(10, interval)
     last_id = None
+    heartbeats_sent = 0
+    last_heartbeat_at = 0.0
     pending: dict[str, Reading] = {}
 
     while RUNNING:
@@ -337,6 +359,28 @@ def main() -> int:
                 update_status(adapter_connected=False, bus_active=False, adapter="not ready", last_error=str(exc))
                 publish_connection(False, "adapter not ready", frame_count, last_id)
                 time.sleep(10)
+                continue
+
+        now = time.monotonic()
+        if heartbeat_enabled and now - last_heartbeat_at >= 1.0:
+            try:
+                receiver.send(growatt_heartbeat())
+                heartbeats_sent += 1
+                last_heartbeat_at = now
+                update_status(
+                    heartbeats_sent=heartbeats_sent,
+                    last_heartbeat_at=iso_now(),
+                )
+                if heartbeats_sent == 1:
+                    log("TX 0x301 11 22 33 44 55 66 77 88 (documented Growatt heartbeat)")
+            except Exception as exc:
+                log(f"CAN heartbeat error: {exc}; reopening adapter")
+                update_status(adapter_connected=False, bus_active=False, last_error=f"CAN heartbeat error: {exc}")
+                try:
+                    receiver.shutdown()
+                except Exception:
+                    pass
+                receiver = None
                 continue
 
         try:

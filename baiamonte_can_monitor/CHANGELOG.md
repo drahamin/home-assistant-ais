@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Added an opt-in, fixed Growatt V1.04 `0x301` heartbeat for batteries that wait for an inverter request before publishing status.
+- The heartbeat is the only implemented outbound frame; battery-control and arbitrary transmit paths remain unavailable.
+
 ## 0.3.0
 
 - Added a guarded `standalone_ack` mode for reading a battery when the inverter communication interface is unavailable.

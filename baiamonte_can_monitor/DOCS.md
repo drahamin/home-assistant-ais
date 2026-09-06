@@ -10,6 +10,8 @@ Keep the CANable 120Ω termination switch off when tapping the existing, already
 
 For a direct battery-to-CANable connection with no inverter on the bus, select `standalone_ack` and use the CANable as the terminated endpoint. This mode emits only protocol-level CAN acknowledgements; it does not send data frames or commands.
 
+If the battery waits for the inverter before publishing status, enable `growatt_heartbeat`. The app then transmits the Growatt low-voltage CAN V1.04 heartbeat—standard ID `0x301`, payload `11 22 33 44 55 66 77 88`—once per second. No other outbound CAN identifier or payload is implemented.
+
 ## Automatic updates
 
 Home Assistant Supervisor owns installation and updates. After installing version 0.2.0, enable **Auto update** on the app's Info page. Future versions published through the Baiamonte app repository will then be installed by Supervisor automatically. The app never replaces its own files or bypasses Supervisor.
