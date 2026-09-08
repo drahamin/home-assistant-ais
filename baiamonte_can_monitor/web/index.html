@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#080706">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Baiamonte CAN">
-  <title>Baiamonte CAN Monitor</title>
+  <meta name="apple-mobile-web-app-title" content="Baiamonte Battery">
+  <title>Baiamonte Battery Monitor</title>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -26,11 +26,11 @@
 
   <div class="shell">
     <aside>
-      <div class="brand"><img src="brand-icon.png" alt=""><span><strong>Baiamonte CAN</strong><small>Energy communications</small></span></div>
+      <div class="brand"><img src="brand-icon.png" alt=""><span><strong>Baiamonte Battery</strong><small>CAN · RS485 telemetry</small></span></div>
       <nav aria-label="CAN Monitor pages">
         <button class="nav active" data-page="overview"><svg><use href="#i-overview"/></svg>Overview</button>
         <button class="nav" data-page="battery"><svg><use href="#i-battery"/></svg>Battery data</button>
-        <button class="nav" data-page="traffic"><svg><use href="#i-pulse"/></svg>CAN traffic</button>
+        <button class="nav" data-page="traffic"><svg><use href="#i-pulse"/></svg>Bus traffic</button>
         <button class="nav" data-page="diagnostics"><svg><use href="#i-pulse"/></svg>Diagnostics</button>
         <button class="nav" data-page="wiring"><svg><use href="#i-wire"/></svg>Wiring help</button>
       </nav>
@@ -45,17 +45,17 @@
 
       <section class="page active" id="overview">
         <div class="hero">
-          <div class="hero-copy"><span>GROWATT · FELICITY · LIVE CAN</span><h2>Battery communications, made visible.</h2><p>Receive-only monitoring of the inverter and battery CAN link, with decoded energy data and guided diagnostics.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the CAN adapter…</b></div></div>
+          <div class="hero-copy"><span>GROWATT · FELICITY · CAN · RS485</span><h2>Battery communications, made visible.</h2><p>Read-only monitoring of the battery link, with decoded energy data and guided diagnostics.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the battery adapter…</b></div></div>
           <div class="hero-emblem"><img src="brand-icon.png" alt="Baiamonte crest"><span><svg><use href="#i-battery"/></svg></span></div>
         </div>
 
-        <div class="safety-banner"><svg><use href="#i-shield"/></svg><div><b>Hardware-enforced receive-only operation</b><span>This app contains no CAN transmit controls and cannot command the inverter or batteries.</span></div></div>
+        <div class="safety-banner"><svg><use href="#i-shield"/></svg><div><b>Read-only battery telemetry</b><span>RS485 sends only Modbus read requests; no write, control, firmware, or configuration command is implemented.</span></div></div>
 
         <div class="summary-strip">
           <div><small>ADAPTER</small><b id="adapter-summary">Checking</b></div>
-          <div><small>CAN BUS</small><b id="bus-summary">Waiting</b></div>
-          <div><small>BIT RATE</small><b id="bitrate-summary">500 kbit/s</b></div>
-          <div><small>FRAMES RECEIVED</small><b id="frames-summary">0</b></div>
+          <div><small>BUS</small><b id="bus-summary">Waiting</b></div>
+          <div><small>LINK RATE</small><b id="bitrate-summary">Checking</b></div>
+          <div><small>MESSAGES RECEIVED</small><b id="frames-summary">0</b></div>
         </div>
 
         <div class="overview-grid">
@@ -80,12 +80,12 @@
       </section>
 
       <section class="page" id="traffic">
-        <div class="section-head"><div><p>LIVE RECEIVE-ONLY BUS ACTIVITY</p><h2>CAN traffic</h2><span>Raw frames from the Growatt and Felicity link, updated every three seconds.</span></div><span class="badge" id="traffic-badge">Waiting</span></div>
+        <div class="section-head"><div><p>LIVE READ-ONLY BUS ACTIVITY</p><h2>Bus traffic</h2><span>Raw CAN frames or CRC-valid Felicity RS485 replies, updated every three seconds.</span></div><span class="badge" id="traffic-badge">Waiting</span></div>
         <div class="traffic-summary">
           <article class="traffic-hero"><div class="traffic-pulse" id="traffic-pulse"><i></i><i></i><span><svg><use href="#i-pulse"/></svg></span></div><div><small>LIVE FRAME RATE</small><h2 id="traffic-rate">0.0 frames/s</h2><p id="traffic-copy">Waiting for valid 500 kbit/s CAN traffic.</p></div></article>
           <article class="panel"><p>ONE-MINUTE WINDOW</p><h3 id="minute-frames">0 frames</h3><div class="traffic-meter"><i id="traffic-meter"></i></div><span class="meter-note">Activity scales automatically with the current bus load.</span></article>
         </div>
-        <article class="panel traffic-ids-panel"><div class="panel-head"><div><p>ACTIVE IDENTIFIERS</p><h3>Growatt BMS messages</h3></div><span id="id-count">0 IDs</span></div><div class="traffic-id-grid" id="traffic-id-grid"><div class="empty">No CAN identifiers received yet.</div></div></article>
+          <article class="panel traffic-ids-panel"><div class="panel-head"><div><p>ACTIVE IDENTIFIERS</p><h3>Battery messages</h3></div><span id="id-count">0 IDs</span></div><div class="traffic-id-grid" id="traffic-id-grid"><div class="empty">No valid messages received yet.</div></div></article>
         <article class="panel frames-panel"><div class="panel-head"><div><p>RAW TRAFFIC</p><h3>Most recent frames</h3></div><span>Newest first</span></div><div class="traffic-frame-list" id="traffic-frame-list"><div class="empty">No frames received yet.</div></div></article>
       </section>
 

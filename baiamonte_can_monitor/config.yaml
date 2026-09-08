@@ -1,7 +1,7 @@
-name: "Baiamonte CAN Monitor"
-version: "0.3.1"
+name: "Baiamonte Battery Monitor"
+version: "0.4.0"
 slug: "baiamonte_can_monitor"
-description: "Receive-only Growatt and Felicity battery CAN monitoring"
+description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
 icon: "icon.png"
 arch:
@@ -17,7 +17,7 @@ homeassistant_api: true
 ingress: true
 ingress_port: 8098
 panel_icon: "mdi:car-battery"
-panel_title: "CAN"
+panel_title: "Battery"
 panel_admin: true
 stage: "stable"
 watchdog: "http://[HOST]:[PORT:8098]/api/status"
@@ -28,15 +28,19 @@ options:
   bitrate: 500000
   serial_device: "auto"
   serial_baudrate: 115200
+  rs485_baudrate: 9600
+  battery_addresses: "1,2"
   stale_after_seconds: 30
   publish_interval_seconds: 2
 schema:
-  adapter: "list(auto|gs_usb|slcan)"
+  adapter: "list(auto|gs_usb|slcan|felicity_rs485)"
   bus_mode: "list(listen_only|standalone_ack)"
   growatt_heartbeat: "bool"
   bitrate: "list(125000|250000|500000|1000000)"
   serial_device: "str"
   serial_baudrate: "list(115200|250000|500000|1000000|2000000)"
+  rs485_baudrate: "list(9600|19200)"
+  battery_addresses: "str"
   stale_after_seconds: "int"
   publish_interval_seconds: "int"
 configuration:
@@ -58,6 +62,12 @@ configuration:
   serial_baudrate:
     name: CANable USB serial speed
     description: USB-side speed used only with slcan firmware.
+  rs485_baudrate:
+    name: Felicity RS485 speed
+    description: LPBA batteries normally use Modbus RTU at 9600 baud, 8N1.
+  battery_addresses:
+    name: Felicity battery addresses
+    description: Comma-separated read-only Modbus addresses, normally 1,2 for the two Baiamonte packs.
   stale_after_seconds:
     name: Data timeout
     description: Mark the connection offline when no CAN frame is received for this many seconds.

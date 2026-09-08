@@ -1,6 +1,6 @@
 const pages = [...document.querySelectorAll('.page')];
 const navButtons = [...document.querySelectorAll('.nav')];
-const titles = {overview:'Overview',battery:'Battery data',traffic:'CAN traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
+const titles = {overview:'Overview',battery:'Battery data',traffic:'Bus traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
 const $ = id => document.getElementById(id);
 let latest = null;
 let refreshTimer = null;
@@ -40,15 +40,20 @@ function duration(seconds){
   if(seconds<3600)return `${Math.floor(seconds/60)}m ${seconds%60}s`;
   return `${Math.floor(seconds/3600)}h ${Math.floor((seconds%3600)/60)}m`;
 }
-function healthCopy(health){
+function healthCopy(health,data={}){
+  const link=data.transport||'CAN';
   return {
-    healthy:['Live CAN traffic','Healthy','healthy'],
-    no_traffic:['Adapter ready · no frames','No traffic','warning'],
-    stale:['CAN traffic stopped','Stale','warning'],
-    adapter_missing:['CAN adapter unavailable','Adapter missing','error']
+    healthy:[`Live ${link} traffic`,'Healthy','healthy'],
+    no_traffic:[`Adapter ready · no valid ${link} replies`,'No traffic','warning'],
+    stale:[`${link} traffic stopped`,'Stale','warning'],
+    adapter_missing:[`${link} adapter unavailable`,'Adapter missing','error']
   }[health]||['Checking monitor','Starting','warning'];
 }
 function checksFor(health,data={}){
+  if(data.transport==='RS485'&&health==='adapter_missing')return ['Reconnect the USB RS485 cable.','Confirm the Prolific device appears under /dev/serial/by-id.','Keep adapter mode set to Auto or Felicity RS485, then restart the app.'];
+  if(data.transport==='RS485'&&health==='no_traffic')return ['Confirm the battery master is powered and its Modbus address is configured.','Verify battery pin 5 reaches RS485-B and pin 6 reaches RS485-A.','Swap A/B at the adapter if its A/B convention is opposite.','Keep the link at 9600 baud, 8N1.'];
+  if(data.transport==='RS485'&&health==='stale')return ['Check whether the battery restarted.','Inspect the RS485 cable and battery master port.','Review the most recent valid register response below.'];
+  if(data.transport==='RS485')return ['USB RS485 adapter is connected.','CRC-valid Modbus replies are arriving.','Decoded battery values are updating in Home Assistant.'];
   if(health==='adapter_missing')return ['Reconnect the CANable USB cable.','Confirm the device appears as /dev/ttyACM0 or gs_usb.','Keep adapter mode set to Auto, then restart the app.'];
   if(health==='no_traffic'&&data.bus_mode==='standalone_ack')return ['Confirm the battery master is powered and its CAN output is enabled.','Keep the CANable 120Ω termination switch ON for the standalone endpoint.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
   if(health==='no_traffic')return ['Confirm inverter and battery master are powered.','Keep the CANable 120Ω termination switch OFF.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
@@ -56,8 +61,9 @@ function checksFor(health,data={}){
   return ['USB adapter is connected.','Valid CAN frames are arriving.','Decoded battery values are updating in Home Assistant.'];
 }
 function renderBattery(readings){
+  const rs485=latest?.transport==='RS485';
   const cards=[
-    ['Battery voltage','battery_voltage','Frame 0x313'],['Battery current','battery_current','Frame 0x313'],['Battery power','battery_power','Calculated'],['State of charge','battery_soc','Frame 0x313'],
+    ['Battery voltage','battery_voltage',rs485?'Register 0x1302':'Frame 0x313'],['Battery current','battery_current',rs485?'Register 0x1302':'Frame 0x313'],['Battery power','battery_power','Calculated'],['State of charge','battery_soc',rs485?'Register 0x1302':'Frame 0x313'],
     ['State of health','battery_soh','Frame 0x313'],['Battery status','battery_status','Frame 0x311'],['Maximum temperature','maximum_cell_temperature','Frame 0x313'],['Cycle count','cycle_count','Frame 0x314'],
     ['Remaining capacity','remaining_capacity','Frame 0x314'],['Full capacity','full_charge_capacity','Frame 0x314'],['Charge limit','charge_current_limit','Frame 0x311'],['Discharge limit','discharge_current_limit','Frame 0x311'],
     ['Charge voltage limit','charge_voltage_limit','Frame 0x311'],['Cell difference','cell_voltage_difference','Frame 0x314'],['Chemistry','battery_chemistry','Frame 0x319'],['Manufacturer','battery_manufacturer','Frame 0x320']
@@ -65,7 +71,7 @@ function renderBattery(readings){
   replaceHtml('battery-grid',cards.map(([label,key,source])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>${source}</p></article>`).join(''));
   const cells=[];
   for(let i=1;i<=16;i++)if(readings[`cell_${i}_voltage`])cells.push({number:i,...readings[`cell_${i}_voltage`]});
-  replaceHtml('cell-grid',cells.length?cells.map(cell=>`<div class="cell"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for cell-voltage frames 0x315–0x318.</div>');
+  replaceHtml('cell-grid',cells.length?cells.map(cell=>`<div class="cell"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):`<div class="empty">Waiting for ${rs485?'register 0x132A':'cell-voltage frames 0x315–0x318'}.</div>`);
   if(cells.length){const values=cells.map(cell=>Number(cell.value));$('cell-spread').textContent=`${((Math.max(...values)-Math.min(...values))*1000).toFixed(0)} mV spread`;}
 }
 function renderFrames(frames){
@@ -73,16 +79,17 @@ function renderFrames(frames){
 }
 const idNames={'0x311':'Charge and discharge limits','0x312':'Protection and alarm flags','0x313':'Voltage, current, SOC and temperature','0x314':'Capacity, cell spread and cycles','0x315':'Cell voltages 1–4','0x316':'Cell voltages 5–8','0x317':'Cell voltages 9–12','0x318':'Cell voltages 13–16','0x319':'Battery requests and cell extremes','0x320':'Battery manufacturer and versions'};
 function renderTraffic(data){
+  const rs485=data.transport==='RS485', noun=rs485?'replies':'frames';
   const fps=Number(data.frames_per_second||0), ids=data.traffic_ids||[], frames=data.recent_frames||[];
-  $('traffic-rate').textContent=`${fps.toFixed(1)} frames/s`;
-  $('traffic-copy').textContent=data.bus_active?'Valid CAN messages are arriving now.':'Waiting for valid 500 kbit/s CAN traffic.';
+  $('traffic-rate').textContent=`${fps.toFixed(1)} ${noun}/s`;
+  $('traffic-copy').textContent=data.bus_active?`Valid ${data.transport||'CAN'} messages are arriving now.`:`Waiting for valid ${data.transport||'CAN'} traffic.`;
   $('traffic-pulse').classList.toggle('live',data.bus_active);
   $('traffic-badge').textContent=data.bus_active?'LIVE':'WAITING';
   $('traffic-badge').className=`badge ${data.bus_active?'':'warning'}`;
-  $('minute-frames').textContent=`${Number(data.frames_last_minute||0).toLocaleString()} frames`;
+  $('minute-frames').textContent=`${Number(data.frames_last_minute||0).toLocaleString()} ${noun}`;
   $('traffic-meter').style.width=`${Math.min(100,Number(data.frames_last_minute||0)/6)}%`;
-  $('id-count').textContent=`${ids.length} ID${ids.length===1?'':'s'}`;
-  replaceHtml('traffic-id-grid',ids.length?ids.map(item=>`<div class="traffic-id"><b>${item.id}</b><span>${idNames[item.id]||'Unmapped CAN message'}</span><small>${Number(item.count).toLocaleString()} received</small></div>`).join(''):'<div class="empty">No CAN identifiers received yet.</div>');
+  $('id-count').textContent=`${ids.length} ${rs485?'register':'ID'}${ids.length===1?'':'s'}`;
+  replaceHtml('traffic-id-grid',ids.length?ids.map(item=>`<div class="traffic-id"><b>${item.id}</b><span>${idNames[item.id]||(rs485?'Felicity Modbus response':'Unmapped CAN message')}</span><small>${Number(item.count).toLocaleString()} received</small></div>`).join(''):`<div class="empty">No ${rs485?'Modbus replies':'CAN identifiers'} received yet.</div>`);
   replaceHtml('traffic-frame-list',frames.length?frames.map(frame=>`<div class="traffic-frame"><b>${frame.id}</b><code>${frame.data}</code><span>${(frame.decoded||[]).map(key=>key.replaceAll('_',' ')).join(', ')||'Raw frame'}</span><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
 }
 function renderDeviceLights(data){
@@ -99,7 +106,7 @@ function renderDeviceLights(data){
 function render(data){
   latest=data;
   const readings=data.readings||{};
-  const [title,badge,badgeClass]=healthCopy(data.health);
+  const [title,badge,badgeClass]=healthCopy(data.health,data);
   $('hero-status').textContent=title;
   $('health-title').textContent=title;
   $('diagnostic-title').textContent=title;
@@ -112,10 +119,10 @@ function render(data){
   $('side-status').textContent=data.health==='healthy'?'Live frames arriving':badge;
   $('adapter-summary').textContent=data.adapter_connected?'Connected':'Not ready';
   $('bus-summary').textContent=data.bus_active?'Live':data.frames_received?'Stopped':'No frames';
-  $('bitrate-summary').textContent=`${Number(data.bitrate||0)/1000} kbit/s`;
+  $('bitrate-summary').textContent=data.transport==='RS485'?`${Number(data.bitrate||0)} baud`:`${Number(data.bitrate||0)/1000} kbit/s`;
   $('frames-summary').textContent=Number(data.frames_received||0).toLocaleString();
   $('soc').textContent=value(readings,'battery_soc');
-  $('battery-state').textContent=value(readings,'battery_status','Waiting for frame 0x311');
+  $('battery-state').textContent=value(readings,'battery_status',data.transport==='RS485'?'Waiting for register 0x1302':'Waiting for frame 0x311');
   $('power').textContent=value(readings,'battery_power');
   $('voltage').textContent=value(readings,'battery_voltage');
   $('current').textContent=value(readings,'battery_current');
@@ -125,7 +132,7 @@ function render(data){
   $('battery-badge').textContent=data.bus_active?'Live':'Waiting';
   $('service-detail').textContent=data.service||'—';
   $('adapter-detail').textContent=data.adapter||'—';
-  $('bitrate-detail').textContent=`${Number(data.bitrate||0).toLocaleString()} bit/s`;
+  $('bitrate-detail').textContent=`${Number(data.bitrate||0).toLocaleString()} ${data.transport==='RS485'?'baud':'bit/s'}`;
   $('last-id').textContent=data.last_id||'—';
   $('last-frame').textContent=age(data.last_frame_at);
   $('uptime').textContent=duration(data.uptime_seconds||0);

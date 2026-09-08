@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import can
 
 from can_decoder import Reading, decode_frame
+from felicity_rs485 import FelicityRs485Receiver
 from state_publisher import StatePublisher
 
 
@@ -37,6 +38,7 @@ STATUS: dict[str, object] = {
     "bus_active": False,
     "adapter": "searching",
     "bitrate": 500000,
+    "transport": "CAN",
     "bus_mode": "listen_only",
     "heartbeat_enabled": False,
     "heartbeats_sent": 0,
@@ -79,18 +81,25 @@ def dashboard_status() -> dict[str, object]:
     frames = int(status.get("frames_received", 0) or 0)
     adapter_connected = bool(status.get("adapter_connected"))
     bus_active = bool(status.get("bus_active"))
+    transport = str(status.get("transport", "CAN"))
+    is_rs485 = transport == "RS485"
     if not adapter_connected:
         health = "adapter_missing"
-        diagnosis = "The CAN adapter is not available. Check USB, the selected adapter mode, and the serial device."
+        diagnosis = f"The {transport} adapter is not available. Check USB, the selected adapter mode, and the serial device."
     elif frames == 0:
         health = "no_traffic"
-        diagnosis = "The adapter is ready but no valid CAN frames have arrived. Check CAN-H/CAN-L, equipment power, 500 kbit/s, and termination."
+        diagnosis = (
+            "The RS485 adapter is ready but the battery has not returned a CRC-valid Modbus reply. "
+            "Check battery power/address, pins 5-B and 6-A, and swap A/B if the adapter uses opposite labels."
+            if is_rs485 else
+            "The adapter is ready but no valid CAN frames have arrived. Check CAN-H/CAN-L, equipment power, 500 kbit/s, and termination."
+        )
     elif not bus_active:
         health = "stale"
-        diagnosis = "CAN traffic was seen but has stopped. Check the inverter, battery master, cable, and connectors."
+        diagnosis = f"{transport} traffic was seen but has stopped. Check the battery master, cable, and connectors."
     else:
         health = "healthy"
-        diagnosis = "Live receive-only CAN traffic is being decoded normally."
+        diagnosis = f"Live read-only {transport} traffic is being decoded normally."
     status.update({
         "health": health,
         "diagnosis": diagnosis,
@@ -156,7 +165,7 @@ def load_options() -> dict:
 
 
 def friendly_name(key: str) -> str:
-    return "CAN " + key.replace("_", " ").title()
+    return "Battery " + key.replace("_", " ").title()
 
 
 def publish(key: str, reading: Reading, binary: bool = False) -> None:
@@ -166,7 +175,7 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
     attributes: dict[str, object] = {
         "friendly_name": friendly_name(key),
         "icon": "mdi:car-battery" if not binary else "mdi:check-network-outline",
-        "attribution": "Growatt BMS CAN v1.04, receive-only",
+        "attribution": "Growatt BMS CAN / Felicity Modbus RTU, read-only",
     }
     if reading.unit:
         attributes["unit_of_measurement"] = reading.unit
@@ -193,10 +202,29 @@ def serial_candidates(configured: str) -> list[str]:
     if configured and configured != "auto":
         return [configured]
     stable = sorted(glob.glob("/dev/serial/by-id/*CAN*")) + sorted(glob.glob("/dev/serial/by-id/*can*"))
-    generic = sorted(glob.glob("/dev/ttyACM*"))
-    # Deliberately exclude ttyUSB devices in auto mode: ttyUSB0 is the user's
-    # direct Growatt connection and must not be claimed by this monitor.
-    return list(dict.fromkeys(stable + generic))
+    # Do not claim arbitrary ttyACM devices: the estate GPS receiver is one.
+    return list(dict.fromkeys(stable))
+
+
+def rs485_candidates(configured: str) -> list[str]:
+    if configured and configured != "auto":
+        return [configured]
+    paths = sorted(glob.glob("/dev/serial/by-id/*"))
+    rejected = ("canable", "openlight", "u-blox", "gnss")
+    preferred = ("prolific", "rs485", "usb-serial", "ch340", "ftdi")
+    return [path for path in paths if any(word in path.lower() for word in preferred) and not any(word in path.lower() for word in rejected)]
+
+
+def battery_addresses(options: dict) -> list[int]:
+    raw = str(options.get("battery_addresses", "1"))
+    values = []
+    for item in raw.split(","):
+        address = int(item.strip())
+        if not 1 <= address <= 247:
+            raise ValueError(f"invalid Modbus battery address {address}")
+        if address not in values:
+            values.append(address)
+    return values
 
 
 def uses_listen_only(options: dict) -> bool:
@@ -298,6 +326,20 @@ def open_adapter(options: dict):
             return open_slcan(options, bitrate)
         except Exception as exc:
             errors.append(f"slcan: {exc}")
+            if mode == "slcan":
+                raise
+    if mode in {"auto", "felicity_rs485"}:
+        candidates = rs485_candidates(str(options.get("serial_device", "auto")))
+        if not candidates:
+            errors.append("felicity_rs485: no USB RS485 adapter found")
+        for path in candidates:
+            try:
+                baudrate = int(options.get("rs485_baudrate", 9600))
+                receiver = FelicityRs485Receiver(path, baudrate, battery_addresses(options))
+                log(f"Opened {path} at {baudrate} baud for read-only Felicity Modbus RTU")
+                return receiver, f"Felicity RS485 Modbus RTU ({path})"
+            except Exception as exc:
+                errors.append(f"felicity_rs485 {path}: {exc}")
     raise RuntimeError(" | ".join(errors))
 
 
@@ -353,7 +395,16 @@ def main() -> int:
             try:
                 receiver, adapter_name = open_adapter(options)
                 log(f"Connected with {adapter_name}")
-                update_status(adapter_connected=True, adapter=adapter_name, last_error=None)
+                transport = "RS485" if getattr(receiver, "monitor_transport", "can") == "felicity_rs485" else "CAN"
+                link_rate = int(options.get("rs485_baudrate", 9600)) if transport == "RS485" else bitrate
+                update_status(
+                    adapter_connected=True,
+                    adapter=adapter_name,
+                    transport=transport,
+                    bitrate=link_rate,
+                    heartbeat_enabled=heartbeat_enabled and transport == "CAN",
+                    last_error=None,
+                )
             except Exception as exc:
                 log(f"CAN adapter not ready: {exc}; retrying in 10 seconds")
                 update_status(adapter_connected=False, bus_active=False, adapter="not ready", last_error=str(exc))
@@ -362,7 +413,7 @@ def main() -> int:
                 continue
 
         now = time.monotonic()
-        if heartbeat_enabled and now - last_heartbeat_at >= 1.0:
+        if heartbeat_enabled and getattr(receiver, "monitor_transport", "can") != "felicity_rs485" and now - last_heartbeat_at >= 1.0:
             try:
                 receiver.send(growatt_heartbeat())
                 heartbeats_sent += 1
@@ -399,11 +450,12 @@ def main() -> int:
         if message is not None and not message.is_error_frame and not message.is_remote_frame:
             frame_count += 1
             last_frame_at = now
-            last_id = message.arbitration_id
-            decoded = decode_frame(message.arbitration_id, bytes(message.data))
+            is_rs485 = getattr(receiver, "monitor_transport", "can") == "felicity_rs485"
+            last_id = None if is_rs485 else message.arbitration_id
+            decoded = message.decoded if is_rs485 else decode_frame(message.arbitration_id, bytes(message.data))
             pending.update(decoded)
             frame_record = {
-                "id": f"0x{message.arbitration_id:03X}",
+                "id": message.identifier if is_rs485 else f"0x{message.arbitration_id:03X}",
                 "data": bytes(message.data).hex(" ").upper(),
                 "at": iso_now(),
                 "decoded": sorted(decoded),
@@ -423,7 +475,10 @@ def main() -> int:
                     "readings": readings,
                 })
             if frame_count <= 20 or frame_count % 500 == 0:
-                log(f"RX 0x{message.arbitration_id:03X} {bytes(message.data).hex(' ')}")
+                log(f"RX {frame_record['id']} {bytes(message.data).hex(' ')}")
+
+        if message is None and getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
+            update_status(last_error=getattr(receiver, "last_error", None))
 
         connected = bool(last_frame_at and now - last_frame_at <= stale_after)
         update_status(bus_active=connected, frames_received=frame_count)

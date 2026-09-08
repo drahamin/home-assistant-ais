@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Added read-only Felicity LPBA Modbus RTU polling over USB RS485 at 9600 8N1.
+- Added battery firmware, pack voltage/current/power/SOC, 16 cell voltages, and four temperature readings.
+- Added support for multiple battery addresses and CRC/range validation before publishing values.
+- Prevented CAN auto-discovery from claiming unrelated serial devices such as the estate GPS receiver.
+
 ## 0.3.1
 
 - Added an opt-in, fixed Growatt V1.04 `0x301` heartbeat for batteries that wait for an inverter request before publishing status.
