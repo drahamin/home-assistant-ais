@@ -44,16 +44,18 @@ function healthCopy(health,data={}){
   const link=data.transport||'CAN';
   return {
     healthy:[`Live ${link} traffic`,'Healthy','healthy'],
+    attention:['Both batteries online · balance needs attention','Attention','warning'],
     no_traffic:[`Adapter ready · no valid ${link} replies`,'No traffic','warning'],
     stale:[`${link} traffic stopped`,'Stale','warning'],
     adapter_missing:[`${link} adapter unavailable`,'Adapter missing','error']
   }[health]||['Checking monitor','Starting','warning'];
 }
 function checksFor(health,data={}){
-  if(data.transport==='RS485'&&health==='adapter_missing')return ['Reconnect the USB RS485 cable.','Confirm the Prolific device appears under /dev/serial/by-id.','Keep adapter mode set to Auto or Felicity RS485, then restart the app.'];
+  if(data.transport==='RS485'&&health==='adapter_missing')return ['Reconnect the USB RS485 cable.','Confirm the FTDI adapter appears under /dev/serial/by-id.','Keep the connection set to Felicity RS485, then restart the app.'];
   if(data.transport==='RS485'&&health==='no_traffic')return ['Confirm the battery master is powered and its Modbus address is configured.','Verify battery pin 5 reaches RS485-B and pin 6 reaches RS485-A.','Swap A/B at the adapter if its A/B convention is opposite.','Keep the link at 9600 baud, 8N1.'];
   if(data.transport==='RS485'&&health==='stale')return ['Check whether the battery restarted.','Inspect the RS485 cable and battery master port.','Review the most recent valid register response below.'];
-  if(data.transport==='RS485')return ['USB RS485 adapter is connected.','CRC-valid Modbus replies are arriving.','Decoded battery values are updating in Home Assistant.'];
+  if(data.transport==='RS485'&&health==='attention')return ['Both battery addresses are online.','Allow Battery 2 time to charge and balance.','Watch the SOC difference and maximum cell spread; investigate if either continues increasing.'];
+  if(data.transport==='RS485')return ['USB RS485 adapter is connected.','CRC-valid Modbus replies are arriving from both battery addresses.','Per-pack and combined bank values are updating in Home Assistant.'];
   if(health==='adapter_missing')return ['Reconnect the CANable USB cable.','Confirm the device appears as /dev/ttyACM0 or gs_usb.','Keep adapter mode set to Auto, then restart the app.'];
   if(health==='no_traffic'&&data.bus_mode==='standalone_ack')return ['Confirm the battery master is powered and its CAN output is enabled.','Keep the CANable 120Ω termination switch ON for the standalone endpoint.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
   if(health==='no_traffic')return ['Confirm inverter and battery master are powered.','Keep the CANable 120Ω termination switch OFF.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
@@ -61,18 +63,24 @@ function checksFor(health,data={}){
   return ['USB adapter is connected.','Valid CAN frames are arriving.','Decoded battery values are updating in Home Assistant.'];
 }
 function renderBattery(readings){
-  const rs485=latest?.transport==='RS485';
-  const cards=[
-    ['Battery voltage','battery_voltage',rs485?'Register 0x1302':'Frame 0x313'],['Battery current','battery_current',rs485?'Register 0x1302':'Frame 0x313'],['Battery power','battery_power','Calculated'],['State of charge','battery_soc',rs485?'Register 0x1302':'Frame 0x313'],
-    ['State of health','battery_soh','Frame 0x313'],['Battery status','battery_status','Frame 0x311'],['Maximum temperature','maximum_cell_temperature','Frame 0x313'],['Cycle count','cycle_count','Frame 0x314'],
-    ['Remaining capacity','remaining_capacity','Frame 0x314'],['Full capacity','full_charge_capacity','Frame 0x314'],['Charge limit','charge_current_limit','Frame 0x311'],['Discharge limit','discharge_current_limit','Frame 0x311'],
-    ['Charge voltage limit','charge_voltage_limit','Frame 0x311'],['Cell difference','cell_voltage_difference','Frame 0x314'],['Chemistry','battery_chemistry','Frame 0x319'],['Manufacturer','battery_manufacturer','Frame 0x320']
-  ];
-  replaceHtml('battery-grid',cards.map(([label,key,source])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>${source}</p></article>`).join(''));
-  const cells=[];
-  for(let i=1;i<=16;i++)if(readings[`cell_${i}_voltage`])cells.push({number:i,...readings[`cell_${i}_voltage`]});
-  replaceHtml('cell-grid',cells.length?cells.map(cell=>`<div class="cell"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):`<div class="empty">Waiting for ${rs485?'register 0x132A':'cell-voltage frames 0x315–0x318'}.</div>`);
-  if(cells.length){const values=cells.map(cell=>Number(cell.value));$('cell-spread').textContent=`${((Math.max(...values)-Math.min(...values))*1000).toFixed(0)} mV spread`;}
+  const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2];
+  const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Nominal storage','bank_nominal_energy'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
+  replaceHtml('bank-summary',bankCards.map(([label,key])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>Combined battery bank</p></article>`).join(''));
+  const sections=addresses.map(address=>{
+    const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on';
+    const balance=readings[`${prefix}cell_balance`]?.value||'waiting';
+    const statusClass=!online?'':balance==='attention'?'attention':'online';
+    const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Current','battery_current'],['Power','battery_power'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['BMS version','bms_version']];
+    const cells=[];
+    for(let i=1;i<=16;i++)if(readings[`${prefix}cell_${i}_voltage`])cells.push({number:i,...readings[`${prefix}cell_${i}_voltage`]});
+    return `<article class="panel battery-pack"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>51.2 V · 100 Ah · 5.12 kWh</span></div><span class="pack-status ${statusClass}">${online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for register 0x132A.</div>'}</div></article>`;
+  }).join('');
+  replaceHtml('battery-pack-sections',sections);
+
+  replaceHtml('pack-overview-grid',addresses.map(address=>{
+    const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on', balance=readings[`${prefix}cell_balance`]?.value||'waiting';
+    return `<article class="pack-overview"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${online?(balance==='attention'?'attention':'online'):''}">${online?(balance==='attention'?'ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${value(readings,prefix+'battery_current')}</b></div><div><small>CELLS</small><b>${value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${value(readings,prefix+'pack_temperature')}</b></div></div></article>`;
+  }).join(''));
 }
 function renderFrames(frames){
   replaceHtml('frame-list',frames.length?frames.map(frame=>`<div class="frame-row"><b>${frame.id}</b><code>${frame.data}</code><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
@@ -93,42 +101,49 @@ function renderTraffic(data){
   replaceHtml('traffic-frame-list',frames.length?frames.map(frame=>`<div class="traffic-frame"><b>${frame.id}</b><code>${frame.data}</code><span>${(frame.decoded||[]).map(key=>key.replaceAll('_',' ')).join(', ')||'Raw frame'}</span><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
 }
 function renderDeviceLights(data){
-  const adapter=Boolean(data.adapter_connected), traffic=Boolean(data.bus_active);
+  const adapter=Boolean(data.adapter_connected), traffic=Boolean(data.bus_active), rs485=data.transport==='RS485';
   $('led-pwr').classList.toggle('on',adapter);
-  $('led-state').classList.toggle('on',adapter);
+  $('led-state').classList.toggle('on',traffic);
+  $('led-state').classList.toggle('pulse',traffic);
   $('led-work').classList.toggle('on',traffic);
   $('led-work').classList.toggle('pulse',traffic);
   $('led-pwr-state').textContent=adapter?'On':'Off';
-  $('led-state-state').textContent=adapter?'Connected':'Idle';
-  $('led-work-state').textContent=traffic?'Receiving':'Waiting';
-  $('device-lights-status').textContent=!adapter?'Adapter not detected — indicator state unavailable':traffic?'PWR and STATE steady · WORK pulses with incoming frames':'PWR and STATE active · WORK waiting for CAN traffic';
+  $('device-model').textContent=rs485?'IOCREST FS-422/485':'CANABLE V2.0 PRO';
+  $('led-state-label').textContent=rs485?'RXD':'STATE';
+  $('led-work-label').textContent=rs485?'TXD':'WORK';
+  $('led-state-state').textContent=traffic?(rs485?'Reply':'Connected'):'Idle';
+  $('led-work-state').textContent=traffic?(rs485?'Polling':'Receiving'):'Waiting';
+  $('device-lights-status').textContent=!adapter?'Adapter not detected — indicator state unavailable':traffic?(rs485?'ACTIVE steady · RXD/TXD pulse with each battery poll':'PWR and STATE steady · WORK pulses with incoming frames'):(rs485?'ACTIVE on · waiting for battery replies':'PWR and STATE active · WORK waiting for CAN traffic');
 }
 function render(data){
   latest=data;
   const readings=data.readings||{};
-  const [title,badge,badgeClass]=healthCopy(data.health,data);
+  const displayHealth=data.health==='healthy'&&readings.bank_health?.value==='attention'?'attention':data.health;
+  const [title,badge,badgeClass]=healthCopy(displayHealth,data);
+  const diagnosis=data.diagnosis;
   $('hero-status').textContent=title;
   $('health-title').textContent=title;
   $('diagnostic-title').textContent=title;
-  $('diagnosis').textContent=data.diagnosis;
-  $('diagnostic-finding').textContent=data.diagnosis;
+  $('diagnosis').textContent=diagnosis;
+  $('diagnostic-finding').textContent=diagnosis;
   $('health-badge').textContent=badge;
   $('health-badge').className=`status-badge ${badgeClass}`;
   $('health-orbit').className=badgeClass;
-  ['hero-light','side-light'].forEach(id=>$(id).className=data.health==='healthy'?'online':data.health==='adapter_missing'?'error':'');
-  $('side-status').textContent=data.health==='healthy'?'Live frames arriving':badge;
+  ['hero-light','side-light'].forEach(id=>$(id).className=displayHealth==='healthy'?'online':data.health==='adapter_missing'?'error':'');
+  $('side-status').textContent=data.health==='healthy'?'Live battery replies arriving':badge;
   $('adapter-summary').textContent=data.adapter_connected?'Connected':'Not ready';
   $('bus-summary').textContent=data.bus_active?'Live':data.frames_received?'Stopped':'No frames';
   $('bitrate-summary').textContent=data.transport==='RS485'?`${Number(data.bitrate||0)} baud`:`${Number(data.bitrate||0)/1000} kbit/s`;
   $('frames-summary').textContent=Number(data.frames_received||0).toLocaleString();
-  $('soc').textContent=value(readings,'battery_soc');
-  $('battery-state').textContent=value(readings,'battery_status',data.transport==='RS485'?'Waiting for register 0x1302':'Waiting for frame 0x311');
-  $('power').textContent=value(readings,'battery_power');
-  $('voltage').textContent=value(readings,'battery_voltage');
-  $('current').textContent=value(readings,'battery_current');
+  $('soc').textContent=value(readings,'bank_soc',value(readings,'battery_soc'));
+  $('battery-state').textContent=`${value(readings,'bank_online_batteries','0')} of ${value(readings,'bank_configured_batteries','2')} batteries online · ${value(readings,'bank_remaining_energy','calculating')}`;
+  $('power').textContent=value(readings,'bank_power',value(readings,'battery_power'));
+  $('voltage').textContent=value(readings,'bank_voltage',value(readings,'battery_voltage'));
+  $('current').textContent=value(readings,'bank_current',value(readings,'battery_current'));
   const alarm=readings.alarm_active?.value==='on', protection=readings.protection_active?.value==='on';
-  $('safety').textContent=alarm||protection?'Attention':'Normal';
-  $('safety-detail').textContent=protection?value(readings,'protection_flags'):alarm?value(readings,'alarm_flags'):readings.protection_active?'No active flags':'Waiting for protection flags';
+  const bankAttention=readings.bank_health?.value==='attention';
+  $('safety').textContent=alarm||protection||bankAttention?'Attention':'Normal';
+  $('safety-detail').textContent=protection?value(readings,'protection_flags'):alarm?value(readings,'alarm_flags'):bankAttention?`${value(readings,'bank_soc_difference')} SOC difference · ${value(readings,'bank_maximum_cell_spread')} max cell spread`:'Both batteries balanced and online';
   $('battery-badge').textContent=data.bus_active?'Live':'Waiting';
   $('service-detail').textContent=data.service||'—';
   $('adapter-detail').textContent=data.adapter||'—';
@@ -137,7 +152,7 @@ function render(data){
   $('last-frame').textContent=age(data.last_frame_at);
   $('uptime').textContent=duration(data.uptime_seconds||0);
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
-  replaceHtml('check-list',checksFor(data.health,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
+  replaceHtml('check-list',checksFor(displayHealth,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
   renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }

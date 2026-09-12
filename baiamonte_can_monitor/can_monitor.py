@@ -1,4 +1,4 @@
-"""Home Assistant add-on for receive-only Growatt/Felicity CAN monitoring."""
+"""Home Assistant app for read-only Growatt CAN and Felicity RS485 monitoring."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import can
 
 from can_decoder import Reading, decode_frame
+from battery_bank import derive_bank_readings
 from felicity_rs485 import FelicityRs485Receiver
 from state_publisher import StatePublisher
 
@@ -48,6 +49,8 @@ STATUS: dict[str, object] = {
     "last_frame_at": None,
     "last_error": None,
     "readings": {},
+    "battery_addresses": [],
+    "battery_last_seen": {},
 }
 RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
 FRAME_TIMES: deque[float] = deque(maxlen=4000)
@@ -100,6 +103,19 @@ def dashboard_status() -> dict[str, object]:
     else:
         health = "healthy"
         diagnosis = f"Live read-only {transport} traffic is being decoded normally."
+    bank_health = status.get("readings", {}).get("bank_health", {}).get("value")
+    if is_rs485 and bus_active and bank_health == "attention":
+        online = status.get("readings", {}).get("bank_online_batteries", {}).get("value", 0)
+        configured = status.get("readings", {}).get("bank_configured_batteries", {}).get("value", 0)
+        health = "attention"
+        soc_difference = status.get("readings", {}).get("bank_soc_difference", {}).get("value", "—")
+        cell_spread = status.get("readings", {}).get("bank_maximum_cell_spread", {}).get("value", "—")
+        diagnosis = (
+            f"Only {online} of {configured} configured batteries is responding. Check the offline battery and RS485 address."
+            if online != configured else
+            "Both batteries are communicating, but their balance needs attention: "
+            f"SOC differs by {soc_difference}% and the largest cell spread is {cell_spread} mV."
+        )
     status.update({
         "health": health,
         "diagnosis": diagnosis,
@@ -165,7 +181,22 @@ def load_options() -> dict:
 
 
 def friendly_name(key: str) -> str:
-    return "Battery " + key.replace("_", " ").title()
+    words = key.replace("_", " ").title()
+    if key.startswith("bank_"):
+        return "Baiamonte Battery Bank " + words.removeprefix("Bank ")
+    if key.startswith("battery_") and len(key.split("_")) > 2 and key.split("_")[1].isdigit():
+        address = key.split("_")[1]
+        detail_key = "_".join(key.split("_")[2:])
+        detail = {
+            "battery_soc": "State of Charge",
+            "battery_voltage": "Voltage",
+            "battery_current": "Current",
+            "battery_power": "Power",
+            "battery_status": "Status",
+            "bms_version": "BMS Version",
+        }.get(detail_key, detail_key.replace("_", " ").title())
+        return f"Felicity Battery {address} {detail}"
+    return "Battery " + words
 
 
 def publish(key: str, reading: Reading, binary: bool = False) -> None:
@@ -190,12 +221,21 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
 
 
 def publish_connection(connected: bool, adapter: str, frames: int, last_id: int | None) -> None:
-    details = f"{adapter}; {frames} frames"
+    details = f"{adapter}; {frames} valid messages"
     if last_id is not None:
         details += f"; last ID 0x{last_id:03X}"
     publish("connected", Reading("on" if connected else "off"), binary=True)
     publish("connection_details", Reading(details))
     publish("frames_received", Reading(frames, None, None, "total_increasing"))
+
+
+def binary_reading(key: str) -> bool:
+    return (
+        key.endswith("_active")
+        or key.endswith("_enabled")
+        or key.endswith("_online")
+        or key.startswith("force_charge")
+    )
 
 
 def serial_candidates(configured: str) -> list[str]:
@@ -372,7 +412,9 @@ def main() -> int:
         bus_mode=bus_mode,
         heartbeat_enabled=heartbeat_enabled,
     )
-    if bus_mode == "standalone_ack":
+    if str(options.get("adapter", "auto")) == "felicity_rs485":
+        log("Starting read-only Felicity RS485 monitoring; only Modbus function 03 requests are enabled")
+    elif bus_mode == "standalone_ack":
         log("Starting standalone battery receive mode; CAN acknowledgements enabled, data/control transmission disabled")
     else:
         log("Starting passive tap mode; transmit code is disabled")
@@ -389,6 +431,11 @@ def main() -> int:
     heartbeats_sent = 0
     last_heartbeat_at = 0.0
     pending: dict[str, Reading] = {}
+    all_readings: dict[str, Reading] = {}
+    configured_addresses = battery_addresses(options) if str(options.get("adapter", "auto")) == "felicity_rs485" else []
+    battery_last_seen: dict[int, float] = {}
+    battery_last_seen_iso: dict[int, str] = {}
+    update_status(battery_addresses=configured_addresses)
 
     while RUNNING:
         if receiver is None:
@@ -396,6 +443,8 @@ def main() -> int:
                 receiver, adapter_name = open_adapter(options)
                 log(f"Connected with {adapter_name}")
                 transport = "RS485" if getattr(receiver, "monitor_transport", "can") == "felicity_rs485" else "CAN"
+                if transport == "RS485":
+                    configured_addresses = list(receiver.addresses)
                 link_rate = int(options.get("rs485_baudrate", 9600)) if transport == "RS485" else bitrate
                 update_status(
                     adapter_connected=True,
@@ -403,10 +452,11 @@ def main() -> int:
                     transport=transport,
                     bitrate=link_rate,
                     heartbeat_enabled=heartbeat_enabled and transport == "CAN",
+                    battery_addresses=configured_addresses,
                     last_error=None,
                 )
             except Exception as exc:
-                log(f"CAN adapter not ready: {exc}; retrying in 10 seconds")
+                log(f"Battery adapter not ready: {exc}; retrying in 10 seconds")
                 update_status(adapter_connected=False, bus_active=False, adapter="not ready", last_error=str(exc))
                 publish_connection(False, "adapter not ready", frame_count, last_id)
                 time.sleep(10)
@@ -437,8 +487,8 @@ def main() -> int:
         try:
             message = receiver.recv(timeout=1.0)
         except Exception as exc:
-            log(f"CAN receive error: {exc}; reopening adapter")
-            update_status(adapter_connected=False, bus_active=False, last_error=f"CAN receive error: {exc}")
+            log(f"Battery communication error: {exc}; reopening adapter")
+            update_status(adapter_connected=False, bus_active=False, last_error=f"Battery communication error: {exc}")
             try:
                 receiver.shutdown()
             except Exception:
@@ -453,11 +503,23 @@ def main() -> int:
             is_rs485 = getattr(receiver, "monitor_transport", "can") == "felicity_rs485"
             last_id = None if is_rs485 else message.arbitration_id
             decoded = message.decoded if is_rs485 else decode_frame(message.arbitration_id, bytes(message.data))
+            received_at = iso_now()
+            all_readings.update(decoded)
+            if is_rs485:
+                battery_last_seen[message.address] = now
+                battery_last_seen_iso[message.address] = received_at
+                online_addresses = {
+                    address for address, seen_at in battery_last_seen.items()
+                    if now - seen_at <= stale_after
+                }
+                derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+                all_readings.update(derived)
+                decoded = {**decoded, **derived}
             pending.update(decoded)
             frame_record = {
                 "id": message.identifier if is_rs485 else f"0x{message.arbitration_id:03X}",
                 "data": bytes(message.data).hex(" ").upper(),
-                "at": iso_now(),
+                "at": received_at,
                 "decoded": sorted(decoded),
             }
             with STATUS_LOCK:
@@ -473,6 +535,8 @@ def main() -> int:
                     "last_id": frame_record["id"],
                     "last_frame_at": frame_record["at"],
                     "readings": readings,
+                    "battery_addresses": configured_addresses,
+                    "battery_last_seen": {str(address): at for address, at in battery_last_seen_iso.items()},
                 })
             if frame_count <= 20 or frame_count % 500 == 0:
                 log(f"RX {frame_record['id']} {bytes(message.data).hex(' ')}")
@@ -481,10 +545,24 @@ def main() -> int:
             update_status(last_error=getattr(receiver, "last_error", None))
 
         connected = bool(last_frame_at and now - last_frame_at <= stale_after)
+        if getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
+            online_addresses = {
+                address for address, seen_at in battery_last_seen.items()
+                if now - seen_at <= stale_after
+            }
+            derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+            all_readings.update(derived)
+            pending.update(derived)
+            with STATUS_LOCK:
+                readings = dict(STATUS.get("readings", {}))
+                timestamp = iso_now()
+                for key, reading in derived.items():
+                    readings[key] = {"value": reading.value, "unit": reading.unit, "updated_at": timestamp}
+                STATUS["readings"] = readings
         update_status(bus_active=connected, frames_received=frame_count)
         if pending and now - last_publish_at >= interval:
             for key, reading in pending.items():
-                publish(key, reading, key.endswith("_active") or key.endswith("_enabled") or key.startswith("force_charge"))
+                publish(key, reading, binary_reading(key))
             pending.clear()
             last_publish_at = now
 

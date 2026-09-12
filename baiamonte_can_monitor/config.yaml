@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.4.0"
+version: "0.5.0"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -22,7 +22,7 @@ panel_admin: true
 stage: "stable"
 watchdog: "http://[HOST]:[PORT:8098]/api/status"
 options:
-  adapter: "auto"
+  adapter: "felicity_rs485"
   bus_mode: "listen_only"
   growatt_heartbeat: false
   bitrate: 500000
@@ -45,8 +45,8 @@ schema:
   publish_interval_seconds: "int"
 configuration:
   adapter:
-    name: CAN adapter mode
-    description: Auto tries candleLight/gs_usb first, then a serial CANable. The selected CAN participation mode controls whether the adapter is passive or acknowledges received frames.
+    name: Battery connection
+    description: Felicity RS485 is the installed dual-battery connection. CAN modes remain available for future diagnostics.
   bus_mode:
     name: CAN participation mode
     description: Use listen_only when tapping an active inverter-to-battery bus. Use standalone_ack when the CANable is connected directly to the battery without a working inverter; it acknowledges CAN frames but the app never sends data or control commands.
@@ -57,8 +57,8 @@ configuration:
     name: CAN bus speed
     description: Growatt BMS CAN v1.04 uses 500000 bit/s.
   serial_device:
-    name: Serial CAN device
-    description: Keep auto unless the CANable appears as a tty device. The Growatt direct USB is not selected automatically.
+    name: USB adapter device
+    description: Use the stable /dev/serial/by-id path for the battery RS485 adapter so reboots cannot change the connection.
   serial_baudrate:
     name: CANable USB serial speed
     description: USB-side speed used only with slcan firmware.
@@ -67,10 +67,10 @@ configuration:
     description: LPBA batteries normally use Modbus RTU at 9600 baud, 8N1.
   battery_addresses:
     name: Felicity battery addresses
-    description: Comma-separated read-only Modbus addresses, normally 1,2 for the two Baiamonte packs.
+    description: Comma-separated read-only Modbus addresses. Baiamonte Battery 1 and Battery 2 use addresses 1,2.
   stale_after_seconds:
     name: Data timeout
-    description: Mark the connection offline when no CAN frame is received for this many seconds.
+    description: Mark the connection or a battery offline when no valid reply is received for this many seconds.
   publish_interval_seconds:
     name: Home Assistant update interval
     description: Minimum number of seconds between state updates.

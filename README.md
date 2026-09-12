@@ -22,13 +22,13 @@ The physical gateway must expose HomeKit, Matter, or another supported LAN proto
 
 Install it from this repository, stop the old manual process so it releases the USB device, and enable **Automatic updates** on the app Info page. See [baiamonte_growatt_usb/DOCS.md](baiamonte_growatt_usb/DOCS.md) for migration and commissioning.
 
-## Baiamonte CAN Monitor
+## Baiamonte Battery Monitor
 
-**Baiamonte CAN Monitor** is a receive-only Growatt and Felicity battery communications app. Version 0.2.0 adds a Tenuta Baiamonte-styled Home Assistant sidebar interface with live adapter health, decoded battery values, alarms and protections, guided wiring diagnostics, and a dedicated CAN Traffic view showing frame rate, active identifiers, raw payloads, decoded fields, and recent activity.
+**Baiamonte Battery Monitor** provides read-only monitoring for both Felicity LPBA48100-OL packs over RS485, plus optional Growatt/Felicity CAN diagnostics. It publishes per-pack voltage, current, SOC, temperature, energy and all 32 cell voltages, together with a combined 200 Ah / 10.24 kWh bank summary, balance warnings, live traffic, and guided wiring diagnostics.
 
 The dashboard is responsive on desktop, tablet, and phone and includes Home Assistant, favicon, Apple touch, and installable web-app icons. A Supervisor watchdog checks the local status endpoint. The adapter remains in firmware listen-only mode and the app exposes no CAN transmit controls.
 
-Install **Baiamonte CAN Monitor** from this repository, start it, enable **Show in sidebar**, and enable **Auto update** on its Info page. Home Assistant Supervisor will then install future repository versions automatically.
+Install **Baiamonte Battery Monitor** from this repository, start it, enable **Show in sidebar**, and enable **Auto update** on its Info page. Home Assistant Supervisor will then install future repository versions automatically.
 
 ## Baiamonte AIS
 

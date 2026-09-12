@@ -1,27 +1,38 @@
-# Baiamonte CAN Monitor
+# Baiamonte Battery Monitor
 
-The app passively monitors the 500 kbit/s CAN link between the Growatt inverter and Felicity battery master. Open **CAN** from the Home Assistant sidebar for live status, decoded battery values, raw traffic, and troubleshooting.
+The app reads both installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, all 32 cell voltages, temperatures, raw replies, and troubleshooting.
+
+## Installed configuration
+
+- Connection: `felicity_rs485`
+- Stable USB device: `/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DU0E5D36-if00-port0`
+- Serial format: 9600 baud, 8 data bits, no parity, 1 stop bit
+- Battery addresses: `1,2`
+- Battery 1 and Battery 2: 51.2 V, 100 Ah, 5.12 kWh each
+- Combined bank: 51.2 V, 200 Ah, 10.24 kWh nominal
 
 ## Safety
 
-The default `listen_only` mode opens the adapter in firmware listen-only mode for tapping an active Growatt-to-battery bus. When the Growatt communication interface is unavailable, `standalone_ack` lets the CAN controller acknowledge battery frames while the application remains receive-only. The app exposes no transmit endpoint or battery control.
+RS485 monitoring sends only Modbus function 03 read requests for the three validated Felicity register blocks. No Modbus write function, raw-command endpoint, battery control, firmware update, or configuration function is implemented.
 
-Keep the CANable 120Ω termination switch off when tapping the existing, already terminated inverter-to-battery bus.
+The optional CAN modes remain available for future diagnosis. `listen_only` opens a CAN adapter passively. `standalone_ack` permits protocol-level acknowledgements when connected directly to a battery while application data transmission remains disabled.
 
-For a direct battery-to-CANable connection with no inverter on the bus, select `standalone_ack` and use the CANable as the terminated endpoint. This mode emits only protocol-level CAN acknowledgements; it does not send data frames or commands.
+## RS485 wiring
 
-If the battery waits for the inverter before publishing status, enable `growatt_heartbeat`. The app then transmits the Growatt low-voltage CAN V1.04 heartbeat—standard ID `0x301`, payload `11 22 33 44 55 66 77 88`—once per second. No other outbound CAN identifier or payload is implemented.
+- Battery RJ45 pin 6 / RS485-A connects to adapter CN1 `TXD+`.
+- Battery RJ45 pin 5 / RS485-B connects to adapter CN2 `TXD-`.
+- Battery RJ45 pin 1 / signal ground connects to adapter CN2 `GND`.
+- Keep `RXD+`, `RXD-`, and `VCC` empty.
+- Never connect battery RJ45 pin 2: it carries 12 V.
 
 ## Automatic updates
 
-Home Assistant Supervisor owns installation and updates. After installing version 0.2.0, enable **Auto update** on the app's Info page. Future versions published through the Baiamonte app repository will then be installed by Supervisor automatically. The app never replaces its own files or bypasses Supervisor.
+Home Assistant Supervisor owns installation and updates. **Auto update** is enabled for this installed app, so future versions from the Baiamonte repository are installed automatically.
 
-## No CAN traffic
+## No battery replies
 
-If the adapter connects but the traffic count remains at zero:
-
-1. Confirm the inverter and battery master are powered and communicating.
-2. Keep the CANable termination switch off.
-3. Verify CAN-H and CAN-L continuity to the correct RJ45 pins.
-4. Confirm the configured bit rate is 500000 bit/s.
-5. If the cable mapping is uncertain, power down the equipment and swap H/L only at the CANable, then retry.
+1. Confirm both batteries are powered and addresses 1 and 2 are configured.
+2. Confirm the stable FTDI device exists under `/dev/serial/by-id`.
+3. Verify pin 6 reaches `TXD+`, pin 5 reaches `TXD-`, and pin 1 reaches `GND`.
+4. Confirm 9600 baud, 8N1.
+5. If the adapter uses the opposite A/B naming convention, power down the batteries and swap only A/B at the adapter.

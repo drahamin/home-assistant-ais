@@ -1,7 +1,7 @@
 {
   "name": "Baiamonte CAN Monitor",
   "short_name": "Baiamonte CAN",
-  "description": "Receive-only Growatt and Felicity battery CAN monitoring",
+  "description": "Read-only dual Felicity battery and combined bank monitoring",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0b0b",

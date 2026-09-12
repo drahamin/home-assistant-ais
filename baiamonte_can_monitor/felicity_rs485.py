@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass
 
 import serial
@@ -51,8 +52,9 @@ def decode_battery_information(data: bytes) -> dict[str, Reading]:
         return {}
     voltage = int.from_bytes(data[8:10], "big") * 0.01
     current = int.from_bytes(data[10:12], "big", signed=True) * 0.1
+    temperature = int.from_bytes(data[16:18], "big", signed=True)
     soc = int.from_bytes(data[18:20], "big")
-    if not (20 <= voltage <= 70 and -500 <= current <= 500 and 0 <= soc <= 100):
+    if not (20 <= voltage <= 70 and -500 <= current <= 500 and -50 <= temperature <= 150 and 0 <= soc <= 100):
         return {}
     status = "charging" if current > 0.05 else "discharging" if current < -0.05 else "idle"
     return {
@@ -61,6 +63,7 @@ def decode_battery_information(data: bytes) -> dict[str, Reading]:
         "battery_power": _measurement(round(voltage * current, 1), "W", "power"),
         "battery_soc": Reading(soc, "%", "battery", "measurement"),
         "battery_status": Reading(status),
+        "pack_temperature": _measurement(temperature, "°C", "temperature"),
     }
 
 
@@ -68,14 +71,28 @@ def decode_cell_information(data: bytes) -> dict[str, Reading]:
     if len(data) != 40:
         return {}
     readings: dict[str, Reading] = {}
+    cell_values: list[float] = []
     for index in range(16):
         voltage = int.from_bytes(data[index * 2 : index * 2 + 2], "big") * 0.001
         if 1.5 <= voltage <= 5.0:
+            cell_values.append(voltage)
             readings[f"cell_{index + 1}_voltage"] = _measurement(round(voltage, 3), "V", "voltage")
     for index in range(4):
         temperature = int.from_bytes(data[32 + index * 2 : 34 + index * 2], "big", signed=True)
         if -50 <= temperature <= 150:
             readings[f"temperature_{index + 1}"] = _measurement(temperature, "°C", "temperature")
+    if len(cell_values) == 16:
+        minimum = min(cell_values)
+        maximum = max(cell_values)
+        spread_mv = round((maximum - minimum) * 1000)
+        readings.update({
+            "minimum_cell_voltage": _measurement(round(minimum, 3), "V", "voltage"),
+            "maximum_cell_voltage": _measurement(round(maximum, 3), "V", "voltage"),
+            "minimum_cell_number": Reading(cell_values.index(minimum) + 1),
+            "maximum_cell_number": Reading(cell_values.index(maximum) + 1),
+            "cell_voltage_difference": _measurement(spread_mv, "mV", "voltage"),
+            "cell_balance": Reading("excellent" if spread_mv <= 30 else "monitor" if spread_mv <= 50 else "attention"),
+        })
     return readings
 
 
@@ -94,7 +111,6 @@ class FelicityRs485Receiver:
 
     monitor_transport = "felicity_rs485"
     COMMANDS = (
-        (0xF80B, 1, "BMS version"),
         (0x1302, 10, "pack information"),
         (0x132A, 20, "cell information"),
     )
@@ -119,24 +135,34 @@ class FelicityRs485Receiver:
             for address in addresses
             for register, count, label in self.COMMANDS
         ]
+        self._startup_polls = deque((address, 0xF80B, 1, "BMS version") for address in addresses)
         self._poll_index = 0
+        self._next_poll_at = 0.0
+        self._poll_interval = 0.5
         self.last_error: str | None = None
 
     def _namespaced(self, address: int, readings: dict[str, Reading]) -> dict[str, Reading]:
-        if address == self.addresses[0]:
-            return readings
         return {f"battery_{address}_{key}": value for key, value in readings.items()}
 
     def recv(self, timeout: float = 1.0) -> Rs485Message | None:
-        address, register, count, label = self._polls[self._poll_index]
-        self._poll_index = (self._poll_index + 1) % len(self._polls)
+        delay = self._next_poll_at - time.monotonic()
+        if delay > 0:
+            time.sleep(min(delay, max(0.01, timeout)))
+            if time.monotonic() < self._next_poll_at:
+                return None
+        if self._startup_polls:
+            address, register, count, label = self._startup_polls.popleft()
+        else:
+            address, register, count, label = self._polls[self._poll_index]
+            self._poll_index = (self._poll_index + 1) % len(self._polls)
+        self._next_poll_at = time.monotonic() + self._poll_interval
         expected_bytes = count * 2
         request = read_request(address, register, count)
         self._serial.reset_input_buffer()
         self._serial.write(request)
         self._serial.flush()
 
-        deadline = time.monotonic() + max(0.15, timeout)
+        deadline = time.monotonic() + min(0.5, max(0.15, timeout))
         buffer = bytearray()
         parsed = None
         while time.monotonic() < deadline:
