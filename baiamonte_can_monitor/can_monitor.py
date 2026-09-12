@@ -519,6 +519,15 @@ def main() -> int:
                 derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
                 if message.identifier == f"B{configured_addresses[-1]}:0x1302" and "bank_power" in derived:
                     derived.update(energy_meter.update(float(derived["bank_power"].value), now=now))
+                    remaining = float(derived["bank_remaining_energy"].value)
+                    nominal = float(derived["bank_nominal_energy"].value)
+                    derived.update(
+                        energy_meter.forecast_readings(
+                            remaining,
+                            nominal,
+                            float(derived["bank_power"].value),
+                        )
+                    )
                 all_readings.update(derived)
                 decoded = {**decoded, **derived}
             pending.update(decoded)
