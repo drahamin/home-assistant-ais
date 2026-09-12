@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.5
+
+- Keep the adaptive bank time-to-empty and time-to-full forecasts authoritative across every RS485 frame.
+- Prevent instantaneous per-frame values from hiding the learned runtime estimate while the generator is charging.
+
 ## 0.5.4
 
 - Made time-to-empty adaptive using a smoothed, learned discharge load.
