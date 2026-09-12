@@ -86,7 +86,6 @@ def derive_bank_readings(
     ]
     maximum_cell_spread = max(cell_spreads, default=0.0)
     remaining_energy = sum(PACK_NOMINAL_ENERGY_KWH * pack["soc"] / 100 for pack in packs)
-    nominal_energy = len(packs) * PACK_NOMINAL_ENERGY_KWH
     status = "charging" if current > 0.05 else "discharging" if current < -0.05 else "idle"
     health = "healthy"
     if online != configured or soc_difference > 10 or maximum_cell_spread > 50:
@@ -112,8 +111,6 @@ def derive_bank_readings(
         "bank_power": _measurement(power, "W", "power"),
         "bank_charging_power": _measurement(round(max(power, 0.0), 1), "W", "power"),
         "bank_discharging_power": _measurement(round(max(-power, 0.0), 1), "W", "power"),
-        "bank_time_to_empty": _duration_hours(remaining_energy, max(-power, 0.0)),
-        "bank_time_to_full": _duration_hours(nominal_energy - remaining_energy, max(power, 0.0)),
         "bank_soc": Reading(soc, "%", "battery", "measurement"),
         "bank_soc_difference": _measurement(soc_difference, "%"),
         "bank_remaining_capacity": _measurement(round(sum(pack["soc"] for pack in packs), 1), "Ah"),

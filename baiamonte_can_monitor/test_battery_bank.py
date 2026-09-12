@@ -31,8 +31,6 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_maximum_cell_spread"].value, 60.0)
         self.assertEqual(result["bank_charging_power"].value, 264.7)
         self.assertEqual(result["bank_discharging_power"].value, 0.0)
-        self.assertEqual(result["bank_time_to_empty"].value, "unavailable")
-        self.assertGreater(float(result["bank_time_to_full"].value), 0.0)
         self.assertEqual(result["battery_1_charging_power"].value, 129.8)
         self.assertEqual(result["battery_2_charging_power"].value, 134.9)
         self.assertEqual(result["bank_remaining_energy"].device_class, "energy")
@@ -57,8 +55,6 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_discharging_power"].value, 250.0)
         self.assertEqual(result["battery_1_discharging_power"].value, 100.0)
         self.assertEqual(result["battery_2_discharging_power"].value, 150.0)
-        self.assertGreater(float(result["bank_time_to_empty"].value), 0.0)
-        self.assertEqual(result["bank_time_to_full"].value, "unavailable")
         self.assertIn("heavy loads", result["bank_operating_recommendation"].value)
 
 

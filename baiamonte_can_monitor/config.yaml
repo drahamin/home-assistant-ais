@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.5.4"
+version: "0.5.5"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
