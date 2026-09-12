@@ -39,6 +39,24 @@ class EnergyMeterTests(unittest.TestCase):
             self.assertEqual(restored.discharged_kwh, 8.25)
             self.assertEqual(restored.readings()["bank_energy_charged"].state_class, "total_increasing")
 
+    def test_runtime_forecast_learns_actual_discharge_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            meter = EnergyMeter(Path(directory) / "energy.json")
+            meter.update(-1000, now=10)
+            forecast = meter.forecast_readings(2.0, 10.0, -1000)
+            self.assertEqual(forecast["bank_time_to_empty"].value, 2.0)
+            self.assertEqual(forecast["bank_learned_discharge_power"].value, 1000.0)
+            self.assertIn("live discharge", forecast["bank_runtime_estimate_basis"].value)
+
+    def test_runtime_forecast_uses_conservative_basis_while_charging(self):
+        with tempfile.TemporaryDirectory() as directory:
+            meter = EnergyMeter(Path(directory) / "energy.json", fallback_discharge_w=500)
+            meter.update(1000, now=10)
+            forecast = meter.forecast_readings(2.0, 10.0, 1000)
+            self.assertEqual(forecast["bank_time_to_empty"].value, 4.0)
+            self.assertEqual(forecast["bank_time_to_full"].value, 8.0)
+            self.assertIn("conservative", forecast["bank_runtime_estimate_basis"].value)
+
 
 if __name__ == "__main__":
     unittest.main()

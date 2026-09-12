@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4
+
+- Made time-to-empty adaptive using a smoothed, learned discharge load.
+- Keeps a conservative runtime forecast visible while charging until real discharge history is available.
+- Added the learned charge/discharge basis as native Home Assistant statistics and explains the forecast basis.
+
 ## 0.5.3
 
 - Added bank and per-battery charging/discharging power sensors for clear input and output statistics.
