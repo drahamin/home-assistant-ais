@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.3
+
+- Added bank and per-battery charging/discharging power sensors for clear input and output statistics.
+- Added time-to-empty and time-to-full estimates with duration metadata for gauges and history.
+- Added a live operating recommendation based on lowest pack SOC, pack imbalance, cell spread, connectivity, and charge direction.
+- Enabled long-term measurement statistics for remaining-energy sensors.
+
 ## 0.5.2
 
 - Refresh unchanged entities once per minute so every battery card returns automatically after a Home Assistant restart.
