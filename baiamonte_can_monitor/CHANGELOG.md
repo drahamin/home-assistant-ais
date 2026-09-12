@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Added persistent cumulative bank charge and discharge energy sensors for the Home Assistant Energy dashboard.
+- Reduced the default Home Assistant publishing rate to once every five seconds while retaining two-second battery polling.
+
 ## 0.5.0
 
 - Added equal first-class monitoring for Felicity Battery 1 and Battery 2.
