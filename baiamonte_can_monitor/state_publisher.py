@@ -20,15 +20,18 @@ class StatePublisher:
         log: Callable[[str], None],
         error_callback: Callable[[str | None], None] | None = None,
         request_timeout: float = 3.0,
+        refresh_interval: float = 60.0,
     ) -> None:
         self.api_base = api_base.rstrip("/")
         self.token = token
         self.log = log
         self.error_callback = error_callback
         self.request_timeout = request_timeout
+        self.refresh_interval = refresh_interval
         self._condition = threading.Condition()
         self._pending: dict[str, bytes] = {}
         self._last_sent: dict[str, bytes] = {}
+        self._last_sent_at: dict[str, float] = {}
         self._stopping = False
         self._failure_count = 0
         self._last_error_log_at = 0.0
@@ -53,8 +56,12 @@ class StatePublisher:
         if not self.token:
             return
         encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        now = time.monotonic()
         with self._condition:
-            if encoded == self._last_sent.get(entity_id):
+            if (
+                encoded == self._last_sent.get(entity_id)
+                and now - self._last_sent_at.get(entity_id, 0.0) < self.refresh_interval
+            ):
                 return
             # A dict is deliberately used as a bounded, coalescing queue: one
             # newest payload per entity, regardless of bus or API speed.
@@ -107,6 +114,7 @@ class StatePublisher:
                     pass
                 with self._condition:
                     self._last_sent[entity_id] = payload
+                    self._last_sent_at[entity_id] = time.monotonic()
                     if self._pending.get(entity_id) == payload:
                         self._pending.pop(entity_id, None)
                 self._failure_count = 0

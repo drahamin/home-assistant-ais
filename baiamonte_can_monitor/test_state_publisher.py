@@ -25,6 +25,19 @@ class StatePublisherTests(unittest.TestCase):
         publisher.queue("sensor.voltage", {"state": 51.3, "attributes": {"unit": "V"}})
         self.assertEqual(publisher.pending_count, 1)
 
+    def test_unchanged_state_is_periodically_refreshed(self):
+        publisher = StatePublisher("http://example/states", "token", lambda _message: None, refresh_interval=60)
+        payload = {"state": 28, "attributes": {"unit": "%"}}
+        encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        publisher._last_sent["sensor.soc"] = encoded
+        publisher._last_sent_at["sensor.soc"] = 10
+        with patch("time.monotonic", return_value=69):
+            publisher.queue("sensor.soc", payload)
+        self.assertEqual(publisher.pending_count, 0)
+        with patch("time.monotonic", return_value=70):
+            publisher.queue("sensor.soc", payload)
+        self.assertEqual(publisher.pending_count, 1)
+
     def test_worker_publishes_latest_payload(self):
         sent = []
         event = threading.Event()
