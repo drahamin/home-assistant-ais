@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- Refresh unchanged entities once per minute so every battery card returns automatically after a Home Assistant restart.
+- Retain coalescing and five-second publishing to keep CPU, network and recorder use low.
+
 ## 0.5.1
 
 - Added persistent cumulative bank charge and discharge energy sensors for the Home Assistant Energy dashboard.
