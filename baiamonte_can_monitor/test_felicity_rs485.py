@@ -26,12 +26,14 @@ class FelicityProtocolTests(unittest.TestCase):
         data = bytearray(20)
         data[8:10] = (5234).to_bytes(2, "big")
         data[10:12] = (-123).to_bytes(2, "big", signed=True)
+        data[16:18] = (24).to_bytes(2, "big", signed=True)
         data[18:20] = (81).to_bytes(2, "big")
         readings = decode_battery_information(bytes(data))
         self.assertEqual(readings["battery_voltage"].value, 52.34)
         self.assertEqual(readings["battery_current"].value, -12.3)
         self.assertEqual(readings["battery_soc"].value, 81)
         self.assertEqual(readings["battery_status"].value, "discharging")
+        self.assertEqual(readings["pack_temperature"].value, 24)
 
     def test_cell_decoder(self):
         data = bytearray()
@@ -43,13 +45,22 @@ class FelicityProtocolTests(unittest.TestCase):
         self.assertEqual(readings["cell_1_voltage"].value, 3.3)
         self.assertEqual(readings["cell_16_voltage"].value, 3.315)
         self.assertEqual(readings["temperature_4"].value, 25)
+        self.assertEqual(readings["cell_voltage_difference"].value, 15)
+        self.assertEqual(readings["cell_balance"].value, "excellent")
 
     @patch("felicity_rs485.serial.Serial")
     def test_receiver_never_issues_write_function(self, serial_class):
         serial_class.return_value = Mock()
         receiver = FelicityRs485Receiver("/dev/test", 9600, [1, 2])
-        for address, register, count, _label in receiver._polls:
+        for address, register, count, _label in list(receiver._startup_polls) + receiver._polls:
             self.assertEqual(read_request(address, register, count)[1], 0x03)
+
+    @patch("felicity_rs485.serial.Serial")
+    def test_every_battery_is_namespaced(self, serial_class):
+        serial_class.return_value = Mock()
+        receiver = FelicityRs485Receiver("/dev/test", 9600, [1, 2])
+        namespaced = receiver._namespaced(1, {"battery_soc": Mock()})
+        self.assertEqual(list(namespaced), ["battery_1_battery_soc"])
 
 
 if __name__ == "__main__":

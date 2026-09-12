@@ -45,7 +45,7 @@
 
       <section class="page active" id="overview">
         <div class="hero">
-          <div class="hero-copy"><span>GROWATT · FELICITY · CAN · RS485</span><h2>Battery communications, made visible.</h2><p>Read-only monitoring of the battery link, with decoded energy data and guided diagnostics.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the battery adapter…</b></div></div>
+          <div class="hero-copy"><span>2 × FELICITY LPBA48100 · 10.24 KWH</span><h2>The complete battery bank, made visible.</h2><p>Read-only monitoring of both packs, combined storage, live cell balance, and guided diagnostics.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the battery adapter…</b></div></div>
           <div class="hero-emblem"><img src="brand-icon.png" alt="Baiamonte crest"><span><svg><use href="#i-battery"/></svg></span></div>
         </div>
 
@@ -61,22 +61,23 @@
         <div class="overview-grid">
           <article class="panel health-panel"><div class="panel-head"><div><p>LIVE DIAGNOSIS</p><h3>Connection health</h3></div><span class="status-badge" id="health-badge">Starting</span></div><div class="health-orbit"><span id="health-orbit"><svg><use href="#i-pulse"/></svg></span><div><h2 id="health-title">Checking hardware</h2><p id="diagnosis">The monitor is starting.</p></div></div><button class="text-button" data-go="diagnostics">Open troubleshooting →</button></article>
           <div class="status-column">
-            <article class="metric-card gold"><span><svg><use href="#i-battery"/></svg></span><div><small>STATE OF CHARGE</small><h3 id="soc">—</h3><p id="battery-state">Waiting for frame 0x313</p></div></article>
-            <article class="metric-card brown"><span><svg><use href="#i-pulse"/></svg></span><div><small>BATTERY POWER</small><h3 id="power">—</h3><p><span id="voltage">—</span> · <span id="current">—</span></p></div></article>
-            <article class="metric-card green"><span><svg><use href="#i-shield"/></svg></span><div><small>BATTERY SAFETY</small><h3 id="safety">Unknown</h3><p id="safety-detail">Waiting for protection flags</p></div></article>
+            <article class="metric-card gold"><span><svg><use href="#i-battery"/></svg></span><div><small>BANK STATE OF CHARGE</small><h3 id="soc">—</h3><p id="battery-state">Waiting for both batteries</p></div></article>
+            <article class="metric-card brown"><span><svg><use href="#i-pulse"/></svg></span><div><small>BANK POWER</small><h3 id="power">—</h3><p><span id="voltage">—</span> · <span id="current">—</span></p></div></article>
+            <article class="metric-card green"><span><svg><use href="#i-shield"/></svg></span><div><small>BANK HEALTH</small><h3 id="safety">Unknown</h3><p id="safety-detail">Waiting for both batteries</p></div></article>
             <article class="device-lights-card" aria-label="CANable indicator light software mirror">
-              <div class="device-lights-copy"><small>CANABLE V2.0 PRO</small><h3>Device lights</h3><p id="device-lights-status">Checking adapter indicators</p></div>
+              <div class="device-lights-copy"><small id="device-model">USB COMMUNICATION ADAPTER</small><h3>Device lights</h3><p id="device-lights-status">Checking adapter indicators</p></div>
               <div class="canable-face" id="canable-face">
                 <span class="usb-cap" aria-hidden="true"></span>
-                <div class="led-row"><i class="device-led pwr" id="led-pwr" aria-hidden="true"></i><b>PWR</b><em id="led-pwr-state">Off</em></div>
-                <div class="led-row"><i class="device-led state" id="led-state" aria-hidden="true"></i><b>STATE</b><em id="led-state-state">Idle</em></div>
-                <div class="led-row"><i class="device-led work" id="led-work" aria-hidden="true"></i><b>WORK</b><em id="led-work-state">Waiting</em></div>
+                <div class="led-row"><i class="device-led pwr" id="led-pwr" aria-hidden="true"></i><b id="led-pwr-label">PWR</b><em id="led-pwr-state">Off</em></div>
+                <div class="led-row"><i class="device-led state" id="led-state" aria-hidden="true"></i><b id="led-state-label">RXD</b><em id="led-state-state">Idle</em></div>
+                <div class="led-row"><i class="device-led work" id="led-work" aria-hidden="true"></i><b id="led-work-label">TXD</b><em id="led-work-state">Waiting</em></div>
                 <span class="terminal-block" aria-hidden="true"><i></i><i></i><i></i></span>
               </div>
-              <span class="mirror-note">Software mirror · inferred from adapter and CAN traffic status</span>
+              <span class="mirror-note">Software mirror · inferred from adapter and bus traffic</span>
             </article>
           </div>
         </div>
+        <div class="pack-overview-grid" id="pack-overview-grid"></div>
       </section>
 
       <section class="page" id="traffic">
@@ -90,27 +91,27 @@
       </section>
 
       <section class="page" id="battery">
-        <div class="section-head"><div><p>DECODED GROWATT BMS CAN V1.04</p><h2>Battery data</h2><span>Values appear as their CAN identifiers are received from the active battery bus.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
-        <div class="battery-grid" id="battery-grid"></div>
-        <article class="panel cells-panel"><div class="panel-head"><div><p>CELL BALANCE</p><h3>Individual cell voltages</h3></div><span id="cell-spread">No data</span></div><div class="cell-grid" id="cell-grid"></div></article>
+        <div class="section-head"><div><p>DUAL FELICITY BMS · READ ONLY</p><h2>Battery data</h2><span>Battery 1 and Battery 2 are read independently, then combined as one 10.24 kWh parallel bank.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
+        <div class="bank-summary" id="bank-summary"></div>
+        <div id="battery-pack-sections"></div>
       </section>
 
       <section class="page" id="diagnostics">
         <div class="section-head"><div><p>ADAPTER AND BUS HEALTH</p><h2>Diagnostics</h2><span>Follow the highlighted step first; the monitor updates automatically.</span></div><span class="badge neutral">Receive only</span></div>
         <div class="diagnostic-grid">
           <article class="panel"><p>CURRENT FINDING</p><h3 id="diagnostic-title">Checking monitor</h3><div class="finding" id="diagnostic-finding">Waiting for status.</div><div class="check-list" id="check-list"></div></article>
-          <article class="panel"><p>CONNECTION DETAILS</p><h3>Live adapter status</h3><div class="setting-row"><span>Service</span><b id="service-detail">—</b></div><div class="setting-row"><span>Adapter</span><b id="adapter-detail">—</b></div><div class="setting-row"><span>Bit rate</span><b id="bitrate-detail">—</b></div><div class="setting-row"><span>Last CAN ID</span><b id="last-id">—</b></div><div class="setting-row"><span>Last frame</span><b id="last-frame">Never</b></div><div class="setting-row"><span>Uptime</span><b id="uptime">—</b></div></article>
+          <article class="panel"><p>CONNECTION DETAILS</p><h3>Live adapter status</h3><div class="setting-row"><span>Service</span><b id="service-detail">—</b></div><div class="setting-row"><span>Adapter</span><b id="adapter-detail">—</b></div><div class="setting-row"><span>Link rate</span><b id="bitrate-detail">—</b></div><div class="setting-row"><span>Last message</span><b id="last-id">—</b></div><div class="setting-row"><span>Last reply</span><b id="last-frame">Never</b></div><div class="setting-row"><span>Uptime</span><b id="uptime">—</b></div></article>
         </div>
-        <article class="panel frames-panel"><div class="panel-head"><div><p>RECENT RECEIVE ACTIVITY</p><h3>CAN frames</h3></div><span id="frame-count">0 total</span></div><div class="frame-list" id="frame-list"><div class="empty">No frames received yet.</div></div></article>
+        <article class="panel frames-panel"><div class="panel-head"><div><p>RECENT RECEIVE ACTIVITY</p><h3>Valid bus messages</h3></div><span id="frame-count">0 total</span></div><div class="frame-list" id="frame-list"><div class="empty">No messages received yet.</div></div></article>
       </section>
 
       <section class="page" id="wiring">
-        <div class="section-head"><div><p>BAIAMONTE INSTALLATION REFERENCE</p><h2>Wiring help</h2><span>Power down the inverter and batteries before changing wiring.</span></div><span class="badge warning">Termination off</span></div>
+        <div class="section-head"><div><p>BAIAMONTE INSTALLATION REFERENCE</p><h2>Wiring help</h2><span>Power down the batteries before changing wiring.</span></div><span class="badge warning">Pin 2 is 12 V</span></div>
         <div class="wiring-grid">
-          <article class="panel wiring-card"><p>CANABLE TERMINALS</p><h3>Parallel monitoring tap</h3><div class="terminal-row"><span class="wire high">H</span><div><b>CAN-H</b><small>White/orange monitoring wire</small></div></div><div class="terminal-row"><span class="wire low">L</span><div><b>CAN-L</b><small>Orange monitoring wire</small></div></div><div class="termination"><b>120Ω switch: OFF</b><span>The existing Growatt-to-battery bus should remain terminated at its two ends.</span></div></article>
-          <article class="panel pin-card"><p>RJ45 REFERENCE</p><h3>Communication pins</h3><div class="pin-route"><div><small>GROWATT BMS/CAN</small><b>Pin 4 · CAN-H</b><b>Pin 5 · CAN-L</b></div><i>↔</i><div><small>FELICITY MASTER LINK-0</small><b>Pin 8 · CAN-H</b><b>Pin 7 · CAN-L</b></div></div><div class="notice">Verify continuity with power off. Do not connect CANable GND until the correct signal-ground pin is verified.</div></article>
+          <article class="panel wiring-card"><p>USB RS485 TERMINALS</p><h3>Installed half-duplex connection</h3><div class="terminal-row"><span class="wire high">A</span><div><b>CN1 · TXD+</b><small>Battery RJ45 pin 6 · RS485-A</small></div></div><div class="terminal-row"><span class="wire low">B</span><div><b>CN2 · TXD−</b><small>Battery RJ45 pin 5 · RS485-B</small></div></div><div class="terminal-row"><span class="wire ground">G</span><div><b>CN2 · GND</b><small>Battery RJ45 pin 1 · signal ground</small></div></div></article>
+          <article class="panel pin-card"><p>DO NOT CONNECT</p><h3>Protected terminals and pins</h3><div class="pin-route"><div><small>ADAPTER</small><b>Leave VCC empty</b><b>Leave RXD+ / RXD− empty</b></div><i>×</i><div><small>BATTERY RJ45</small><b>Pin 2 · 12 V</b><b>Never connect to USB adapter</b></div></div><div class="notice">The adapter automatically controls transmit direction. Use the battery’s dedicated RS485 port, not PCS, LINK-0, or LINK-1.</div></article>
         </div>
-        <article class="panel procedure"><p>ZERO-FRAME CHECKLIST</p><h3>If the adapter connects but receives nothing</h3><ol><li>Confirm inverter and battery master are powered and communicating.</li><li>Keep the CANable 120Ω switch off.</li><li>Verify CAN-H and CAN-L continuity to the exact RJ45 pins.</li><li>With equipment powered off, swap H/L at the CANable only and retry if the cable mapping is uncertain.</li><li>Keep the configured rate at 500 kbit/s for Growatt BMS CAN v1.04.</li></ol></article>
+        <article class="panel procedure"><p>NO-REPLY CHECKLIST</p><h3>If the adapter connects but a battery is offline</h3><ol><li>Confirm both batteries are powered and their inter-battery link remains connected.</li><li>Confirm the app uses 9600 baud, 8 data bits, no parity, and 1 stop bit.</li><li>Verify Battery 1 is address 1 and Battery 2 is address 2.</li><li>Verify pin 6 reaches TXD+ and pin 5 reaches TXD−; with power off, swap A/B only if the adapter convention differs.</li><li>Never connect battery RJ45 pin 2 (12 V) to the USB adapter.</li></ol></article>
       </section>
     </main>
   </div>

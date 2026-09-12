@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0
+
+- Added equal first-class monitoring for Felicity Battery 1 and Battery 2.
+- Added a combined 200 Ah / 10.24 kWh bank with SOC, voltage, summed current/power, remaining energy, and online-pack status.
+- Added per-pack remaining capacity/energy, pack temperature, cell extrema, cell numbers, and automatic cell-balance assessment.
+- Added clear attention status when pack SOC differs by more than 10% or any cell spread exceeds 50 mV.
+- Updated the overview, device-light mirror, diagnostics, and wiring page for the installed IOCREST FTDI RS485 adapter.
+- Reduced steady RS485 traffic by reading firmware only at startup and pacing dynamic polls while retaining live updates.
+
 ## 0.4.0
 
 - Added read-only Felicity LPBA Modbus RTU polling over USB RS485 at 9600 8N1.
