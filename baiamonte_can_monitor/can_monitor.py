@@ -20,6 +20,7 @@ import can
 
 from can_decoder import Reading, decode_frame
 from battery_bank import derive_bank_readings
+from energy_meter import EnergyMeter
 from felicity_rs485 import FelicityRs485Receiver
 from state_publisher import StatePublisher
 
@@ -394,7 +395,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     options = load_options()
     stale_after = max(5, int(options.get("stale_after_seconds", 30)))
-    interval = max(1, int(options.get("publish_interval_seconds", 2)))
+    interval = max(1, int(options.get("publish_interval_seconds", 5)))
     bitrate = int(options.get("bitrate", 500000))
     bus_mode = str(options.get("bus_mode", "listen_only"))
     heartbeat_enabled = bus_mode == "standalone_ack" and bool(options.get("growatt_heartbeat", False))
@@ -433,6 +434,9 @@ def main() -> int:
     pending: dict[str, Reading] = {}
     all_readings: dict[str, Reading] = {}
     configured_addresses = battery_addresses(options) if str(options.get("adapter", "auto")) == "felicity_rs485" else []
+    energy_meter = EnergyMeter(os.environ.get("BATTERY_ENERGY_FILE", "/data/bank_energy_totals.json"))
+    all_readings.update(energy_meter.readings())
+    pending.update(energy_meter.readings())
     battery_last_seen: dict[int, float] = {}
     battery_last_seen_iso: dict[int, str] = {}
     update_status(battery_addresses=configured_addresses)
@@ -513,6 +517,8 @@ def main() -> int:
                     if now - seen_at <= stale_after
                 }
                 derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+                if message.identifier == f"B{configured_addresses[-1]}:0x1302" and "bank_power" in derived:
+                    derived.update(energy_meter.update(float(derived["bank_power"].value), now=now))
                 all_readings.update(derived)
                 decoded = {**decoded, **derived}
             pending.update(decoded)
@@ -572,6 +578,7 @@ def main() -> int:
 
     if receiver is not None:
         receiver.shutdown()
+    energy_meter.save()
     publish_connection(False, "stopped", frame_count, last_id)
     update_status(service="stopped", adapter_connected=False, bus_active=False)
     if PUBLISHER is not None:
