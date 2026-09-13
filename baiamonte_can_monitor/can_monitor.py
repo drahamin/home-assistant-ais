@@ -204,9 +204,14 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
     if PUBLISHER is None:
         return
     domain = "binary_sensor" if binary else "sensor"
+    icon = "mdi:car-battery" if not binary else "mdi:check-network-outline"
+    if key in {"bank_charging", "bank_charge_verdict"}:
+        icon = "mdi:battery-charging"
+    elif key == "bank_discharging":
+        icon = "mdi:battery-arrow-down"
     attributes: dict[str, object] = {
         "friendly_name": friendly_name(key),
-        "icon": "mdi:car-battery" if not binary else "mdi:check-network-outline",
+        "icon": icon,
         "attribution": "Growatt BMS CAN / Felicity Modbus RTU, read-only",
     }
     if reading.unit:
@@ -232,6 +237,8 @@ def publish_connection(connected: bool, adapter: str, frames: int, last_id: int 
 
 def binary_reading(key: str) -> bool:
     return (
+        key in {"bank_charging", "bank_discharging"}
+        or
         key.endswith("_active")
         or key.endswith("_enabled")
         or key.endswith("_online")

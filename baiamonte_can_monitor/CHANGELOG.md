@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.6
+
+- Added definitive native charging and discharging binary sensors from BMS current direction.
+- Added a plain-language charge verdict showing whether power is entering or leaving the bank and at what rate.
+- Added distinct charging/discharging icons for clear at-a-glance dashboard use.
+
 ## 0.5.5
 
 - Keep the adaptive bank time-to-empty and time-to-full forecasts authoritative across every RS485 frame.
