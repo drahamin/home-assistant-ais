@@ -87,3 +87,10 @@
 - Added guided troubleshooting and verified wiring references.
 - Added a Supervisor watchdog health endpoint.
 - Preserved hardware listen-only mode and omitted all CAN transmit controls.
+# 0.6.0
+
+- Reads each Felicity BMS charge/discharge voltage and current limit through the validated read-only operating-limit block.
+- Adds conservative Recovery, Normal, Blocked, Learning, and Monitoring Unavailable assessments based on every pack and cell.
+- Publishes charge safety, full-rate permission, weakest battery/cell, recovery action, and recommended current to native Home Assistant entities.
+- Adds a touch-friendly Recovery Control page with per-pack operating envelopes and a confirmed emergency generator-input disconnect.
+- Adds an optional voltage-proven, anti-cycling generator-input supervisor; it remains disabled by default and never writes to the BMS or claims to regulate current.

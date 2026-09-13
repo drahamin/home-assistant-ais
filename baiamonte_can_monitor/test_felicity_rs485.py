@@ -5,6 +5,7 @@ from felicity_rs485 import (
     FelicityRs485Receiver,
     decode_battery_information,
     decode_cell_information,
+    decode_operating_limits,
     modbus_crc,
     parse_read_response,
     read_request,
@@ -47,6 +48,20 @@ class FelicityProtocolTests(unittest.TestCase):
         self.assertEqual(readings["temperature_4"].value, 25)
         self.assertEqual(readings["cell_voltage_difference"].value, 15)
         self.assertEqual(readings["cell_balance"].value, "excellent")
+
+    def test_operating_limit_decoder(self):
+        data = b"".join(value.to_bytes(2, "big") for value in (5760, 4480, 500, 600))
+        readings = decode_operating_limits(data)
+        self.assertEqual(readings["charge_voltage_limit"].value, 57.6)
+        self.assertEqual(readings["discharge_voltage_limit"].value, 44.8)
+        self.assertEqual(readings["charge_current_limit"].value, 50.0)
+        self.assertEqual(readings["discharge_current_limit"].value, 60.0)
+        self.assertEqual(readings["charge_allowed"].value, "on")
+
+    def test_zero_charge_limit_means_bms_has_blocked_charging(self):
+        data = b"".join(value.to_bytes(2, "big") for value in (5760, 4480, 0, 600))
+        readings = decode_operating_limits(data)
+        self.assertEqual(readings["charge_allowed"].value, "off")
 
     @patch("felicity_rs485.serial.Serial")
     def test_receiver_never_issues_write_function(self, serial_class):

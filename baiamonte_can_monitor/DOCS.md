@@ -13,7 +13,15 @@ The app reads both installed Felicity LPBA48100-OL batteries independently over 
 
 ## Safety
 
-RS485 monitoring sends only Modbus function 03 read requests for the three validated Felicity register blocks. No Modbus write function, raw-command endpoint, battery control, firmware update, or configuration function is implemented.
+RS485 monitoring sends only Modbus function 03 read requests for the validated Felicity register blocks. No Modbus write function, raw-command endpoint, battery control, firmware update, or configuration function is implemented.
+
+## Recovery control
+
+The Recovery Control page reads each BMS operating envelope, identifies the weakest cell, and publishes guarded recovery state, charge permission, full-rate permission, and recommended bank current entities to Home Assistant. A severely imbalanced bank is limited to a conservative 5 A per installed 100 Ah pack until the cells and pack SOC agree.
+
+The optional automatic controller operates only an existing Home Assistant generator-input switch. It proves generator voltage before closing the switch, obeys BMS permission and cell/temperature limits, and enforces a minimum five-minute anti-cycling interval. It cannot start the generator, regulate current through an on/off breaker, override a BMS, or force balancing.
+
+Keep `recovery_control_enabled` off until an electrician has verified that `generator_input_switch` disconnects only generator AC from the inverter and that `generator_voltage_sensor` measures that same source. The touch interface always provides a confirmed emergency action to open the configured input switch.
 
 The optional CAN modes remain available for future diagnosis. `listen_only` opens a CAN adapter passively. `standalone_ack` permits protocol-level acknowledgements when connected directly to a battery while application data transmission remains disabled.
 

@@ -22,6 +22,7 @@ from can_decoder import Reading, decode_frame
 from battery_bank import derive_bank_readings
 from energy_meter import EnergyMeter
 from felicity_rs485 import FelicityRs485Receiver
+from recovery_control import RecoveryController, assess_recovery
 from state_publisher import StatePublisher
 
 
@@ -57,6 +58,7 @@ RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
 FRAME_TIMES: deque[float] = deque(maxlen=4000)
 ID_COUNTS: Counter[str] = Counter()
 PUBLISHER: StatePublisher | None = None
+RECOVERY_CONTROLLER: RecoveryController | None = None
 
 
 def log(message: str) -> None:
@@ -128,6 +130,7 @@ def dashboard_status() -> dict[str, object]:
         "frames_last_minute": len(FRAME_TIMES),
         "traffic_ids": traffic_ids,
         "server_time": iso_now(),
+        "recovery_control": RECOVERY_CONTROLLER.status() if RECOVERY_CONTROLLER else {"enabled": False},
     })
     return status
 
@@ -160,7 +163,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_POST(self) -> None:
-        self.send_error(405, "This dashboard is receive-only")
+        request_path = urlparse(self.path).path.rstrip("/")
+        if request_path.endswith("/api/recovery/emergency-stop"):
+            if RECOVERY_CONTROLLER is None:
+                self.send_error(503, "Recovery controller is unavailable")
+                return
+            try:
+                RECOVERY_CONTROLLER.emergency_stop()
+            except Exception as exc:
+                payload = json.dumps({"ok": False, "error": str(exc)}).encode()
+                self.send_response(503)
+            else:
+                payload = json.dumps({"ok": True, "state": "off"}).encode()
+                self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        self.send_error(405, "Only the guarded emergency-stop action is available")
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -237,7 +259,9 @@ def publish_connection(connected: bool, adapter: str, frames: int, last_id: int 
 
 def binary_reading(key: str) -> bool:
     return (
-        key in {"bank_charging", "bank_discharging"}
+        key in {"bank_charging", "bank_discharging", "recovery_charge_safe", "recovery_full_rate_safe"}
+        or
+        key.endswith("_allowed")
         or
         key.endswith("_active")
         or key.endswith("_enabled")
@@ -397,7 +421,7 @@ def stop(_signum, _frame) -> None:
 
 
 def main() -> int:
-    global PUBLISHER
+    global PUBLISHER, RECOVERY_CONTROLLER
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     options = load_options()
@@ -414,6 +438,7 @@ def main() -> int:
         error_callback=lambda error: update_status(last_error=error),
     )
     PUBLISHER.start()
+    RECOVERY_CONTROLLER = RecoveryController(options, TOKEN, log)
     update_status(
         service="running",
         bitrate=bitrate,
@@ -434,6 +459,7 @@ def main() -> int:
     last_frame_at = 0.0
     last_publish_at = 0.0
     last_status_at = 0.0
+    last_recovery_control_at = 0.0
     status_interval = max(10, interval)
     last_id = None
     heartbeats_sent = 0
@@ -524,6 +550,8 @@ def main() -> int:
                     if now - seen_at <= stale_after
                 }
                 derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+                assessment = assess_recovery(all_readings, configured_addresses, online_addresses)
+                derived.update(assessment.readings())
                 if message.identifier == f"B{configured_addresses[-1]}:0x1302" and "bank_power" in derived:
                     derived.update(energy_meter.update(float(derived["bank_power"].value), now=now))
                     remaining = float(derived["bank_remaining_energy"].value)
@@ -537,6 +565,12 @@ def main() -> int:
                     )
                 all_readings.update(derived)
                 decoded = {**decoded, **derived}
+                # Supervisory control is intentionally low frequency. The pack's
+                # own BMS remains the millisecond-level protection layer.
+                if now - last_recovery_control_at >= 30:
+                    bank_soc = float(derived["bank_soc"].value) if "bank_soc" in derived else None
+                    RECOVERY_CONTROLLER.update(assessment, bank_soc)
+                    last_recovery_control_at = now
             pending.update(decoded)
             frame_record = {
                 "id": message.identifier if is_rs485 else f"0x{message.arbitration_id:03X}",
@@ -573,6 +607,7 @@ def main() -> int:
                 if now - seen_at <= stale_after
             }
             derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+            derived.update(assess_recovery(all_readings, configured_addresses, online_addresses).readings())
             all_readings.update(derived)
             pending.update(derived)
             with STATUS_LOCK:

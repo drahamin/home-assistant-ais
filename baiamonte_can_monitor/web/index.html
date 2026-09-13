@@ -30,6 +30,7 @@
       <nav aria-label="CAN Monitor pages">
         <button class="nav active" data-page="overview"><svg><use href="#i-overview"/></svg>Overview</button>
         <button class="nav" data-page="battery"><svg><use href="#i-battery"/></svg>Battery data</button>
+        <button class="nav" data-page="recovery"><svg><use href="#i-shield"/></svg>Recovery control</button>
         <button class="nav" data-page="traffic"><svg><use href="#i-pulse"/></svg>Bus traffic</button>
         <button class="nav" data-page="diagnostics"><svg><use href="#i-pulse"/></svg>Diagnostics</button>
         <button class="nav" data-page="wiring"><svg><use href="#i-wire"/></svg>Wiring help</button>
@@ -94,6 +95,20 @@
         <div class="section-head"><div><p>DUAL FELICITY BMS · READ ONLY</p><h2>Battery data</h2><span>Battery 1 and Battery 2 are read independently, then combined as one 10.24 kWh parallel bank.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
         <div class="bank-summary" id="bank-summary"></div>
         <div id="battery-pack-sections"></div>
+      </section>
+
+      <section class="page" id="recovery">
+        <div class="section-head"><div><p>GUARDED BATTERY SUPERVISOR</p><h2>Recovery control</h2><span>Uses live data from both BMS units and can supervise only the verified generator input switch.</span></div><span class="badge warning" id="recovery-badge">Checking</span></div>
+        <div class="recovery-hero" id="recovery-hero">
+          <div><small id="recovery-kicker">ASSESSING BOTH BATTERIES</small><h2 id="recovery-title">Waiting for BMS limits</h2><p id="recovery-summary">The controller is collecting cell and operating-limit data.</p></div>
+          <div class="recovery-rate"><small>RECOMMENDED BANK LIMIT</small><b id="recovery-limit">—</b><span id="full-rate-state">Full rate locked</span></div>
+        </div>
+        <div class="safety-banner"><svg><use href="#i-shield"/></svg><div><b>The BMS safety envelope is never overridden</b><span>This controller can connect or disconnect an existing generator AC input. It cannot regulate amperage, force balancing, close a blocked BMS MOSFET, or write battery configuration.</span></div></div>
+        <div class="recovery-grid">
+          <article class="panel"><div class="panel-head"><div><p>INTELLIGENT ACTION</p><h3>What the system recommends</h3></div><span class="status-badge warning" id="charge-safe">Locked</span></div><div class="finding" id="recovery-action">Waiting for a complete assessment.</div><div class="setting-row"><span>Weakest battery</span><b id="weakest-battery">—</b></div><div class="setting-row"><span>Weakest cell</span><b id="weakest-cell">—</b></div><div class="setting-row"><span>Full-rate charging</span><b id="full-rate-detail">Locked</b></div></article>
+          <article class="panel"><div class="panel-head"><div><p>GENERATOR INPUT ACTUATOR</p><h3>Guarded on/off control</h3></div><span class="status-badge" id="controller-enabled">Disabled</span></div><div class="setting-row"><span>Input switch</span><b id="generator-switch">—</b></div><div class="setting-row"><span>Generator voltage</span><b id="generator-voltage">—</b></div><div class="setting-row"><span>Last automatic action</span><b id="controller-action">None</b></div><div class="setting-row"><span>Current regulation</span><b>Not available through breaker</b></div><button class="emergency-button" id="emergency-stop"><svg><use href="#i-shield"/></svg>Open generator input now</button><p class="control-note" id="controller-note">Automatic actions remain locked until enabled in app configuration.</p></article>
+        </div>
+        <div class="limit-grid" id="limit-grid"></div>
       </section>
 
       <section class="page" id="diagnostics">

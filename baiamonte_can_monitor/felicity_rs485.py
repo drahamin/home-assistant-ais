@@ -96,6 +96,35 @@ def decode_cell_information(data: bytes) -> dict[str, Reading]:
     return readings
 
 
+def decode_operating_limits(data: bytes) -> dict[str, Reading]:
+    """Decode the four BMS-advertised operating limits.
+
+    These are telemetry values reported by the pack.  They are not configured or
+    overridden by the monitor.
+    """
+    if len(data) != 8:
+        return {}
+    charge_voltage = int.from_bytes(data[0:2], "big") * 0.01
+    discharge_voltage = int.from_bytes(data[2:4], "big") * 0.01
+    charge_current = int.from_bytes(data[4:6], "big") * 0.1
+    discharge_current = int.from_bytes(data[6:8], "big") * 0.1
+    if not (
+        40 <= charge_voltage <= 65
+        and 35 <= discharge_voltage <= 60
+        and 0 <= charge_current <= 200
+        and 0 <= discharge_current <= 200
+    ):
+        return {}
+    return {
+        "charge_voltage_limit": _measurement(round(charge_voltage, 2), "V", "voltage"),
+        "discharge_voltage_limit": _measurement(round(discharge_voltage, 2), "V", "voltage"),
+        "charge_current_limit": _measurement(round(charge_current, 1), "A", "current"),
+        "discharge_current_limit": _measurement(round(discharge_current, 1), "A", "current"),
+        "charge_allowed": Reading("on" if charge_current > 0 else "off"),
+        "discharge_allowed": Reading("on" if discharge_current > 0 else "off"),
+    }
+
+
 @dataclass(frozen=True)
 class Rs485Message:
     identifier: str
@@ -112,6 +141,7 @@ class FelicityRs485Receiver:
     monitor_transport = "felicity_rs485"
     COMMANDS = (
         (0x1302, 10, "pack information"),
+        (0x131C, 4, "operating limits"),
         (0x132A, 20, "cell information"),
     )
 
@@ -187,6 +217,8 @@ class FelicityRs485Receiver:
             readings = {"bms_version": Reading(int.from_bytes(data, "big"))}
         elif register == 0x1302:
             readings = decode_battery_information(data)
+        elif register == 0x131C:
+            readings = decode_operating_limits(data)
         else:
             readings = decode_cell_information(data)
         if not readings:

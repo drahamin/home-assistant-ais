@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.5.6"
+version: "0.6.0"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -32,6 +32,13 @@ options:
   battery_addresses: "1,2"
   stale_after_seconds: 30
   publish_interval_seconds: 5
+  recovery_control_enabled: false
+  generator_input_switch: "switch.generator_main_breaker_switch"
+  generator_voltage_sensor: "sensor.generator_main_breaker_phase_a_voltage"
+  generator_available_voltage: 180
+  recovery_start_soc: 20
+  recovery_stop_soc: 90
+  recovery_minimum_dwell_seconds: 900
 schema:
   adapter: "list(auto|gs_usb|slcan|felicity_rs485)"
   bus_mode: "list(listen_only|standalone_ack)"
@@ -43,6 +50,13 @@ schema:
   battery_addresses: "str"
   stale_after_seconds: "int"
   publish_interval_seconds: "int"
+  recovery_control_enabled: "bool"
+  generator_input_switch: "str"
+  generator_voltage_sensor: "str"
+  generator_available_voltage: "int"
+  recovery_start_soc: "int"
+  recovery_stop_soc: "int"
+  recovery_minimum_dwell_seconds: "int"
 configuration:
   adapter:
     name: Battery connection
@@ -74,3 +88,24 @@ configuration:
   publish_interval_seconds:
     name: Home Assistant update interval
     description: Minimum number of seconds between state updates.
+  recovery_control_enabled:
+    name: Automatic recovery control
+    description: Guarded control of the configured generator input switch. Leave off until the physical switch action is verified. The controller never writes to the battery BMS and cannot regulate current.
+  generator_input_switch:
+    name: Generator input switch
+    description: Existing Home Assistant switch that connects or disconnects generator AC from the inverter. It must not be a generator starter.
+  generator_voltage_sensor:
+    name: Generator voltage sensor
+    description: Existing Home Assistant voltage sensor used to prove generator power is available before closing the input switch.
+  generator_available_voltage:
+    name: Generator available voltage
+    description: Minimum measured generator voltage required before the controller may close the input switch.
+  recovery_start_soc:
+    name: Recovery start SOC
+    description: Close the verified generator input switch below this bank SOC when charging is safe.
+  recovery_stop_soc:
+    name: Recovery stop SOC
+    description: Open the generator input switch above this SOC only after the bank is balanced.
+  recovery_minimum_dwell_seconds:
+    name: Minimum switching interval
+    description: Anti-cycling delay between automatic generator input commands; a minimum of 300 seconds is enforced.
