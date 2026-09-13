@@ -87,6 +87,12 @@ def derive_bank_readings(
     maximum_cell_spread = max(cell_spreads, default=0.0)
     remaining_energy = sum(PACK_NOMINAL_ENERGY_KWH * pack["soc"] / 100 for pack in packs)
     status = "charging" if current > 0.05 else "discharging" if current < -0.05 else "idle"
+    if status == "charging":
+        charge_verdict = f"CHARGING at {max(power, 0.0):.0f} W"
+    elif status == "discharging":
+        charge_verdict = f"NOT CHARGING — discharging at {max(-power, 0.0):.0f} W"
+    else:
+        charge_verdict = "NOT CHARGING — battery flow is idle"
     health = "healthy"
     if online != configured or soc_difference > 10 or maximum_cell_spread > 50:
         health = "attention"
@@ -119,6 +125,9 @@ def derive_bank_readings(
         ),
         "bank_maximum_cell_spread": _measurement(maximum_cell_spread, "mV", "voltage"),
         "bank_status": Reading(status),
+        "bank_charging": Reading("on" if status == "charging" else "off"),
+        "bank_discharging": Reading("on" if status == "discharging" else "off"),
+        "bank_charge_verdict": Reading(charge_verdict),
         "bank_health": Reading(health),
         "bank_operating_recommendation": Reading(recommendation),
         # Backwards-compatible entities from version 0.4 now represent the whole bank.

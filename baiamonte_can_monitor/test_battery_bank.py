@@ -36,6 +36,9 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_remaining_energy"].device_class, "energy")
         self.assertEqual(result["bank_remaining_energy"].state_class, "measurement")
         self.assertEqual(result["bank_health"].value, "attention")
+        self.assertEqual(result["bank_charging"].value, "on")
+        self.assertEqual(result["bank_discharging"].value, "off")
+        self.assertIn("CHARGING", result["bank_charge_verdict"].value)
         self.assertEqual(result["battery_soc"].value, 18.0)
 
     def test_offline_pack_is_reported_without_inventing_its_data(self):
@@ -55,6 +58,9 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_discharging_power"].value, 250.0)
         self.assertEqual(result["battery_1_discharging_power"].value, 100.0)
         self.assertEqual(result["battery_2_discharging_power"].value, 150.0)
+        self.assertEqual(result["bank_charging"].value, "off")
+        self.assertEqual(result["bank_discharging"].value, "on")
+        self.assertIn("NOT CHARGING", result["bank_charge_verdict"].value)
         self.assertIn("heavy loads", result["bank_operating_recommendation"].value)
 
 
