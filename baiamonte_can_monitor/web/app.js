@@ -1,6 +1,6 @@
 const pages = [...document.querySelectorAll('.page')];
 const navButtons = [...document.querySelectorAll('.nav')];
-const titles = {overview:'Overview',battery:'Battery data',traffic:'Bus traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
+const titles = {overview:'Overview',battery:'Battery data',recovery:'Recovery control',traffic:'Bus traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
 const $ = id => document.getElementById(id);
 let latest = null;
 let refreshTimer = null;
@@ -82,6 +82,37 @@ function renderBattery(readings){
     return `<article class="pack-overview"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${online?(balance==='attention'?'attention':'online'):''}">${online?(balance==='attention'?'ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${value(readings,prefix+'battery_current')}</b></div><div><small>CELLS</small><b>${value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${value(readings,prefix+'pack_temperature')}</b></div></div></article>`;
   }).join(''));
 }
+function renderRecovery(readings,data){
+  const state=readings.recovery_state?.value||'learning_limits';
+  const safe=readings.recovery_charge_safe?.value==='on';
+  const full=readings.recovery_full_rate_safe?.value==='on';
+  const labels={normal:'Normal charging permitted',recovery:'Low-rate recovery required',charge_blocked:'Charging blocked for safety',monitoring_unavailable:'Monitoring incomplete',learning_limits:'Learning BMS limits'};
+  $('recovery-title').textContent=labels[state]||String(state).replaceAll('_',' ');
+  $('recovery-summary').textContent=value(readings,'recovery_summary','Waiting for a complete assessment.');
+  $('recovery-action').textContent=value(readings,'recovery_action','Automatic control remains locked.');
+  $('recovery-limit').textContent=value(readings,'recovery_recommended_charge_limit');
+  $('recovery-badge').textContent=state==='normal'?'READY':state==='charge_blocked'?'BLOCKED':'RECOVERY';
+  $('recovery-badge').className=`badge ${state==='normal'?'neutral':'warning'}`;
+  $('recovery-hero').className=`recovery-hero ${state}`;
+  $('charge-safe').textContent=safe?'CHARGE SAFE':'CHARGE LOCKED';
+  $('charge-safe').className=`status-badge ${safe?'healthy':'error'}`;
+  $('full-rate-state').textContent=full?'Full rate permitted':'Full rate locked';
+  $('full-rate-detail').textContent=full?'Permitted within BMS and wiring limits':'Locked until cells and pack SOC are balanced';
+  $('weakest-battery').textContent=value(readings,'recovery_weakest_battery');
+  $('weakest-cell').textContent=value(readings,'recovery_weakest_cell');
+  const control=data.recovery_control||{};
+  $('controller-enabled').textContent=control.enabled?'AUTOMATIC':'MONITOR ONLY';
+  $('controller-enabled').className=`status-badge ${control.enabled?'healthy':'warning'}`;
+  $('generator-switch').textContent=`${control.switch_state||'unknown'} · ${control.switch_entity||'not configured'}`;
+  $('generator-voltage').textContent=control.generator_voltage===null||control.generator_voltage===undefined?'Unavailable':`${control.generator_voltage} V`;
+  $('controller-action').textContent=control.last_action||'none';
+  $('controller-note').textContent=control.error||(!control.enabled?'Automatic actions remain locked until enabled in app configuration.':'Guarded automatic control is active with anti-cycling protection.');
+  const addresses=data.battery_addresses?.length?data.battery_addresses:[1,2];
+  replaceHtml('limit-grid',addresses.map(address=>{
+    const p=`battery_${address}_`;
+    return `<article class="panel limit-card"><div class="panel-head"><div><p>BMS OPERATING ENVELOPE</p><h3>Battery ${address}</h3></div><span class="pack-status ${readings[p+'charge_allowed']?.value==='on'?'online':'attention'}">${readings[p+'charge_allowed']?.value==='on'?'CHARGE ALLOWED':'CHARGE BLOCKED'}</span></div><div class="limit-values"><div><small>CHARGE CURRENT</small><b>${value(readings,p+'charge_current_limit')}</b></div><div><small>CHARGE VOLTAGE</small><b>${value(readings,p+'charge_voltage_limit')}</b></div><div><small>DISCHARGE CURRENT</small><b>${value(readings,p+'discharge_current_limit')}</b></div><div><small>DISCHARGE VOLTAGE</small><b>${value(readings,p+'discharge_voltage_limit')}</b></div></div></article>`;
+  }).join(''));
+}
 function renderFrames(frames){
   replaceHtml('frame-list',frames.length?frames.map(frame=>`<div class="frame-row"><b>${frame.id}</b><code>${frame.data}</code><small>${age(frame.at)}</small></div>`).join(''):'<div class="empty">No frames received yet.</div>');
 }
@@ -154,7 +185,7 @@ function render(data){
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
   replaceHtml('check-list',checksFor(displayHealth,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
-  renderBattery(readings);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
+  renderBattery(readings);renderRecovery(readings,data);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }
 async function refresh(){
   if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;}
@@ -174,6 +205,18 @@ async function refresh(){
   }
 }
 $('refresh').addEventListener('click',refresh);
+$('emergency-stop').addEventListener('click',async()=>{
+  if(!confirm('Open the configured generator input switch now? This removes generator AC from the inverter.'))return;
+  $('emergency-stop').disabled=true;
+  try{
+    const response=await fetch('api/recovery/emergency-stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const result=await response.json();
+    if(!response.ok||!result.ok)throw new Error(result.error||`HTTP ${response.status}`);
+    $('controller-note').textContent='Generator input switch opened by operator request.';
+    await refresh();
+  }catch(error){$('controller-note').textContent=`Emergency stop failed: ${error.message}`}
+  finally{$('emergency-stop').disabled=false;}
+});
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden)refresh();
 });
