@@ -56,7 +56,9 @@ def decode_battery_information(data: bytes) -> dict[str, Reading]:
     soc = int.from_bytes(data[18:20], "big")
     if not (20 <= voltage <= 70 and -500 <= current <= 500 and -50 <= temperature <= 150 and 0 <= soc <= 100):
         return {}
-    status = "charging" if current > 0.05 else "discharging" if current < -0.05 else "idle"
+    # Felicity reports current from the battery's point of view: negative means
+    # current is entering the pack (charging), positive means it is leaving.
+    status = "charging" if current < -0.05 else "discharging" if current > 0.05 else "idle"
     return {
         "battery_voltage": _measurement(round(voltage, 2), "V", "voltage"),
         "battery_current": _measurement(round(current, 1), "A", "current"),

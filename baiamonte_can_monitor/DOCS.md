@@ -5,7 +5,7 @@ The app reads both installed Felicity LPBA48100-OL batteries independently over 
 ## Installed configuration
 
 - Connection: `felicity_rs485`
-- Stable USB device: `/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DU0E5D36-if00-port0`
+- Stable USB device: select the installed FTDI adapter under `/dev/serial/by-id` in app configuration
 - Serial format: 9600 baud, 8 data bits, no parity, 1 stop bit
 - Battery addresses: `1,2`
 - Battery 1 and Battery 2: 51.2 V, 100 Ah, 5.12 kWh each
@@ -14,6 +14,10 @@ The app reads both installed Felicity LPBA48100-OL batteries independently over 
 ## Safety
 
 RS485 monitoring sends only Modbus function 03 read requests for the validated Felicity register blocks. No Modbus write function, raw-command endpoint, battery control, firmware update, or configuration function is implemented.
+
+## Power-flow direction
+
+Felicity reports signed current and power from the battery perspective. A **negative** value means energy is entering the batteries (**charging**); a **positive** value means energy is leaving the batteries (**discharging**). The overview shows positive magnitudes with CHARGING/DISCHARGING labels and arrows, while the raw signed current and power entities remain available for engineering diagnostics.
 
 ## Recovery control
 

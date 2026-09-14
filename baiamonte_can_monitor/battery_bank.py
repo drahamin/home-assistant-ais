@@ -46,13 +46,15 @@ def derive_bank_readings(
             )
         if power_reading is not None:
             pack_power = float(power_reading.value)
-            derived[prefix + "charging_power"] = _measurement(round(max(pack_power, 0.0), 1), "W", "power")
-            derived[prefix + "discharging_power"] = _measurement(round(max(-pack_power, 0.0), 1), "W", "power")
+            charge_power = max(-pack_power, 0.0)
+            discharge_power = max(pack_power, 0.0)
+            derived[prefix + "charging_power"] = _measurement(round(charge_power, 1), "W", "power")
+            derived[prefix + "discharging_power"] = _measurement(round(discharge_power, 1), "W", "power")
             if soc_reading is not None:
                 remaining_kwh = PACK_NOMINAL_ENERGY_KWH * float(soc_reading.value) / 100.0
-                derived[prefix + "time_to_empty"] = _duration_hours(remaining_kwh, max(-pack_power, 0.0))
+                derived[prefix + "time_to_empty"] = _duration_hours(remaining_kwh, discharge_power)
                 derived[prefix + "time_to_full"] = _duration_hours(
-                    PACK_NOMINAL_ENERGY_KWH - remaining_kwh, max(pack_power, 0.0)
+                    PACK_NOMINAL_ENERGY_KWH - remaining_kwh, charge_power
                 )
         if online and all(item is not None for item in (soc_reading, voltage_reading, current_reading, power_reading)):
             packs.append({
@@ -86,11 +88,11 @@ def derive_bank_readings(
     ]
     maximum_cell_spread = max(cell_spreads, default=0.0)
     remaining_energy = sum(PACK_NOMINAL_ENERGY_KWH * pack["soc"] / 100 for pack in packs)
-    status = "charging" if current > 0.05 else "discharging" if current < -0.05 else "idle"
+    status = "charging" if current < -0.05 else "discharging" if current > 0.05 else "idle"
     if status == "charging":
-        charge_verdict = f"CHARGING at {max(power, 0.0):.0f} W"
+        charge_verdict = f"CHARGING — {max(-power, 0.0):.0f} W entering batteries"
     elif status == "discharging":
-        charge_verdict = f"NOT CHARGING — discharging at {max(-power, 0.0):.0f} W"
+        charge_verdict = f"DISCHARGING — {max(power, 0.0):.0f} W supplying loads"
     else:
         charge_verdict = "NOT CHARGING — battery flow is idle"
     health = "healthy"
@@ -115,8 +117,11 @@ def derive_bank_readings(
         "bank_voltage": _measurement(voltage, "V", "voltage"),
         "bank_current": _measurement(current, "A", "current"),
         "bank_power": _measurement(power, "W", "power"),
-        "bank_charging_power": _measurement(round(max(power, 0.0), 1), "W", "power"),
-        "bank_discharging_power": _measurement(round(max(-power, 0.0), 1), "W", "power"),
+        "bank_charging_power": _measurement(round(max(-power, 0.0), 1), "W", "power"),
+        "bank_discharging_power": _measurement(round(max(power, 0.0), 1), "W", "power"),
+        "bank_power_magnitude": _measurement(round(abs(power), 1), "W", "power"),
+        "bank_current_magnitude": _measurement(round(abs(current), 1), "A", "current"),
+        "bank_flow_direction": Reading(status),
         "bank_soc": Reading(soc, "%", "battery", "measurement"),
         "bank_soc_difference": _measurement(soc_difference, "%"),
         "bank_remaining_capacity": _measurement(round(sum(pack["soc"] for pack in packs), 1), "Ah"),
