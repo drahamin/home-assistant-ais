@@ -33,7 +33,7 @@ class FelicityProtocolTests(unittest.TestCase):
         self.assertEqual(readings["battery_voltage"].value, 52.34)
         self.assertEqual(readings["battery_current"].value, -12.3)
         self.assertEqual(readings["battery_soc"].value, 81)
-        self.assertEqual(readings["battery_status"].value, "discharging")
+        self.assertEqual(readings["battery_status"].value, "charging")
         self.assertEqual(readings["pack_temperature"].value, 24)
 
     def test_cell_decoder(self):

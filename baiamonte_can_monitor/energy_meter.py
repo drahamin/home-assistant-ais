@@ -13,6 +13,8 @@ from can_decoder import Reading
 class EnergyMeter:
     """Integrate signed battery power without counting downtime or noisy idle watts."""
 
+    SIGN_CONVENTION = "negative_is_charging_v1"
+
     def __init__(
         self,
         path: str | Path,
@@ -37,10 +39,20 @@ class EnergyMeter:
     def _load(self) -> None:
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
-            self.charged_kwh = max(0.0, float(saved.get("charged_kwh", 0.0)))
-            self.discharged_kwh = max(0.0, float(saved.get("discharged_kwh", 0.0)))
-            self.average_charge_w = max(0.0, float(saved.get("average_charge_w", 0.0)))
-            self.average_discharge_w = max(0.0, float(saved.get("average_discharge_w", 0.0)))
+            charged = max(0.0, float(saved.get("charged_kwh", 0.0)))
+            discharged = max(0.0, float(saved.get("discharged_kwh", 0.0)))
+            average_charge = max(0.0, float(saved.get("average_charge_w", 0.0)))
+            average_discharge = max(0.0, float(saved.get("average_discharge_w", 0.0)))
+            if saved.get("sign_convention") != self.SIGN_CONVENTION:
+                # Versions through 0.6.0 interpreted the Felicity sign backward.
+                # Swap the accumulated buckets once so existing statistics keep
+                # their energy instead of continuing under the wrong label.
+                charged, discharged = discharged, charged
+                average_charge, average_discharge = average_discharge, average_charge
+            self.charged_kwh = charged
+            self.discharged_kwh = discharged
+            self.average_charge_w = average_charge
+            self.average_discharge_w = average_discharge
         except (FileNotFoundError, OSError, TypeError, ValueError, json.JSONDecodeError):
             pass
 
@@ -53,19 +65,19 @@ class EnergyMeter:
         power_w = self._clean_power(float(power_w), self.noise_floor_w)
         # A slow exponential average rejects brief inverter/load spikes while
         # continuously adapting to how this installation is actually used.
-        if power_w > 0:
-            self.average_charge_w = self._learn(self.average_charge_w, power_w)
-        elif power_w < 0:
-            self.average_discharge_w = self._learn(self.average_discharge_w, -power_w)
+        if power_w < 0:
+            self.average_charge_w = self._learn(self.average_charge_w, -power_w)
+        elif power_w > 0:
+            self.average_discharge_w = self._learn(self.average_discharge_w, power_w)
         if self._last_sample_at is not None and self._last_power_w is not None:
             elapsed = sample_at - self._last_sample_at
             if 0 < elapsed <= self.max_gap_s:
                 average_w = (self._last_power_w + power_w) / 2
                 energy_kwh = average_w * elapsed / 3_600_000
-                if energy_kwh >= 0:
-                    self.charged_kwh += energy_kwh
+                if energy_kwh <= 0:
+                    self.charged_kwh += -energy_kwh
                 else:
-                    self.discharged_kwh += -energy_kwh
+                    self.discharged_kwh += energy_kwh
         self._last_power_w = power_w
         self._last_sample_at = sample_at
         if sample_at - self._last_saved_at >= 60:
@@ -79,8 +91,8 @@ class EnergyMeter:
 
     def forecast_readings(self, remaining_kwh: float, nominal_kwh: float, power_w: float) -> dict[str, Reading]:
         """Produce stable runtime forecasts using live power and learned usage."""
-        current_charge_w = max(float(power_w), 0.0)
-        current_discharge_w = max(-float(power_w), 0.0)
+        current_charge_w = max(-float(power_w), 0.0)
+        current_discharge_w = max(float(power_w), 0.0)
         if current_discharge_w > self.noise_floor_w:
             discharge_basis_w = self._learn(self.average_discharge_w, current_discharge_w)
             basis = "live discharge smoothed with learned load"
@@ -117,6 +129,7 @@ class EnergyMeter:
         temporary.write_text(
             json.dumps(
                 {
+                    "sign_convention": self.SIGN_CONVENTION,
                     "charged_kwh": self.charged_kwh,
                     "discharged_kwh": self.discharged_kwh,
                     "average_charge_w": self.average_charge_w,

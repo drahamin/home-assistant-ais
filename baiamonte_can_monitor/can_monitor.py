@@ -230,7 +230,11 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
     if key in {"bank_charging", "bank_charge_verdict"}:
         icon = "mdi:battery-charging"
     elif key == "bank_discharging":
-        icon = "mdi:battery-arrow-down"
+        icon = "mdi:battery-arrow-up-outline"
+    elif key == "bank_flow_direction":
+        icon = "mdi:swap-vertical-bold"
+    elif key in {"bank_power_magnitude", "bank_current_magnitude"}:
+        icon = "mdi:transmission-tower-import"
     attributes: dict[str, object] = {
         "friendly_name": friendly_name(key),
         "icon": icon,

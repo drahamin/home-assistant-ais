@@ -8,8 +8,8 @@ class BatteryBankTests(unittest.TestCase):
     def setUp(self):
         self.readings = {}
         for address, voltage, current, soc, spread in (
-            (1, 51.90, 2.5, 29, 3),
-            (2, 51.88, 2.6, 7, 60),
+            (1, 51.90, -2.5, 29, 3),
+            (2, 51.88, -2.6, 7, 60),
         ):
             prefix = f"battery_{address}_"
             self.readings.update({
@@ -23,7 +23,7 @@ class BatteryBankTests(unittest.TestCase):
     def test_equal_parallel_pack_totals(self):
         result = derive_bank_readings(self.readings, [1, 2], {1, 2})
         self.assertEqual(result["bank_voltage"].value, 51.89)
-        self.assertEqual(result["bank_current"].value, 5.1)
+        self.assertEqual(result["bank_current"].value, -5.1)
         self.assertEqual(result["bank_soc"].value, 18.0)
         self.assertEqual(result["bank_nominal_energy"].value, 10.24)
         self.assertEqual(result["bank_remaining_energy"].value, 1.843)
@@ -38,7 +38,11 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_health"].value, "attention")
         self.assertEqual(result["bank_charging"].value, "on")
         self.assertEqual(result["bank_discharging"].value, "off")
+        self.assertEqual(result["bank_flow_direction"].value, "charging")
+        self.assertEqual(result["bank_power_magnitude"].value, 264.7)
+        self.assertEqual(result["bank_current_magnitude"].value, 5.1)
         self.assertIn("CHARGING", result["bank_charge_verdict"].value)
+        self.assertIn("entering batteries", result["bank_charge_verdict"].value)
         self.assertEqual(result["battery_soc"].value, 18.0)
 
     def test_offline_pack_is_reported_without_inventing_its_data(self):
@@ -48,11 +52,11 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_online_batteries"].value, 1)
         self.assertEqual(result["bank_health"].value, "attention")
 
-    def test_discharge_power_is_reported_as_positive_input_to_statistics(self):
-        self.readings["battery_1_battery_power"] = Reading(-100.0, "W")
-        self.readings["battery_1_battery_current"] = Reading(-2.0, "A")
-        self.readings["battery_2_battery_power"] = Reading(-150.0, "W")
-        self.readings["battery_2_battery_current"] = Reading(-3.0, "A")
+    def test_positive_felicity_power_is_reported_as_discharge(self):
+        self.readings["battery_1_battery_power"] = Reading(100.0, "W")
+        self.readings["battery_1_battery_current"] = Reading(2.0, "A")
+        self.readings["battery_2_battery_power"] = Reading(150.0, "W")
+        self.readings["battery_2_battery_current"] = Reading(3.0, "A")
         result = derive_bank_readings(self.readings, [1, 2], {1, 2})
         self.assertEqual(result["bank_charging_power"].value, 0.0)
         self.assertEqual(result["bank_discharging_power"].value, 250.0)
@@ -60,7 +64,9 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["battery_2_discharging_power"].value, 150.0)
         self.assertEqual(result["bank_charging"].value, "off")
         self.assertEqual(result["bank_discharging"].value, "on")
-        self.assertIn("NOT CHARGING", result["bank_charge_verdict"].value)
+        self.assertEqual(result["bank_flow_direction"].value, "discharging")
+        self.assertIn("DISCHARGING", result["bank_charge_verdict"].value)
+        self.assertIn("supplying loads", result["bank_charge_verdict"].value)
         self.assertIn("heavy loads", result["bank_operating_recommendation"].value)
 
 

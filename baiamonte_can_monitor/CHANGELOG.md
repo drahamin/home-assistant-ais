@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Corrected the Felicity current convention: negative current/power is charging and positive current/power is discharging.
+- Added prominent charging/discharging flow cards with arrows, color, plain-language direction, and positive magnitudes.
+- Added native flow-direction, power-magnitude, and current-magnitude entities while retaining signed raw telemetry.
+- Migrated accumulated charged/discharged energy totals once so historical buckets retain the correct meaning.
+
 ## 0.5.6
 
 - Added definitive native charging and discharging binary sensors from BMS current direction.
