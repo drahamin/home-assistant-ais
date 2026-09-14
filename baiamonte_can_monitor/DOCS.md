@@ -2,6 +2,8 @@
 
 The app reads both installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, all 32 cell voltages, temperatures, raw replies, and troubleshooting.
 
+The **Trends** page reads recorder history only when opened. It shows the 24-hour charge curve, all 16 cell voltages together for each battery, and daily energy charged/discharged for the last 14 days. Queries are fixed to battery entities, downsampled, and cached so the page does not add continuous recorder or browser load.
+
 ## Installed configuration
 
 - Connection: `felicity_rs485`

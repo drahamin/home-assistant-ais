@@ -1,9 +1,10 @@
 const pages = [...document.querySelectorAll('.page')];
 const navButtons = [...document.querySelectorAll('.nav')];
-const titles = {overview:'Overview',battery:'Battery data',recovery:'Recovery control',traffic:'Bus traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
+const titles = {overview:'Overview',battery:'Battery data',trends:'Battery trends',recovery:'Recovery control',traffic:'Bus traffic',diagnostics:'Diagnostics',wiring:'Wiring help'};
 const $ = id => document.getElementById(id);
 let latest = null;
 let refreshTimer = null;
+let trendsLoadedAt = 0;
 const renderedHtml = new Map();
 
 function replaceHtml(id, html){
@@ -18,9 +19,55 @@ function showPage(id){
   $('page-title').textContent=titles[id]||'CAN Monitor';
   navButtons.find(button=>button.dataset.page===id)?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   window.scrollTo({top:0,behavior:'smooth'});
+  if(id==='trends'&&Date.now()-trendsLoadedAt>300000)refreshTrends();
 }
 navButtons.forEach(button=>button.addEventListener('click',()=>showPage(button.dataset.page)));
 document.querySelectorAll('[data-go]').forEach(button=>button.addEventListener('click',()=>showPage(button.dataset.go)));
+
+const chartColors=['#d4af37','#6f8252','#c48622','#7d68a7','#4f8f9d','#c2645a','#5974a8','#9a704e','#799958','#b65e88','#3c8c78','#8f6db2','#aa7d28','#547b9e','#bb6551','#657247'];
+function formatChartValue(value,unit){
+  const digits=unit==='V'?3:unit==='kWh'?2:unit==='%'?0:0;
+  return `${Number(value).toFixed(digits)} ${unit}`;
+}
+function lineChart(hostId,payload){
+  const host=$(hostId), series=payload.series.filter(item=>item.points.length);
+  if(!series.length){host.innerHTML='<div class="chart-empty">No recorder history is available yet. Live values are still updating.</div>';return;}
+  const points=series.flatMap(item=>item.points), minX=Math.min(...points.map(p=>p[0])), maxX=Math.max(...points.map(p=>p[0]));
+  const units=[...new Set(series.map(item=>item.unit))],scales={};
+  units.forEach(unit=>{const values=series.filter(item=>item.unit===unit).flatMap(item=>item.points.map(p=>p[1]));let min=Math.min(...values),max=Math.max(...values);if(unit==='%'){min=0;max=100}else if(unit==='V'){const pad=Math.max(.006,(max-min)*.18);min=Math.floor((min-pad)*1000)/1000;max=Math.ceil((max+pad)*1000)/1000}else{min=Math.min(0,min);max=Math.max(1,max*1.08)}scales[unit]={min,max};});
+  const x=value=>70+(value-minX)/Math.max(1,maxX-minX)*870;
+  const y=(value,unit)=>24+(scales[unit].max-value)/Math.max(.0001,scales[unit].max-scales[unit].min)*236;
+  const paths=series.map((item,index)=>`<path class="chart-line" stroke="${chartColors[index%chartColors.length]}" d="${item.points.map((point,i)=>`${i?'L':'M'}${x(point[0]).toFixed(1)},${y(point[1],item.unit).toFixed(1)}`).join(' ')}"/>`).join('');
+  const primary=units[0],secondary=units[1],grid=[0,.25,.5,.75,1].map(step=>{const yy=24+step*236,value=scales[primary].max-step*(scales[primary].max-scales[primary].min),right=secondary?scales[secondary].max-step*(scales[secondary].max-scales[secondary].min):null;return `<line x1="70" y1="${yy}" x2="940" y2="${yy}"/><text x="62" y="${yy+4}" text-anchor="end">${formatChartValue(value,primary)}</text>${secondary?`<text x="948" y="${yy+4}">${formatChartValue(right,secondary)}</text>`:''}`}).join('');
+  const times=[0,.25,.5,.75,1].map(step=>{const xx=70+step*870,date=new Date(minX+step*(maxX-minX));return `<text x="${xx}" y="286" text-anchor="middle">${date.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</text>`}).join('');
+  const legend=series.map((item,index)=>`<span><i style="--series:${chartColors[index%chartColors.length]}"></i>${item.name}</span>`).join('');
+  host.innerHTML=`<div class="chart-legend">${legend}</div><div class="chart-canvas"><svg viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="${payload.chart} history"><g class="chart-grid-lines">${grid}${times}</g>${paths}<line class="chart-cursor" x1="0" x2="0" y1="24" y2="260" visibility="hidden"/></svg><div class="chart-tooltip"></div></div>`;
+  attachChartPointer(host,series,minX,maxX,x);
+}
+function barChart(hostId,payload){
+  const host=$(hostId),series=payload.series.filter(item=>item.points.length);
+  if(!series.length){host.innerHTML='<div class="chart-empty">Daily energy totals will appear after recorder history accumulates.</div>';return;}
+  const timestamps=[...new Set(series.flatMap(item=>item.points.map(p=>p[0])))].sort(),max=Math.max(1,...series.flatMap(item=>item.points.map(p=>p[1]))),groupWidth=870/Math.max(1,timestamps.length),barWidth=Math.min(26,groupWidth/(series.length+1));
+  const bars=series.map((item,si)=>item.points.map(point=>{const di=timestamps.indexOf(point[0]),x=70+di*groupWidth+groupWidth/2+(si-(series.length-1)/2)*barWidth,y=260-point[1]/max*220;return `<rect x="${x-barWidth*.42}" y="${y}" width="${barWidth*.84}" height="${260-y}" rx="4" fill="${chartColors[si]}"/>`}).join('')).join('');
+  const labels=timestamps.map((stamp,index)=>`<text x="${70+index*groupWidth+groupWidth/2}" y="286" text-anchor="middle">${new Date(stamp).toLocaleDateString([],{month:'short',day:'numeric'})}</text>`).join('');
+  const grid=[0,.25,.5,.75,1].map(step=>{const y=260-step*220;return `<line x1="70" y1="${y}" x2="940" y2="${y}"/><text x="62" y="${y+4}" text-anchor="end">${(step*max).toFixed(1)}</text>`}).join('');
+  host.innerHTML=`<div class="chart-legend">${series.map((item,index)=>`<span><i style="--series:${chartColors[index]}"></i>${item.name}</span>`).join('')}</div><div class="chart-canvas"><svg viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="Daily charged and discharged energy"><g class="chart-grid-lines">${grid}${labels}</g>${bars}</svg></div>`;
+}
+function attachChartPointer(host,series,minX,maxX,xScale){
+  const canvas=host.querySelector('.chart-canvas'),svg=host.querySelector('svg'),cursor=host.querySelector('.chart-cursor'),tooltip=host.querySelector('.chart-tooltip');
+  const inspect=event=>{const rect=svg.getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),stamp=minX+ratio*(maxX-minX),values=series.map(item=>{const point=item.points.reduce((best,p)=>Math.abs(p[0]-stamp)<Math.abs(best[0]-stamp)?p:best,item.points[0]);return {...item,point};}),nearest=values[0].point[0],xx=xScale(nearest);cursor.setAttribute('x1',xx);cursor.setAttribute('x2',xx);cursor.setAttribute('visibility','visible');tooltip.innerHTML=`<b>${new Date(nearest).toLocaleString()}</b>${values.map((item,index)=>`<span><i style="--series:${chartColors[index%chartColors.length]}"></i>${item.name}: <strong>${formatChartValue(item.point[1],item.unit)}</strong></span>`).join('')}`;tooltip.classList.add('visible');tooltip.style.left=`${Math.min(68,Math.max(2,ratio*100))}%`;};
+  canvas.addEventListener('pointermove',inspect);canvas.addEventListener('pointerdown',inspect);canvas.addEventListener('pointerleave',()=>{cursor.setAttribute('visibility','hidden');tooltip.classList.remove('visible')});
+}
+async function loadChart(name,renderer=lineChart){
+  const status=$(`${name}-status`),hostId=`${name}-chart`;status.textContent='Loading…';
+  try{const response=await fetch(`api/history?chart=${name}`,{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);renderer(hostId,data);const count=data.series.reduce((sum,item)=>sum+item.points.length,0);status.textContent=count?`${data.cached?'Cached · ':''}${count.toLocaleString()} points`:'No history';}
+  catch(error){status.textContent='History unavailable';$(hostId).innerHTML=`<div class="chart-empty">${error.message}</div>`;}
+}
+async function refreshTrends(){
+  trendsLoadedAt=Date.now();$('chart-refresh').disabled=true;
+  await Promise.all([loadChart('charging'),loadChart('battery1_cells'),loadChart('battery2_cells'),loadChart('multi_day',barChart)]);
+  $('chart-refresh').disabled=false;
+}
 
 function value(readings,key,fallback='—'){
   const entry=readings[key];
@@ -238,6 +285,7 @@ async function refresh(){
   }
 }
 $('refresh').addEventListener('click',refresh);
+$('chart-refresh').addEventListener('click',()=>{trendsLoadedAt=0;refreshTrends()});
 $('emergency-stop').addEventListener('click',async()=>{
   if(!confirm('Open the configured generator input switch now? This removes generator AC from the inverter.'))return;
   $('emergency-stop').disabled=true;

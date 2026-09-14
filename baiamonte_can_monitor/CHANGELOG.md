@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2
+
+- Added a touch-friendly Trends page with a 24-hour charging curve.
+- Added one 16-cell voltage chart for each Felicity battery.
+- Added a retained 14-day charged-versus-discharged energy chart.
+- History is allow-listed, cached, downsampled, and loaded only on demand to keep resource use low.
+
 ## 0.6.1
 
 - Corrected the Felicity current convention: negative current/power is charging and positive current/power is discharging.

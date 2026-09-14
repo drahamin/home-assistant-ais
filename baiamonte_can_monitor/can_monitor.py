@@ -14,7 +14,7 @@ from collections import Counter, deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import can
 
@@ -24,6 +24,7 @@ from energy_meter import EnergyMeter
 from felicity_rs485 import FelicityRs485Receiver
 from recovery_control import RecoveryController, assess_recovery
 from state_publisher import StatePublisher
+from history_api import HistoryClient, HistoryError
 
 
 ENTITY_PREFIX = "baiamonte_can"
@@ -59,6 +60,7 @@ FRAME_TIMES: deque[float] = deque(maxlen=4000)
 ID_COUNTS: Counter[str] = Counter()
 PUBLISHER: StatePublisher | None = None
 RECOVERY_CONTROLLER: RecoveryController | None = None
+HISTORY = HistoryClient(TOKEN)
 
 
 def log(message: str) -> None:
@@ -137,10 +139,31 @@ def dashboard_status() -> dict[str, object]:
 
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        request_path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        request_path = parsed.path
         if request_path.rstrip("/").endswith("/api/status"):
             payload = json.dumps(dashboard_status(), separators=(",", ":")).encode()
             self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if request_path.rstrip("/").endswith("/api/history"):
+            chart = parse_qs(parsed.query).get("chart", [""])[0]
+            try:
+                result = HISTORY.chart(chart)
+                payload = json.dumps(result, separators=(",", ":")).encode()
+                status = 200
+            except KeyError:
+                payload = json.dumps({"error": "Unknown chart. Use charging, battery1_cells, battery2_cells, or multi_day."}).encode()
+                status = 400
+            except HistoryError as exc:
+                payload = json.dumps({"error": str(exc)}).encode()
+                status = 503
+            self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(payload)))
