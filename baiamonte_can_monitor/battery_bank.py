@@ -103,6 +103,11 @@ def derive_bank_readings(
     lowest_soc = min(pack["soc"] for pack in packs)
     if online != configured:
         recommendation = "Check the offline battery before relying on the bank."
+    elif soc >= 98 and status != "discharging":
+        recommendation = (
+            "Charge complete: BMS charge tapering or cutoff is normal at full SOC. "
+            "Do not force more current; allow top balancing."
+        )
     elif lowest_soc <= 10:
         recommendation = "Charge now; avoid heavy loads until every battery is above 20%."
     elif soc_difference > 10 or maximum_cell_spread > 50:

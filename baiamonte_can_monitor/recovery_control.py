@@ -107,9 +107,24 @@ def assess_recovery(
     soc_difference = max(float(pack["soc"]) for pack in packs) - min(float(pack["soc"]) for pack in packs)
     bms_limit = sum(float(pack["charge_limit"]) for pack in packs)
     bms_allows_charge = all(bool(pack["charge_allowed"]) for pack in packs)
+    charge_complete = min(float(pack["soc"]) for pack in packs) >= 98
+    voltage_and_temperature_safe = (
+        0 <= minimum_temp and maximum_temp <= 50 and maximum_cell < 3.55
+    )
 
-    charge_safe = bms_allows_charge and 0 <= minimum_temp and maximum_temp <= 50 and maximum_cell < 3.55
+    charge_safe = bms_allows_charge and voltage_and_temperature_safe
     if not charge_safe:
+        if charge_complete and not bms_allows_charge and voltage_and_temperature_safe:
+            return RecoveryAssessment(
+                "charge_complete",
+                "The bank is full; one or more BMS units have stopped accepting charge as expected.",
+                "Charge limiting at full SOC is normal. Do not force additional current; allow top balancing and stop unnecessary charging input.",
+                False,
+                False,
+                0.0,
+                int(weakest["address"]),
+                int(weakest["weakest_cell"]),
+            )
         if not bms_allows_charge:
             reason = "At least one BMS reports that charging is not allowed."
         elif maximum_cell >= 3.55:

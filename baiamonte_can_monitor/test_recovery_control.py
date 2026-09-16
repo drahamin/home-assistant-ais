@@ -50,6 +50,24 @@ class RecoveryAssessmentTests(unittest.TestCase):
         self.assertFalse(result.charge_safe)
         self.assertEqual(result.recommended_charge_limit_a, 0.0)
 
+    def test_full_battery_charge_block_is_reported_as_normal_tapering(self):
+        readings = {}
+        pack(readings, 1, 100, 3.37, 3.42, 50, allowed="on")
+        pack(readings, 2, 100, 3.32, 3.42, 100, limit=0, allowed="off")
+        result = assess_recovery(readings, [1, 2], {1, 2})
+        self.assertEqual(result.state, "charge_complete")
+        self.assertIn("full", result.summary)
+        self.assertIn("normal", result.action.lower())
+        self.assertFalse(result.charge_safe)
+        self.assertEqual(result.recommended_charge_limit_a, 0.0)
+
+    def test_full_battery_with_unsafe_cell_voltage_remains_blocked(self):
+        readings = {}
+        pack(readings, 1, 100, 3.40, 3.56, 160, allowed="on")
+        pack(readings, 2, 100, 3.40, 3.56, 160, limit=0, allowed="off")
+        result = assess_recovery(readings, [1, 2], {1, 2})
+        self.assertEqual(result.state, "charge_blocked")
+
     def test_missing_pack_locks_control(self):
         result = assess_recovery({}, [1, 2], {1})
         self.assertEqual(result.state, "monitoring_unavailable")

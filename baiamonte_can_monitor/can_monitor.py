@@ -115,9 +115,14 @@ def dashboard_status() -> dict[str, object]:
         health = "attention"
         soc_difference = status.get("readings", {}).get("bank_soc_difference", {}).get("value", "—")
         cell_spread = status.get("readings", {}).get("bank_maximum_cell_spread", {}).get("value", "—")
+        bank_soc = status.get("readings", {}).get("bank_soc", {}).get("value")
+        full_bank = isinstance(bank_soc, (int, float)) and bank_soc >= 98
         diagnosis = (
             f"Only {online} of {configured} configured batteries is responding. Check the offline battery and RS485 address."
             if online != configured else
+            "The bank is full and the BMS is tapering or stopping charge normally while cells top-balance. "
+            f"The largest cell spread is {cell_spread} mV; monitor that it settles, but do not force more current."
+            if full_bank else
             "Both batteries are communicating, but their balance needs attention: "
             f"SOC differs by {soc_difference}% and the largest cell spread is {cell_spread} mV."
         )
