@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.5
+
+- Keep the full-charge BMS taper message during small transient loads so the dashboard never contradicts the charge-complete status.
+
 ## 0.6.4
 
 - Treat BMS charge tapering or cutoff at 98–100% SOC as normal charge completion rather than a battery fault.

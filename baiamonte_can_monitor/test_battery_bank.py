@@ -73,6 +73,19 @@ class BatteryBankTests(unittest.TestCase):
         self.assertIn("supplying loads", result["bank_charge_verdict"].value)
         self.assertIn("heavy loads", result["bank_operating_recommendation"].value)
 
+    def test_full_bank_keeps_charge_complete_message_during_small_load(self):
+        for address in (1, 2):
+            prefix = f"battery_{address}_"
+            self.readings[prefix + "battery_soc"] = Reading(100, "%")
+            self.readings[prefix + "battery_current"] = Reading(0.8, "A")
+            self.readings[prefix + "battery_power"] = Reading(41.5, "W")
+
+        result = derive_bank_readings(self.readings, [1, 2], {1, 2})
+
+        self.assertEqual(result["bank_flow_direction"].value, "discharging")
+        self.assertIn("Charge complete", result["bank_operating_recommendation"].value)
+        self.assertIn("Do not force more current", result["bank_operating_recommendation"].value)
+
 
 if __name__ == "__main__":
     unittest.main()
