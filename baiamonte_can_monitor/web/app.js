@@ -79,6 +79,29 @@ function numeric(readings,key){
   const parsed=Number(raw);
   return Number.isFinite(parsed)?parsed:null;
 }
+function formatHours(hours){
+  if(!Number.isFinite(hours))return null;
+  if(hours<=0.05)return 'Now';
+  const totalMinutes=Math.max(1,Math.round(hours*60));
+  const days=Math.floor(totalMinutes/1440), remainder=totalMinutes%1440;
+  const wholeHours=Math.floor(remainder/60), minutes=remainder%60;
+  if(days)return `${days}d ${wholeHours}h`;
+  if(wholeHours)return `${wholeHours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+function liveRuntime(readings,prefix,mode){
+  const key=prefix==='bank_'
+    ? (mode==='empty'?'bank_time_to_empty_current_load':'bank_time_to_full_current_input')
+    : `${prefix}${mode==='empty'?'time_to_empty':'time_to_full'}`;
+  const estimate=formatHours(numeric(readings,key));
+  if(estimate)return estimate;
+  const soc=numeric(readings,`${prefix}${prefix==='bank_'?'soc':'battery_soc'}`);
+  if(mode==='full'&&soc!==null&&soc>=99.5)return 'Full';
+  const direction=flowState(readings,prefix);
+  if(direction==='waiting')return 'Calculating…';
+  if(mode==='empty')return direction==='charging'?'Charging now':'Not discharging';
+  return direction==='discharging'?'Not charging':'No charge input';
+}
 function flowState(readings,prefix='bank_'){
   const reported=readings[`${prefix}battery_status`]?.value||readings[`${prefix}status`]?.value||readings[`${prefix}flow_direction`]?.value;
   if(['charging','discharging','idle'].includes(reported))return reported;
@@ -134,18 +157,18 @@ function checksFor(health,data={}){
 }
 function renderBattery(readings){
   const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2];
-  const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Nominal storage','bank_nominal_energy'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
-  replaceHtml('bank-summary',bankCards.map(([label,key])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${value(readings,key)}</h3><p>Combined battery bank</p></article>`).join(''));
+  const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Time until empty','runtime_empty'],['Time until full','runtime_full'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
+  replaceHtml('bank-summary',bankCards.map(([label,key])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${key==='runtime_empty'?liveRuntime(readings,'bank_','empty'):key==='runtime_full'?liveRuntime(readings,'bank_','full'):value(readings,key)}</h3><p>${key==='runtime_empty'?'At current net load':key==='runtime_full'?'At current net input':'Combined battery bank'}</p></article>`).join(''));
   const sections=addresses.map(address=>{
     const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on';
     const balance=readings[`${prefix}cell_balance`]?.value||'waiting';
     const statusClass=!online?'':balance==='attention'?'attention':'online';
     const direction=flowState(readings,prefix);
     const directionLabel=direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
-    const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Flow',null],['Current','battery_current'],['Power','battery_power'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['BMS version','bms_version']];
+    const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Flow',null],['Current','battery_current'],['Power','battery_power'],['Time to empty','runtime_empty'],['Time to full','runtime_full'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['BMS version','bms_version']];
     const cells=[];
     for(let i=1;i<=16;i++)if(readings[`${prefix}cell_${i}_voltage`])cells.push({number:i,...readings[`${prefix}cell_${i}_voltage`]});
-    return `<article class="panel battery-pack"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>51.2 V · 100 Ah · 5.12 kWh</span></div><span class="pack-status ${statusClass}">${online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-flow ${direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${key===null?directionLabel:key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for register 0x132A.</div>'}</div></article>`;
+    return `<article class="panel battery-pack"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>51.2 V · 100 Ah · 5.12 kWh</span></div><span class="pack-status ${statusClass}">${online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-flow ${direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${key===null?directionLabel:key==='runtime_empty'?liveRuntime(readings,prefix,'empty'):key==='runtime_full'?liveRuntime(readings,prefix,'full'):key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for register 0x132A.</div>'}</div></article>`;
   }).join('');
   replaceHtml('battery-pack-sections',sections);
 
@@ -251,6 +274,11 @@ function render(data){
   $('power').textContent=flowPower===null?'—':`${Math.abs(flowPower).toFixed(1)} W ${flowCopy[2]}`;
   $('voltage').textContent=value(readings,'bank_voltage',value(readings,'battery_voltage'));
   $('current').textContent=flowCurrent===null?'—':`${Math.abs(flowCurrent).toFixed(1)} A`;
+  $('time-to-empty').textContent=liveRuntime(readings,'bank_','empty');
+  $('time-to-full').textContent=liveRuntime(readings,'bank_','full');
+  const dischargePower=numeric(readings,'bank_discharging_power'),chargePower=numeric(readings,'bank_charging_power');
+  $('time-to-empty-detail').textContent=dischargePower>5?`At the current ${dischargePower.toFixed(0)} W net load`:'Updates automatically when the bank is discharging';
+  $('time-to-full-detail').textContent=chargePower>5?`At the current ${chargePower.toFixed(0)} W net input · tapering may extend this`:'Updates automatically when charging begins';
   const alarm=readings.alarm_active?.value==='on', protection=readings.protection_active?.value==='on';
   const bankAttention=readings.bank_health?.value==='attention';
   $('safety').textContent=alarm||protection||bankAttention?'Attention':'Normal';

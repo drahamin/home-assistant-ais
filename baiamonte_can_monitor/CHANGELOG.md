@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.3
+
+- Added prominent live time-until-empty and time-until-full cards to the Overview and Battery Data pages.
+- Estimates now use the current net discharge load or current net charging input, with clear inactive states instead of misleading values.
+- Added matching current-flow forecast entities for native Home Assistant dashboards and per-battery runtime estimates in the detailed view.
+
 ## 0.6.2
 
 - Added a touch-friendly Trends page with a 24-hour charging curve.
