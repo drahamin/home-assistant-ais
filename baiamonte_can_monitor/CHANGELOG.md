@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4
+
+- Treat BMS charge tapering or cutoff at 98–100% SOC as normal charge completion rather than a battery fault.
+- Keep true charge-block warnings for incomplete batteries and for unsafe cell voltage or temperature.
+- Explain full-SOC top balancing and advise against forcing additional charge current.
+
 ## 0.6.3
 
 - Added prominent live time-until-empty and time-until-full cards to the Overview and Battery Data pages.
