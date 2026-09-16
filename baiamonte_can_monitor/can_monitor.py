@@ -258,6 +258,10 @@ def publish(key: str, reading: Reading, binary: bool = False) -> None:
         icon = "mdi:swap-vertical-bold"
     elif key in {"bank_power_magnitude", "bank_current_magnitude"}:
         icon = "mdi:transmission-tower-import"
+    elif key == "bank_time_to_empty_current_load":
+        icon = "mdi:battery-clock-outline"
+    elif key == "bank_time_to_full_current_input":
+        icon = "mdi:battery-charging-100"
     attributes: dict[str, object] = {
         "friendly_name": friendly_name(key),
         "icon": icon,

@@ -88,6 +88,7 @@ def derive_bank_readings(
     ]
     maximum_cell_spread = max(cell_spreads, default=0.0)
     remaining_energy = sum(PACK_NOMINAL_ENERGY_KWH * pack["soc"] / 100 for pack in packs)
+    nominal_energy = configured * PACK_NOMINAL_ENERGY_KWH
     status = "charging" if current < -0.05 else "discharging" if current > 0.05 else "idle"
     if status == "charging":
         charge_verdict = f"CHARGING — {max(-power, 0.0):.0f} W entering batteries"
@@ -119,6 +120,10 @@ def derive_bank_readings(
         "bank_power": _measurement(power, "W", "power"),
         "bank_charging_power": _measurement(round(max(-power, 0.0), 1), "W", "power"),
         "bank_discharging_power": _measurement(round(max(power, 0.0), 1), "W", "power"),
+        "bank_time_to_empty_current_load": _duration_hours(remaining_energy, max(power, 0.0)),
+        "bank_time_to_full_current_input": _duration_hours(
+            max(0.0, nominal_energy - remaining_energy), max(-power, 0.0)
+        ),
         "bank_power_magnitude": _measurement(round(abs(power), 1), "W", "power"),
         "bank_current_magnitude": _measurement(round(abs(current), 1), "A", "current"),
         "bank_flow_direction": Reading(status),
