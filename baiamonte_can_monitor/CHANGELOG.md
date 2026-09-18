@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.6
+
+- Reduce Home Assistant API traffic with a 10-second minimum publish cadence and a five-minute unchanged-state refresh.
+- Allow brief Home Assistant busy periods without producing avoidable state-publisher timeout warnings.
+- Keep RS485 battery polling and safety evaluation at full speed while state writes remain coalesced in the background.
+
 ## 0.6.5
 
 - Keep the full-charge BMS taper message during small transient loads so the dashboard never contradicts the charge-complete status.

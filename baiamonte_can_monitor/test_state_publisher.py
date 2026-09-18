@@ -16,6 +16,11 @@ class _Response:
 
 
 class StatePublisherTests(unittest.TestCase):
+    def test_defaults_are_tuned_for_home_assistant_efficiency(self):
+        publisher = StatePublisher("http://example/states", "token", lambda _message: None)
+        self.assertEqual(publisher.request_timeout, 5.0)
+        self.assertEqual(publisher.refresh_interval, 300.0)
+
     def test_duplicate_and_pending_values_are_coalesced(self):
         publisher = StatePublisher("http://example/states", "token", lambda _message: None)
         payload = {"state": 51.2, "attributes": {"unit": "V"}}
