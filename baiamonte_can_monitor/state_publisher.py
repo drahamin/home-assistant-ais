@@ -19,8 +19,8 @@ class StatePublisher:
         token: str,
         log: Callable[[str], None],
         error_callback: Callable[[str | None], None] | None = None,
-        request_timeout: float = 3.0,
-        refresh_interval: float = 60.0,
+        request_timeout: float = 5.0,
+        refresh_interval: float = 300.0,
     ) -> None:
         self.api_base = api_base.rstrip("/")
         self.token = token

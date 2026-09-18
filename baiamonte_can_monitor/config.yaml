@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.6.5"
+version: "0.6.6"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -31,7 +31,7 @@ options:
   rs485_baudrate: 9600
   battery_addresses: "1,2"
   stale_after_seconds: 30
-  publish_interval_seconds: 5
+  publish_interval_seconds: 10
   recovery_control_enabled: false
   generator_input_switch: "switch.generator_main_breaker_switch"
   generator_voltage_sensor: "sensor.generator_main_breaker_phase_a_voltage"
@@ -87,7 +87,7 @@ configuration:
     description: Mark the connection or a battery offline when no valid reply is received for this many seconds.
   publish_interval_seconds:
     name: Home Assistant update interval
-    description: Minimum number of seconds between state updates.
+    description: Minimum number of seconds between state updates. Values below 10 seconds are clamped to 10 to protect Home Assistant while RS485 polling continues at full speed.
   recovery_control_enabled:
     name: Automatic recovery control
     description: Guarded control of the configured generator input switch. Leave off until the physical switch action is verified. The controller never writes to the battery BMS and cannot regulate current.

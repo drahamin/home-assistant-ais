@@ -462,7 +462,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     options = load_options()
     stale_after = max(5, int(options.get("stale_after_seconds", 30)))
-    interval = max(1, int(options.get("publish_interval_seconds", 5)))
+    # Keep serial polling responsive, but do not flood Home Assistant with
+    # hundreds of individual REST state writes. Ten seconds is still live for
+    # an energy dashboard and gives the coalescing publisher room to drain.
+    interval = max(10, int(options.get("publish_interval_seconds", 10)))
     bitrate = int(options.get("bitrate", 500000))
     bus_mode = str(options.get("bus_mode", "listen_only"))
     heartbeat_enabled = bus_mode == "standalone_ack" and bool(options.get("growatt_heartbeat", False))
