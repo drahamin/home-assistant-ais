@@ -1,0 +1,97 @@
+name: "Baiamonte Power Guard"
+version: "0.2.0"
+slug: "baiamonte_power_manager"
+description: "Learning battery runtime forecast and protected load management"
+url: "https://github.com/drahamin/home-assistant-ais"
+arch: ["aarch64", "amd64"]
+image: "ghcr.io/drahamin/home-assistant-power-manager"
+startup: "application"
+boot: "auto"
+init: false
+homeassistant_api: true
+ingress: true
+ingress_port: 8096
+panel_icon: "mdi:shield-lightning"
+panel_title: "Power Guard"
+panel_admin: true
+watchdog: "http://[HOST]:[PORT:8096]/api/status"
+options:
+  control_mode: "observe"
+  battery_soc_entity: "sensor.baiamonte_can_bank_soc"
+  battery_power_entity: "sensor.baiamonte_can_bank_power"
+  battery_online_entity: "binary_sensor.baiamonte_can_bank_all_batteries_online"
+  remaining_energy_entity: "sensor.baiamonte_can_bank_remaining_energy"
+  nominal_energy_entity: "sensor.baiamonte_can_bank_nominal_energy"
+  estate_load_entity: "sensor.baiamonte_estate_load"
+  solar_power_entity: "sensor.total_dc_input_power"
+  internet_health_entity: "binary_sensor.starlink_connectivity"
+  protected_entities: "switch.wifi_din_rail_40a_main,switch.wifi_din_rail_10a_cameras_switch,switch.smart_power_outlet_3"
+  shed_first: "switch.wifi_din_rail_10a_nokia_lte_switch"
+  shed_tier_1: "switch.smart_power_outlet_6,switch.smart_power_outlet_4,switch.smart_power_outlet_5"
+  shed_tier_2: "switch.smart_power_outlet_2,switch.smart_power_outlet_1"
+  shed_tier_3: "switch.wifi_din_rail_10a_lights_switch"
+  battery_capacity_kwh: 10.24
+  reserve_soc: 30
+  economy_soc: 70
+  conserve_soc: 60
+  protect_soc: 45
+  emergency_soc: 35
+  restore_soc: 80
+  economy_runtime_hours: 12
+  conserve_runtime_hours: 10
+  protect_runtime_hours: 6
+  emergency_runtime_hours: 2.5
+  evaluation_interval_seconds: 60
+  confirm_seconds: 120
+  restore_stable_seconds: 1800
+schema:
+  control_mode: "list(observe|automatic)"
+  battery_soc_entity: "str"
+  battery_power_entity: "str"
+  battery_online_entity: "str"
+  remaining_energy_entity: "str"
+  nominal_energy_entity: "str"
+  estate_load_entity: "str"
+  solar_power_entity: "str"
+  internet_health_entity: "str"
+  protected_entities: "str"
+  shed_first: "str"
+  shed_tier_1: "str"
+  shed_tier_2: "str"
+  shed_tier_3: "str"
+  battery_capacity_kwh: "float"
+  reserve_soc: "float"
+  economy_soc: "float"
+  conserve_soc: "float"
+  protect_soc: "float"
+  emergency_soc: "float"
+  restore_soc: "float"
+  economy_runtime_hours: "float"
+  conserve_runtime_hours: "float"
+  protect_runtime_hours: "float"
+  emergency_runtime_hours: "float"
+  evaluation_interval_seconds: "int"
+  confirm_seconds: "int"
+  restore_stable_seconds: "int"
+configuration:
+  control_mode:
+    name: Control mode
+    description: Observe recommends actions only. Automatic may operate only the configured shedding categories.
+  protected_entities:
+    name: Never shed
+    description: Comma-separated critical switches. The estate main, cameras, and kitchen refrigerator are always protected in code; LTE is editable and shed first by default.
+  shed_first:
+    name: Shed first — early economy
+    description: Comma-separated switches removed first. Nokia LTE is here by default and is not hard-protected.
+  shed_tier_1:
+    name: Stage 2 — flexible appliances
+    description: Dishwasher, washing machine, and ice maker by default.
+  shed_tier_2:
+    name: Stage 3 — protected operation
+    description: Wine refrigerator and cistern pump by default.
+  shed_tier_3:
+    name: Stage 4 — emergency only
+    description: Lighting circuit by default. Cameras, main power, and kitchen refrigerator are hard-protected.
+  restore_stable_seconds:
+    name: Stable recovery time
+    description: Healthy charging must remain stable this long before loads managed by this app are restored.

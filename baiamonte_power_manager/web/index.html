@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Baiamonte Power Guard</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <header><div><small>TENUTA BAIAMONTE</small><h1>Power Guard</h1></div><span id="mode">Connecting</span></header>
+    <section class="hero"><div><label>Estimated protected runtime</label><strong id="runtime">—</strong></div><div><label>Battery</label><strong id="soc">—</strong></div><div><label>Estate load</label><strong id="load">—</strong></div></section>
+    <section class="grid">
+      <article><h2>Protected services</h2><p id="critical">Cameras — · Internet —</p><p class="muted">Camera power, LTE backup, kitchen refrigerator, and the estate main are never shed.</p></article>
+      <article><h2>Learning</h2><p id="learning">Collecting load history…</p><p class="muted">The forecast uses the higher of live, hourly, and learned discharge loads.</p></article>
+      <article><h2>Managed loads</h2><p id="managed">No loads managed off</p><p class="muted" id="control">Commissioning mode</p></article>
+      <article><h2>Editable shedding order</h2><p id="categories">Loading categories…</p><p class="muted">Edit category membership in the app Configuration page.</p></article>
+      <article><h2>Decision</h2><p id="reason">Waiting for telemetry</p><p class="error" id="error"></p></article>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

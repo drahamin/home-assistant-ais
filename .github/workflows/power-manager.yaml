@@ -1,0 +1,94 @@
+name: Build Baiamonte Power Guard
+
+on:
+  pull_request:
+    paths:
+      - "baiamonte_power_manager/**"
+      - ".github/workflows/power-manager.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "baiamonte_power_manager/**"
+      - ".github/workflows/power-manager.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s baiamonte_power_manager/tests -p "test_*.py"
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      architectures: ${{ steps.info.outputs.architectures }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.info.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: info
+        uses: home-assistant/actions/helpers/info@master
+        with:
+          path: ./baiamonte_power_manager
+      - id: matrix
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.06.0
+        with:
+          architectures: ${{ steps.info.outputs.architectures }}
+          image-name: home-assistant-power-manager
+          registry-prefix: ghcr.io/drahamin
+
+  build:
+    needs: [test, prepare]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: home-assistant/builder/actions/build-image@2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: ./baiamonte_power_manager
+          image: ${{ matrix.image }}
+          image-tags: |
+            ${{ needs.prepare.outputs.version }}
+            latest
+          labels: |
+            io.hass.type=app
+            io.hass.name=Baiamonte Power Guard
+            io.hass.description=Learning battery runtime forecast and protected load management
+            io.hass.url=https://github.com/drahamin/home-assistant-ais
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          version: ${{ needs.prepare.outputs.version }}
+
+  manifest:
+    needs: [prepare, build]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - uses: home-assistant/builder/actions/publish-multi-arch-manifest@2026.06.0
+        with:
+          architectures: ${{ needs.prepare.outputs.architectures }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: home-assistant-power-manager
+          image-tags: |
+            ${{ needs.prepare.outputs.version }}
+            latest
+          registry-prefix: ghcr.io/drahamin

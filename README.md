@@ -1,5 +1,15 @@
 # Baiamonte Home Assistant Apps
 
+## Baiamonte Power Guard
+
+**Baiamonte Power Guard** learns the estate's hourly load, forecasts usable
+battery runtime, and sheds explicitly allow-listed noncritical loads in four
+editable stages. The supplied profile sheds LTE first while hard-protecting the
+camera circuit, kitchen refrigerator, and estate main breaker. It starts in
+observation-only mode and freezes switching if battery telemetry is lost. See
+[baiamonte_power_manager/DOCS.md](baiamonte_power_manager/DOCS.md) for the load
+order, commissioning procedure, and hardware limitations.
+
 ## Baiamonte Tuya
 
 **Baiamonte Tuya** provides one local-first operating view for Tuya-family devices. It automatically discovers entities from Tuya Local or LocalTuya, supports explicitly enrolled Matter and ZHA entities, pairs them with optional official Tuya cloud copies, and sends restricted commands through the local route first.
