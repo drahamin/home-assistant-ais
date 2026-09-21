@@ -1,6 +1,6 @@
 # Baiamonte Battery Monitor
 
-The app reads both installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, all 32 cell voltages, temperatures, raw replies, and troubleshooting.
+The app reads the two installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Battery 3 is pre-provisioned at Modbus address 3 and automatically joins the monitored bank after its first valid reply. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, every active cell voltage, temperatures, raw replies, and troubleshooting.
 
 The **Trends** page reads recorder history only when opened. It shows the 24-hour charge curve, all 16 cell voltages together for each battery, and daily energy charged/discharged for the last 14 days. Queries are fixed to battery entities, downsampled, and cached so the page does not add continuous recorder or browser load.
 
@@ -9,9 +9,11 @@ The **Trends** page reads recorder history only when opened. It shows the 24-hou
 - Connection: `felicity_rs485`
 - Stable USB device: select the installed FTDI adapter under `/dev/serial/by-id` in app configuration
 - Serial format: 9600 baud, 8 data bits, no parity, 1 stop bit
-- Battery addresses: `1,2`
+- Active battery addresses: `1,2`
+- Provisioned standby address: `3` (low-rate discovery until connected)
 - Battery 1 and Battery 2: 51.2 V, 100 Ah, 5.12 kWh each
-- Combined bank: 51.2 V, 200 Ah, 10.24 kWh nominal
+- Current bank: 51.2 V, 200 Ah, 10.24 kWh nominal
+- Prepared three-pack bank after installation: 51.2 V, 300 Ah, 15.36 kWh nominal
 
 ## Safety
 
@@ -45,7 +47,7 @@ Home Assistant Supervisor owns installation and updates. **Auto update** is enab
 
 ## No battery replies
 
-1. Confirm both batteries are powered and addresses 1 and 2 are configured.
+1. Confirm installed batteries are powered and addresses 1, 2, and 3 are unique.
 2. Confirm the stable FTDI device exists under `/dev/serial/by-id`.
 3. Verify pin 6 reaches `TXD+`, pin 5 reaches `TXD-`, and pin 1 reaches `GND`.
 4. Confirm 9600 baud, 8N1.

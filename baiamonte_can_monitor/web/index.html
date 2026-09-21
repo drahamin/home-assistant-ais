@@ -98,7 +98,7 @@
       </section>
 
       <section class="page" id="battery">
-        <div class="section-head"><div><p>DUAL FELICITY BMS · READ ONLY</p><h2>Battery data</h2><span>Battery 1 and Battery 2 are read independently, then combined as one 10.24 kWh parallel bank.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
+        <div class="section-head"><div><p>FELICITY BMS BANK · READ ONLY</p><h2>Battery data</h2><span>Two active batteries are monitored now; Battery 3 is provisioned and joins the bank automatically when address 3 replies.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
         <div class="bank-summary" id="bank-summary"></div>
         <div id="battery-pack-sections"></div>
       </section>
@@ -112,6 +112,7 @@
         <div class="chart-grid">
           <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 1 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Closely grouped lines indicate a balanced pack.</span></div><span class="chart-status" id="battery1_cells-status">Waiting</span></div><div class="chart-host" id="battery1_cells-chart"><div class="chart-empty">History will appear here.</div></div></article>
           <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 2 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Watch for a cell that separates from the group.</span></div><span class="chart-status" id="battery2_cells-status">Waiting</span></div><div class="chart-host" id="battery2_cells-chart"><div class="chart-empty">History will appear here.</div></div></article>
+          <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 3 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Prepared now; history begins automatically after installation.</span></div><span class="chart-status" id="battery3_cells-status">Awaiting battery</span></div><div class="chart-host" id="battery3_cells-chart"><div class="chart-empty">Battery 3 is provisioned at Modbus address 3.</div></div></article>
         </div>
         <article class="panel chart-panel chart-feature">
           <div class="panel-head"><div><p>LAST 14 DAYS</p><h3>Multi-day battery energy</h3><span>Daily energy charged into the bank and discharged to loads.</span></div><span class="chart-status" id="multi_day-status">Waiting</span></div>
@@ -120,7 +121,7 @@
       </section>
 
       <section class="page" id="recovery">
-        <div class="section-head"><div><p>GUARDED BATTERY SUPERVISOR</p><h2>Recovery control</h2><span>Uses live data from both BMS units and can supervise only the verified generator input switch.</span></div><span class="badge warning" id="recovery-badge">Checking</span></div>
+        <div class="section-head"><div><p>GUARDED BATTERY SUPERVISOR</p><h2>Recovery control</h2><span>Uses every active BMS and automatically includes Battery 3 after its first verified reply.</span></div><span class="badge warning" id="recovery-badge">Checking</span></div>
         <div class="recovery-hero" id="recovery-hero">
           <div><small id="recovery-kicker">ASSESSING BOTH BATTERIES</small><h2 id="recovery-title">Waiting for BMS limits</h2><p id="recovery-summary">The controller is collecting cell and operating-limit data.</p></div>
           <div class="recovery-rate"><small>RECOMMENDED BANK LIMIT</small><b id="recovery-limit">—</b><span id="full-rate-state">Full rate locked</span></div>
@@ -148,7 +149,7 @@
           <article class="panel wiring-card"><p>USB RS485 TERMINALS</p><h3>Installed half-duplex connection</h3><div class="terminal-row"><span class="wire high">A</span><div><b>CN1 · TXD+</b><small>Battery RJ45 pin 6 · RS485-A</small></div></div><div class="terminal-row"><span class="wire low">B</span><div><b>CN2 · TXD−</b><small>Battery RJ45 pin 5 · RS485-B</small></div></div><div class="terminal-row"><span class="wire ground">G</span><div><b>CN2 · GND</b><small>Battery RJ45 pin 1 · signal ground</small></div></div></article>
           <article class="panel pin-card"><p>DO NOT CONNECT</p><h3>Protected terminals and pins</h3><div class="pin-route"><div><small>ADAPTER</small><b>Leave VCC empty</b><b>Leave RXD+ / RXD− empty</b></div><i>×</i><div><small>BATTERY RJ45</small><b>Pin 2 · 12 V</b><b>Never connect to USB adapter</b></div></div><div class="notice">The adapter automatically controls transmit direction. Use the battery’s dedicated RS485 port, not PCS, LINK-0, or LINK-1.</div></article>
         </div>
-        <article class="panel procedure"><p>NO-REPLY CHECKLIST</p><h3>If the adapter connects but a battery is offline</h3><ol><li>Confirm both batteries are powered and their inter-battery link remains connected.</li><li>Confirm the app uses 9600 baud, 8 data bits, no parity, and 1 stop bit.</li><li>Verify Battery 1 is address 1 and Battery 2 is address 2.</li><li>Verify pin 6 reaches TXD+ and pin 5 reaches TXD−; with power off, swap A/B only if the adapter convention differs.</li><li>Never connect battery RJ45 pin 2 (12 V) to the USB adapter.</li></ol></article>
+        <article class="panel procedure"><p>NO-REPLY CHECKLIST</p><h3>If the adapter connects but a battery is offline</h3><ol><li>Confirm the installed batteries are powered and their inter-battery link remains connected.</li><li>Confirm the app uses 9600 baud, 8 data bits, no parity, and 1 stop bit.</li><li>Verify Battery 1 is address 1, Battery 2 is address 2, and the new Battery 3 is address 3.</li><li>Verify pin 6 reaches TXD+ and pin 5 reaches TXD−; with power off, swap A/B only if the adapter convention differs.</li><li>Never connect battery RJ45 pin 2 (12 V) to the USB adapter.</li></ol></article>
       </section>
     </main>
   </div>
