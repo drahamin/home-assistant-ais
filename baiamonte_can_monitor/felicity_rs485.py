@@ -147,12 +147,24 @@ class FelicityRs485Receiver:
         (0x132A, 20, "cell information"),
     )
 
-    def __init__(self, path: str, baudrate: int, addresses: list[int]) -> None:
+    def __init__(
+        self,
+        path: str,
+        baudrate: int,
+        addresses: list[int],
+        standby_addresses: list[int] | None = None,
+        discovery_interval: float = 30.0,
+    ) -> None:
         if not addresses:
             raise ValueError("at least one Felicity battery address is required")
         self.path = path
         self.baudrate = baudrate
-        self.addresses = addresses
+        self.addresses = list(addresses)
+        self.standby_addresses = [
+            address for address in (standby_addresses or []) if address not in self.addresses
+        ]
+        self.provisioned_addresses = self.addresses + self.standby_addresses
+        self.discovery_interval = max(10.0, discovery_interval)
         self._serial = serial.Serial(
             path,
             baudrate=baudrate,
@@ -164,12 +176,14 @@ class FelicityRs485Receiver:
         )
         self._polls = [
             (address, register, count, label)
-            for address in addresses
+            for address in self.addresses
             for register, count, label in self.COMMANDS
         ]
-        self._startup_polls = deque((address, 0xF80B, 1, "BMS version") for address in addresses)
+        self._startup_polls = deque((address, 0xF80B, 1, "BMS version") for address in self.addresses)
         self._poll_index = 0
         self._next_poll_at = 0.0
+        self._next_discovery_at = 0.0
+        self._discovery_index = 0
         self._poll_interval = 0.5
         self.last_error: str | None = None
 
@@ -182,8 +196,16 @@ class FelicityRs485Receiver:
             time.sleep(min(delay, max(0.01, timeout)))
             if time.monotonic() < self._next_poll_at:
                 return None
+        is_discovery = False
+        now = time.monotonic()
         if self._startup_polls:
             address, register, count, label = self._startup_polls.popleft()
+        elif self.standby_addresses and now >= self._next_discovery_at:
+            address = self.standby_addresses[self._discovery_index % len(self.standby_addresses)]
+            self._discovery_index += 1
+            register, count, label = 0x1302, 10, "standby discovery"
+            self._next_discovery_at = now + self.discovery_interval
+            is_discovery = True
         else:
             address, register, count, label = self._polls[self._poll_index]
             self._poll_index = (self._poll_index + 1) % len(self._polls)
@@ -208,6 +230,10 @@ class FelicityRs485Receiver:
                     break
 
         if not parsed:
+            if is_discovery:
+                # A provisioned slot that has not been installed yet is normal,
+                # not a communication fault on the live bank.
+                return None
             self.last_error = (
                 f"no CRC-valid reply from battery {address} for {label}; "
                 f"received {len(buffer)} byte(s)"
@@ -224,8 +250,18 @@ class FelicityRs485Receiver:
         else:
             readings = decode_cell_information(data)
         if not readings:
+            if is_discovery:
+                return None
             self.last_error = f"battery {address} returned implausible {label} values"
             return None
+        if is_discovery:
+            self.standby_addresses.remove(address)
+            self.addresses.append(address)
+            self._polls.extend(
+                (address, poll_register, poll_count, poll_label)
+                for poll_register, poll_count, poll_label in self.COMMANDS
+            )
+            self._startup_polls.append((address, 0xF80B, 1, "BMS version"))
         self.last_error = None
         return Rs485Message(
             identifier=f"B{address}:0x{register:04X}",

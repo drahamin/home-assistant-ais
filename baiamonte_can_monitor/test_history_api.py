@@ -55,6 +55,12 @@ class HistoryTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             client.chart("arbitrary")
 
+    def test_battery_three_cell_chart_is_predefined(self):
+        client = HistoryClient("secret", opener=lambda *_args, **_kwargs: Response(b"[]"))
+        payload = client.chart("battery3_cells")
+        self.assertEqual(len(payload["series"]), 16)
+        self.assertEqual(payload["series"][0]["entity_id"], "sensor.baiamonte_can_battery_3_cell_1_voltage")
+
 
 if __name__ == "__main__":
     unittest.main()

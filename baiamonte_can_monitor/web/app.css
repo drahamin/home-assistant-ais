@@ -19,3 +19,4 @@
 @media(prefers-color-scheme:dark){.chart-status,.chart-panel .chart-status{background:#2a251f;color:#c8bcae}.chart-refresh{background:#211d19}.chart-tooltip{border-color:#51473d}}
 @media(max-width:1050px){.chart-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.chart-panel{padding:16px}.chart-panel .panel-head{align-items:flex-start;gap:8px}.chart-feature .chart-host,.chart-grid .chart-host{min-height:330px}.chart-canvas{height:280px}.chart-legend{padding-left:20px}.chart-grid-lines text{font-size:13px}.chart-line{stroke-width:2.5}.chart-tooltip{min-width:170px}.section-head .chart-refresh{font-size:0;padding:10px}.section-head .chart-refresh svg{width:22px;height:22px}}
+.pack-status.planned{background:#e8eef5;color:#48647f}.standby-pack{border-style:dashed}.standby-pack .pack-metric,.standby-pack .pack-overview-values div{opacity:.78}@media(prefers-color-scheme:dark){.pack-status.planned{background:#1c2934;color:#a9c2d8}}

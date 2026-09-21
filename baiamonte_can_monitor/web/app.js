@@ -65,7 +65,7 @@ async function loadChart(name,renderer=lineChart){
 }
 async function refreshTrends(){
   trendsLoadedAt=Date.now();$('chart-refresh').disabled=true;
-  await Promise.all([loadChart('charging'),loadChart('battery1_cells'),loadChart('battery2_cells'),loadChart('multi_day',barChart)]);
+  await Promise.all([loadChart('charging'),loadChart('battery1_cells'),loadChart('battery2_cells'),loadChart('battery3_cells'),loadChart('multi_day',barChart)]);
   $('chart-refresh').disabled=false;
 }
 
@@ -137,7 +137,7 @@ function healthCopy(health,data={}){
   const link=data.transport||'CAN';
   return {
     healthy:[`Live ${link} traffic`,'Healthy','healthy'],
-    attention:['Both batteries online · balance needs attention','Attention','warning'],
+    attention:['Active batteries online · balance needs attention','Attention','warning'],
     no_traffic:[`Adapter ready · no valid ${link} replies`,'No traffic','warning'],
     stale:[`${link} traffic stopped`,'Stale','warning'],
     adapter_missing:[`${link} adapter unavailable`,'Adapter missing','error']
@@ -147,8 +147,8 @@ function checksFor(health,data={}){
   if(data.transport==='RS485'&&health==='adapter_missing')return ['Reconnect the USB RS485 cable.','Confirm the FTDI adapter appears under /dev/serial/by-id.','Keep the connection set to Felicity RS485, then restart the app.'];
   if(data.transport==='RS485'&&health==='no_traffic')return ['Confirm the battery master is powered and its Modbus address is configured.','Verify battery pin 5 reaches RS485-B and pin 6 reaches RS485-A.','Swap A/B at the adapter if its A/B convention is opposite.','Keep the link at 9600 baud, 8N1.'];
   if(data.transport==='RS485'&&health==='stale')return ['Check whether the battery restarted.','Inspect the RS485 cable and battery master port.','Review the most recent valid register response below.'];
-  if(data.transport==='RS485'&&health==='attention')return ['Both battery addresses are online.','Allow Battery 2 time to charge and balance.','Watch the SOC difference and maximum cell spread; investigate if either continues increasing.'];
-  if(data.transport==='RS485')return ['USB RS485 adapter is connected.','CRC-valid Modbus replies are arriving from both battery addresses.','Per-pack and combined bank values are updating in Home Assistant.'];
+  if(data.transport==='RS485'&&health==='attention')return ['All active battery addresses are being checked.','Allow the bank time to charge and balance.','Watch the SOC difference and maximum cell spread; investigate if either continues increasing.'];
+  if(data.transport==='RS485')return ['USB RS485 adapter is connected.','CRC-valid Modbus replies are arriving from every active battery.','Provisioned standby slots are discovered automatically without slowing the live bank.'];
   if(health==='adapter_missing')return ['Reconnect the CANable USB cable.','Confirm the device appears as /dev/ttyACM0 or gs_usb.','Keep adapter mode set to Auto, then restart the app.'];
   if(health==='no_traffic'&&data.bus_mode==='standalone_ack')return ['Confirm the battery master is powered and its CAN output is enabled.','Keep the CANable 120Ω termination switch ON for the standalone endpoint.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
   if(health==='no_traffic')return ['Confirm inverter and battery master are powered.','Keep the CANable 120Ω termination switch OFF.','Verify CAN-H and CAN-L reach the correct RJ45 pins.','Confirm the configured bit rate is 500 kbit/s.'];
@@ -156,26 +156,30 @@ function checksFor(health,data={}){
   return ['USB adapter is connected.','Valid CAN frames are arriving.','Decoded battery values are updating in Home Assistant.'];
 }
 function renderBattery(readings){
-  const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2];
+  const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2,3];
   const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Time until empty','runtime_empty'],['Time until full','runtime_full'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
   replaceHtml('bank-summary',bankCards.map(([label,key])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${key==='runtime_empty'?liveRuntime(readings,'bank_','empty'):key==='runtime_full'?liveRuntime(readings,'bank_','full'):value(readings,key)}</h3><p>${key==='runtime_empty'?'At current net load':key==='runtime_full'?'At current net input':'Combined battery bank'}</p></article>`).join(''));
   const sections=addresses.map(address=>{
     const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on';
+    const provisioning=readings[`${prefix}provisioning_status`]?.value||'offline', awaiting=provisioning==='awaiting_connection';
     const balance=readings[`${prefix}cell_balance`]?.value||'waiting';
-    const statusClass=!online?'':balance==='attention'?'attention':'online';
+    const statusClass=awaiting?'planned':!online?'':balance==='attention'?'attention':'online';
     const direction=flowState(readings,prefix);
-    const directionLabel=direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
+    const directionLabel=awaiting?'AWAITING CONNECTION':direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
+    const statusLabel=awaiting?'READY FOR INSTALL':online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE';
     const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Flow',null],['Current','battery_current'],['Power','battery_power'],['Time to empty','runtime_empty'],['Time to full','runtime_full'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['BMS version','bms_version']];
     const cells=[];
-    for(let i=1;i<=16;i++)if(readings[`${prefix}cell_${i}_voltage`])cells.push({number:i,...readings[`${prefix}cell_${i}_voltage`]});
-    return `<article class="panel battery-pack"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>51.2 V · 100 Ah · 5.12 kWh</span></div><span class="pack-status ${statusClass}">${online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-flow ${direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${key===null?directionLabel:key==='runtime_empty'?liveRuntime(readings,prefix,'empty'):key==='runtime_full'?liveRuntime(readings,prefix,'full'):key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):'<div class="empty">Waiting for register 0x132A.</div>'}</div></article>`;
+    for(let i=1;i<=16;i++){const cell=readings[`${prefix}cell_${i}_voltage`];if(cell&&cell.value!=='unavailable')cells.push({number:i,...cell});}
+    return `<article class="panel battery-pack ${awaiting?'standby-pack':''}"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>${awaiting?'Provisioned standby slot · auto-detect enabled':'51.2 V · 100 Ah · 5.12 kWh'}</span></div><span class="pack-status ${statusClass}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${awaiting?'Waiting for battery':key===null?directionLabel:key==='runtime_empty'?liveRuntime(readings,prefix,'empty'):key==='runtime_full'?liveRuntime(readings,prefix,'full'):key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${awaiting?'Auto-loads after connection':value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):`<div class="empty">${awaiting?'Battery 3 is provisioned and will activate automatically when Modbus address 3 replies.':'Waiting for register 0x132A.'}</div>`}</div></article>`;
   }).join('');
   replaceHtml('battery-pack-sections',sections);
 
   replaceHtml('pack-overview-grid',addresses.map(address=>{
     const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on', balance=readings[`${prefix}cell_balance`]?.value||'waiting';
-    const direction=flowState(readings,prefix), directionLabel=direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
-    return `<article class="pack-overview"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${online?(balance==='attention'?'attention':'online'):''}">${online?(balance==='attention'?'ATTENTION':'ONLINE'):'OFFLINE'}</span></div><div class="pack-flow ${direction}">${directionLabel}</div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${flowValue(readings,prefix,'battery_current')}</b></div><div><small>CELLS</small><b>${value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${value(readings,prefix+'pack_temperature')}</b></div></div></article>`;
+    const awaiting=readings[`${prefix}provisioning_status`]?.value==='awaiting_connection';
+    const direction=flowState(readings,prefix), directionLabel=awaiting?'AWAITING CONNECTION':direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
+    const statusLabel=awaiting?'READY FOR INSTALL':online?(balance==='attention'?'ATTENTION':'ONLINE'):'OFFLINE';
+    return `<article class="pack-overview ${awaiting?'standby-pack':''}"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${awaiting?'Prepared':value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${awaiting?'planned':online?(balance==='attention'?'attention':'online'):''}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${awaiting?'—':value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${awaiting?'—':flowValue(readings,prefix,'battery_current')}</b></div><div><small>CELLS</small><b>${awaiting?'—':value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${awaiting?'—':value(readings,prefix+'pack_temperature')}</b></div></div></article>`;
   }).join(''));
 }
 function renderRecovery(readings,data){
@@ -203,10 +207,11 @@ function renderRecovery(readings,data){
   $('generator-voltage').textContent=control.generator_voltage===null||control.generator_voltage===undefined?'Unavailable':`${control.generator_voltage} V`;
   $('controller-action').textContent=control.last_action||'none';
   $('controller-note').textContent=control.error||(!control.enabled?'Automatic actions remain locked until enabled in app configuration.':'Guarded automatic control is active with anti-cycling protection.');
-  const addresses=data.battery_addresses?.length?data.battery_addresses:[1,2];
+  const addresses=data.battery_addresses?.length?data.battery_addresses:[1,2,3];
   replaceHtml('limit-grid',addresses.map(address=>{
     const p=`battery_${address}_`;
-    return `<article class="panel limit-card"><div class="panel-head"><div><p>BMS OPERATING ENVELOPE</p><h3>Battery ${address}</h3></div><span class="pack-status ${readings[p+'charge_allowed']?.value==='on'?'online':'attention'}">${readings[p+'charge_allowed']?.value==='on'?'CHARGE ALLOWED':'CHARGE BLOCKED'}</span></div><div class="limit-values"><div><small>CHARGE CURRENT</small><b>${value(readings,p+'charge_current_limit')}</b></div><div><small>CHARGE VOLTAGE</small><b>${value(readings,p+'charge_voltage_limit')}</b></div><div><small>DISCHARGE CURRENT</small><b>${value(readings,p+'discharge_current_limit')}</b></div><div><small>DISCHARGE VOLTAGE</small><b>${value(readings,p+'discharge_voltage_limit')}</b></div></div></article>`;
+    const awaiting=readings[p+'provisioning_status']?.value==='awaiting_connection', allowed=readings[p+'charge_allowed']?.value==='on';
+    return `<article class="panel limit-card ${awaiting?'standby-pack':''}"><div class="panel-head"><div><p>BMS OPERATING ENVELOPE</p><h3>Battery ${address}</h3></div><span class="pack-status ${awaiting?'planned':allowed?'online':'attention'}">${awaiting?'AWAITING INSTALL':allowed?'CHARGE ALLOWED':'CHARGE BLOCKED'}</span></div><div class="limit-values"><div><small>CHARGE CURRENT</small><b>${awaiting?'—':value(readings,p+'charge_current_limit')}</b></div><div><small>CHARGE VOLTAGE</small><b>${awaiting?'—':value(readings,p+'charge_voltage_limit')}</b></div><div><small>DISCHARGE CURRENT</small><b>${awaiting?'—':value(readings,p+'discharge_current_limit')}</b></div><div><small>DISCHARGE VOLTAGE</small><b>${awaiting?'—':value(readings,p+'discharge_voltage_limit')}</b></div></div></article>`;
   }).join(''));
 }
 function renderFrames(frames){
@@ -263,7 +268,9 @@ function render(data){
   $('bitrate-summary').textContent=data.transport==='RS485'?`${Number(data.bitrate||0)} baud`:`${Number(data.bitrate||0)/1000} kbit/s`;
   $('frames-summary').textContent=Number(data.frames_received||0).toLocaleString();
   $('soc').textContent=value(readings,'bank_soc',value(readings,'battery_soc'));
-  $('battery-state').textContent=`${value(readings,'bank_online_batteries','0')} of ${value(readings,'bank_configured_batteries','2')} batteries online · ${value(readings,'bank_remaining_energy','calculating')}`;
+  const onlineCount=numeric(readings,'bank_online_batteries')??0, activeCount=numeric(readings,'bank_configured_batteries')??2, provisionedCount=numeric(readings,'bank_provisioned_batteries')??activeCount;
+  const standbyCount=Math.max(0,provisionedCount-activeCount);
+  $('battery-state').textContent=`${onlineCount} of ${activeCount} active online${standbyCount?` · ${standbyCount} prepared slot`:''} · ${value(readings,'bank_remaining_energy','calculating')}`;
   const flow=flowState(readings,'bank_');
   const flowPower=numeric(readings,'bank_power')??numeric(readings,'battery_power');
   const flowCurrent=numeric(readings,'bank_current')??numeric(readings,'battery_current');
@@ -282,7 +289,7 @@ function render(data){
   const alarm=readings.alarm_active?.value==='on', protection=readings.protection_active?.value==='on';
   const bankAttention=readings.bank_health?.value==='attention';
   $('safety').textContent=alarm||protection||bankAttention?'Attention':'Normal';
-  $('safety-detail').textContent=protection?value(readings,'protection_flags'):alarm?value(readings,'alarm_flags'):bankAttention?`${value(readings,'bank_soc_difference')} SOC difference · ${value(readings,'bank_maximum_cell_spread')} max cell spread`:'Both batteries balanced and online';
+  $('safety-detail').textContent=protection?value(readings,'protection_flags'):alarm?value(readings,'alarm_flags'):bankAttention?`${value(readings,'bank_soc_difference')} SOC difference · ${value(readings,'bank_maximum_cell_spread')} max cell spread`:`${onlineCount} active batteries balanced and online${standbyCount?' · Battery 3 ready to install':''}`;
   $('battery-badge').textContent=data.bus_active?'Live':'Waiting';
   $('service-detail').textContent=data.service||'—';
   $('adapter-detail').textContent=data.adapter||'—';

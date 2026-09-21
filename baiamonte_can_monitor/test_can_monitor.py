@@ -11,7 +11,14 @@ class FakeMessage:
 
 sys.modules.setdefault("can", SimpleNamespace(Message=FakeMessage))
 
-from can_monitor import GROWATT_HEARTBEAT_DATA, GROWATT_HEARTBEAT_ID, growatt_heartbeat, uses_listen_only
+from can_monitor import (
+    GROWATT_HEARTBEAT_DATA,
+    GROWATT_HEARTBEAT_ID,
+    battery_addresses,
+    growatt_heartbeat,
+    standby_battery_addresses,
+    uses_listen_only,
+)
 
 
 class BusModeTests(unittest.TestCase):
@@ -31,6 +38,10 @@ class BusModeTests(unittest.TestCase):
         self.assertEqual(bytes(message.data), GROWATT_HEARTBEAT_DATA)
         self.assertEqual(GROWATT_HEARTBEAT_DATA, bytes.fromhex("11 22 33 44 55 66 77 88"))
         self.assertFalse(message.is_extended_id)
+
+    def test_third_battery_is_provisioned_without_becoming_active(self):
+        self.assertEqual(battery_addresses({"battery_addresses": "1,2"}), [1, 2])
+        self.assertEqual(standby_battery_addresses({"battery_addresses": "1,2"}), [3])
 
 
 if __name__ == "__main__":

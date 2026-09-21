@@ -53,6 +53,7 @@ STATUS: dict[str, object] = {
     "last_error": None,
     "readings": {},
     "battery_addresses": [],
+    "active_battery_addresses": [],
     "battery_last_seen": {},
 }
 RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
@@ -123,7 +124,7 @@ def dashboard_status() -> dict[str, object]:
             "The bank is full and the BMS is tapering or stopping charge normally while cells top-balance. "
             f"The largest cell spread is {cell_spread} mV; monitor that it settles, but do not force more current."
             if full_bank else
-            "Both batteries are communicating, but their balance needs attention: "
+            "All active batteries are communicating, but their balance needs attention: "
             f"SOC differs by {soc_difference}% and the largest cell spread is {cell_spread} mV."
         )
     status.update({
@@ -324,15 +325,30 @@ def rs485_candidates(configured: str) -> list[str]:
 
 
 def battery_addresses(options: dict) -> list[int]:
-    raw = str(options.get("battery_addresses", "1"))
+    return parse_battery_addresses(str(options.get("battery_addresses", "1")))
+
+
+def parse_battery_addresses(raw: str) -> list[int]:
     values = []
     for item in raw.split(","):
-        address = int(item.strip())
+        item = item.strip()
+        if not item:
+            continue
+        address = int(item)
         if not 1 <= address <= 247:
             raise ValueError(f"invalid Modbus battery address {address}")
         if address not in values:
             values.append(address)
     return values
+
+
+def standby_battery_addresses(options: dict) -> list[int]:
+    active = set(battery_addresses(options))
+    return [
+        address
+        for address in parse_battery_addresses(str(options.get("standby_battery_addresses", "3")))
+        if address not in active
+    ]
 
 
 def uses_listen_only(options: dict) -> bool:
@@ -443,7 +459,12 @@ def open_adapter(options: dict):
         for path in candidates:
             try:
                 baudrate = int(options.get("rs485_baudrate", 9600))
-                receiver = FelicityRs485Receiver(path, baudrate, battery_addresses(options))
+                receiver = FelicityRs485Receiver(
+                    path,
+                    baudrate,
+                    battery_addresses(options),
+                    standby_battery_addresses(options),
+                )
                 log(f"Opened {path} at {baudrate} baud for read-only Felicity Modbus RTU")
                 return receiver, f"Felicity RS485 Modbus RTU ({path})"
             except Exception as exc:
@@ -506,12 +527,19 @@ def main() -> int:
     pending: dict[str, Reading] = {}
     all_readings: dict[str, Reading] = {}
     configured_addresses = battery_addresses(options) if str(options.get("adapter", "auto")) == "felicity_rs485" else []
+    provisioned_addresses = (
+        configured_addresses + standby_battery_addresses(options)
+        if str(options.get("adapter", "auto")) == "felicity_rs485" else []
+    )
     energy_meter = EnergyMeter(os.environ.get("BATTERY_ENERGY_FILE", "/data/bank_energy_totals.json"))
     all_readings.update(energy_meter.readings())
     pending.update(energy_meter.readings())
     battery_last_seen: dict[int, float] = {}
     battery_last_seen_iso: dict[int, str] = {}
-    update_status(battery_addresses=configured_addresses)
+    update_status(
+        battery_addresses=provisioned_addresses,
+        active_battery_addresses=configured_addresses,
+    )
 
     while RUNNING:
         if receiver is None:
@@ -521,6 +549,7 @@ def main() -> int:
                 transport = "RS485" if getattr(receiver, "monitor_transport", "can") == "felicity_rs485" else "CAN"
                 if transport == "RS485":
                     configured_addresses = list(receiver.addresses)
+                    provisioned_addresses = list(receiver.provisioned_addresses)
                 link_rate = int(options.get("rs485_baudrate", 9600)) if transport == "RS485" else bitrate
                 update_status(
                     adapter_connected=True,
@@ -528,7 +557,8 @@ def main() -> int:
                     transport=transport,
                     bitrate=link_rate,
                     heartbeat_enabled=heartbeat_enabled and transport == "CAN",
-                    battery_addresses=configured_addresses,
+                    battery_addresses=provisioned_addresses,
+                    active_battery_addresses=configured_addresses,
                     last_error=None,
                 )
             except Exception as exc:
@@ -582,13 +612,20 @@ def main() -> int:
             received_at = iso_now()
             all_readings.update(decoded)
             if is_rs485:
+                configured_addresses = list(receiver.addresses)
+                provisioned_addresses = list(receiver.provisioned_addresses)
                 battery_last_seen[message.address] = now
                 battery_last_seen_iso[message.address] = received_at
                 online_addresses = {
                     address for address, seen_at in battery_last_seen.items()
                     if now - seen_at <= stale_after
                 }
-                derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+                derived = derive_bank_readings(
+                    all_readings,
+                    configured_addresses,
+                    online_addresses,
+                    provisioned_addresses,
+                )
                 assessment = assess_recovery(all_readings, configured_addresses, online_addresses)
                 derived.update(assessment.readings())
                 if message.identifier == f"B{configured_addresses[-1]}:0x1302" and "bank_power" in derived:
@@ -630,7 +667,8 @@ def main() -> int:
                     "last_id": frame_record["id"],
                     "last_frame_at": frame_record["at"],
                     "readings": readings,
-                    "battery_addresses": configured_addresses,
+                    "battery_addresses": provisioned_addresses,
+                    "active_battery_addresses": configured_addresses,
                     "battery_last_seen": {str(address): at for address, at in battery_last_seen_iso.items()},
                 })
             if frame_count <= 20 or frame_count % 500 == 0:
@@ -645,7 +683,14 @@ def main() -> int:
                 address for address, seen_at in battery_last_seen.items()
                 if now - seen_at <= stale_after
             }
-            derived = derive_bank_readings(all_readings, configured_addresses, online_addresses)
+            configured_addresses = list(receiver.addresses)
+            provisioned_addresses = list(receiver.provisioned_addresses)
+            derived = derive_bank_readings(
+                all_readings,
+                configured_addresses,
+                online_addresses,
+                provisioned_addresses,
+            )
             derived.update(assess_recovery(all_readings, configured_addresses, online_addresses).readings())
             all_readings.update(derived)
             pending.update(derived)

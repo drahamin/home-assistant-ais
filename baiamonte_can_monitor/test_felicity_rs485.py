@@ -77,6 +77,27 @@ class FelicityProtocolTests(unittest.TestCase):
         namespaced = receiver._namespaced(1, {"battery_soc": Mock()})
         self.assertEqual(list(namespaced), ["battery_1_battery_soc"])
 
+    @patch("felicity_rs485.serial.Serial")
+    def test_standby_battery_is_discovered_then_promoted(self, serial_class):
+        data = bytearray(20)
+        data[8:10] = (5234).to_bytes(2, "big")
+        data[10:12] = (-123).to_bytes(2, "big", signed=True)
+        data[16:18] = (24).to_bytes(2, "big", signed=True)
+        data[18:20] = (81).to_bytes(2, "big")
+        payload = bytes((3, 3, len(data))) + bytes(data)
+        frame = payload + modbus_crc(payload).to_bytes(2, "little")
+        serial_class.return_value.in_waiting = 0
+        serial_class.return_value.read.return_value = frame
+
+        receiver = FelicityRs485Receiver("/dev/test", 9600, [1, 2], [3])
+        receiver._startup_polls.clear()
+        message = receiver.recv()
+
+        self.assertEqual(message.address, 3)
+        self.assertEqual(receiver.addresses, [1, 2, 3])
+        self.assertEqual(receiver.standby_addresses, [])
+        self.assertIn((3, 0x132A, 20, "cell information"), receiver._polls)
+
 
 if __name__ == "__main__":
     unittest.main()

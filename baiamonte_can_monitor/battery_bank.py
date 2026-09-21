@@ -8,6 +8,27 @@ from can_decoder import Reading
 PACK_CAPACITY_AH = 100.0
 PACK_NOMINAL_ENERGY_KWH = 5.12
 
+STANDBY_MEASUREMENTS = {
+    "battery_soc": ("%", "battery"),
+    "battery_voltage": ("V", "voltage"),
+    "battery_current": ("A", "current"),
+    "battery_power": ("W", "power"),
+    "pack_temperature": ("°C", "temperature"),
+    "remaining_capacity": ("Ah", None),
+    "remaining_energy": ("kWh", "energy"),
+    "charging_power": ("W", "power"),
+    "discharging_power": ("W", "power"),
+    "time_to_empty": ("h", "duration"),
+    "time_to_full": ("h", "duration"),
+    "cell_voltage_difference": ("mV", "voltage"),
+    "minimum_cell_voltage": ("V", "voltage"),
+    "maximum_cell_voltage": ("V", "voltage"),
+    "charge_current_limit": ("A", "current"),
+    "discharge_current_limit": ("A", "current"),
+    "charge_voltage_limit": ("V", "voltage"),
+    "discharge_voltage_limit": ("V", "voltage"),
+}
+
 
 def _measurement(value: float, unit: str, device_class: str | None = None) -> Reading:
     return Reading(value, unit, device_class, "measurement")
@@ -25,15 +46,37 @@ def derive_bank_readings(
     readings: dict[str, Reading],
     addresses: list[int],
     online_addresses: set[int],
+    provisioned_addresses: list[int] | None = None,
 ) -> dict[str, Reading]:
     """Build per-pack health/capacity and equal-pack parallel-bank totals."""
     derived: dict[str, Reading] = {}
     packs: list[dict[str, float]] = []
+    provisioned = list(dict.fromkeys(provisioned_addresses or addresses))
+
+    for address in provisioned:
+        prefix = f"battery_{address}_"
+        activated = address in addresses
+        online = address in online_addresses
+        derived[prefix + "online"] = Reading("on" if online else "off")
+        derived[prefix + "provisioning_status"] = Reading(
+            "online" if online else "offline" if activated else "awaiting_connection"
+        )
+        if not activated:
+            for key, (unit, device_class) in STANDBY_MEASUREMENTS.items():
+                derived.setdefault(prefix + key, Reading("unavailable", unit, device_class, "measurement"))
+            derived.setdefault(prefix + "battery_status", Reading("awaiting_connection"))
+            derived.setdefault(prefix + "cell_balance", Reading("awaiting_connection"))
+            derived.setdefault(prefix + "charge_allowed", Reading("unavailable"))
+            derived.setdefault(prefix + "discharge_allowed", Reading("unavailable"))
+            for cell in range(1, 17):
+                derived.setdefault(
+                    prefix + f"cell_{cell}_voltage",
+                    Reading("unavailable", "V", "voltage", "measurement"),
+                )
 
     for address in addresses:
         prefix = f"battery_{address}_"
         online = address in online_addresses
-        derived[f"battery_{address}_online"] = Reading("on" if online else "off")
         soc_reading = readings.get(prefix + "battery_soc")
         voltage_reading = readings.get(prefix + "battery_voltage")
         current_reading = readings.get(prefix + "battery_current")
@@ -67,6 +110,7 @@ def derive_bank_readings(
     configured = len(addresses)
     online = len(online_addresses)
     derived["bank_configured_batteries"] = Reading(configured)
+    derived["bank_provisioned_batteries"] = Reading(len(provisioned))
     derived["bank_online_batteries"] = Reading(online)
     derived["bank_nominal_capacity"] = _measurement(configured * PACK_CAPACITY_AH, "Ah")
     derived["bank_nominal_energy"] = Reading(round(configured * PACK_NOMINAL_ENERGY_KWH, 2), "kWh")

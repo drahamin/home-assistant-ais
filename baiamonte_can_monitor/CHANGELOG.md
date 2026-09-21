@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- Provision Battery 3 at Modbus address 3 as an efficient standby discovery slot.
+- Show Battery 3 throughout the overview, battery data, recovery limits, Home Assistant entities, and cell-history charts before installation.
+- Automatically promote Battery 3 into bank capacity, health, safety, and recovery calculations after its first valid reply.
+- Keep the current two-battery bank healthy and correctly sized while the third battery is still awaiting connection.
+
 ## 0.6.6
 
 - Reduce Home Assistant API traffic with a 10-second minimum publish cadence and a five-minute unchanged-state refresh.

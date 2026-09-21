@@ -21,6 +21,7 @@ CHARTS = {
             (PREFIX + "bank_soc", "Bank SOC", "%"),
             (PREFIX + "battery_1_battery_soc", "Battery 1 SOC", "%"),
             (PREFIX + "battery_2_battery_soc", "Battery 2 SOC", "%"),
+            (PREFIX + "battery_3_battery_soc", "Battery 3 SOC", "%"),
             (PREFIX + "bank_charging_power", "Charging power", "W"),
         ],
     },
@@ -33,6 +34,11 @@ CHARTS = {
         "hours": 24,
         "bucket": 600,
         "entities": [(PREFIX + f"battery_2_cell_{number}_voltage", f"Cell {number}", "V") for number in range(1, 17)],
+    },
+    "battery3_cells": {
+        "hours": 24,
+        "bucket": 600,
+        "entities": [(PREFIX + f"battery_3_cell_{number}_voltage", f"Cell {number}", "V") for number in range(1, 17)],
     },
     "multi_day": {
         "hours": 24 * 14,

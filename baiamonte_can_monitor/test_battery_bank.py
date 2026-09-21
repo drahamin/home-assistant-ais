@@ -54,6 +54,20 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_online_batteries"].value, 1)
         self.assertEqual(result["bank_health"].value, "attention")
 
+    def test_standby_pack_is_visible_but_excluded_until_activated(self):
+        self.readings["battery_2_battery_soc"] = Reading(29, "%")
+        self.readings["battery_2_cell_voltage_difference"] = Reading(3, "mV")
+        result = derive_bank_readings(self.readings, [1, 2], {1, 2}, [1, 2, 3])
+
+        self.assertEqual(result["bank_configured_batteries"].value, 2)
+        self.assertEqual(result["bank_provisioned_batteries"].value, 3)
+        self.assertEqual(result["bank_nominal_energy"].value, 10.24)
+        self.assertEqual(result["bank_health"].value, "healthy")
+        self.assertEqual(result["battery_3_online"].value, "off")
+        self.assertEqual(result["battery_3_provisioning_status"].value, "awaiting_connection")
+        self.assertEqual(result["battery_3_battery_soc"].value, "unavailable")
+        self.assertEqual(result["battery_3_cell_16_voltage"].value, "unavailable")
+
     def test_positive_felicity_power_is_reported_as_discharge(self):
         self.readings["battery_1_battery_power"] = Reading(100.0, "W")
         self.readings["battery_1_battery_current"] = Reading(2.0, "A")
