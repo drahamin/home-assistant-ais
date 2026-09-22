@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Add a full Baiamonte-styled Web UI with overview, configuration, and trend pages.
+- Add persistent, validated Web UI editing for load categories, thresholds, timing, and telemetry entities.
+- Add a live battery gauge plus power-flow, SOC, and protected-runtime graphs.
+- Add forecast margin, minimum planning load, recovery thresholds, history window, and learning-rate controls.
+- Add branded Home Assistant store, sidebar, browser, and mobile icons.
+- Add weather-discounted Solcast inputs, sunrise-aware overnight survival planning, seasonal/monthly load learning, and configurable solar-credit limits.
+- Keep Nokia LTE as the default first-shed load while preserving hard protection for the estate main, cameras, and kitchen refrigerator.
+
 ## 0.2.0
 
 - Move Nokia LTE out of hard protection and into its own editable shed-first category.
