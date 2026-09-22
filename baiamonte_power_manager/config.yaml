@@ -1,5 +1,5 @@
 name: "Baiamonte Power Guard"
-version: "0.3.0"
+version: "0.3.1"
 slug: "baiamonte_power_manager"
 description: "Learning battery runtime forecast and protected load management"
 url: "https://github.com/drahamin/home-assistant-ais"

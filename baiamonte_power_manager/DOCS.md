@@ -42,8 +42,10 @@ is operated only if it is explicitly listed in one of the four categories. The a
 records which loads it turned off and restores only those loads; it does not
 undo a switch that a person turned off.
 
-All four category fields are editable in the app Configuration page. Entity IDs
-are comma-separated. A switch may appear in only one category, and any overlap
+All four category fields are editable in the app Configuration page using
+searchable Home Assistant switch selectors. The selectors show friendly names
+and current state while storing the exact entity ID. Selecting a switch in a
+new editable category automatically moves it out of its previous category. A switch may appear in only one category, and any overlap
 with a hard-protected load prevents the app from starting rather than guessing.
 
 ## How the learning works

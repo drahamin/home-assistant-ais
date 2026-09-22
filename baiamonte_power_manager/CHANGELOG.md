@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Replace comma-separated shedding and protection fields with searchable, touch-friendly Home Assistant switch selectors.
+- Show friendly device names and current switch state while retaining entity IDs internally for safe validation.
+- Automatically move a switch out of its previous editable category when it is selected elsewhere.
+
 ## 0.3.0
 
 - Add a full Baiamonte-styled Web UI with overview, configuration, and trend pages.
