@@ -2,22 +2,117 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#080706">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Baiamonte Power Guard</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <main>
-    <header><div><small>TENUTA BAIAMONTE</small><h1>Power Guard</h1></div><span id="mode">Connecting</span></header>
-    <section class="hero"><div><label>Estimated protected runtime</label><strong id="runtime">—</strong></div><div><label>Battery</label><strong id="soc">—</strong></div><div><label>Estate load</label><strong id="load">—</strong></div></section>
-    <section class="grid">
-      <article><h2>Protected services</h2><p id="critical">Cameras — · Internet —</p><p class="muted">Camera power, LTE backup, kitchen refrigerator, and the estate main are never shed.</p></article>
-      <article><h2>Learning</h2><p id="learning">Collecting load history…</p><p class="muted">The forecast uses the higher of live, hourly, and learned discharge loads.</p></article>
-      <article><h2>Managed loads</h2><p id="managed">No loads managed off</p><p class="muted" id="control">Commissioning mode</p></article>
-      <article><h2>Editable shedding order</h2><p id="categories">Loading categories…</p><p class="muted">Edit category membership in the app Configuration page.</p></article>
-      <article><h2>Decision</h2><p id="reason">Waiting for telemetry</p><p class="error" id="error"></p></article>
-    </section>
-  </main>
+  <svg class="sprite" aria-hidden="true"><defs>
+    <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 19V5M3 19h18M6 15l4-4 3 2 6-7"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v5c0 5-3.3 8.4-8 10-4.7-1.6-8-5-8-10V6Z"/><path d="m13 7-4 6h3l-1 4 4-6h-3z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7z"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="18" r="1"/><path d="M8.5 14.5a5 5 0 0 1 7 0M5 11a10 10 0 0 1 14 0M2 7.5a14.2 14.2 0 0 1 20 0"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-2v8l-4-2z"/></symbol>
+  </defs></svg>
+
+  <div class="shell">
+    <aside>
+      <div class="brand"><img src="brand-icon.png" alt=""><span><strong>Baiamonte Power</strong><small>Intelligent energy guard</small></span></div>
+      <nav aria-label="Power Guard pages">
+        <button class="nav active" data-page="overview"><svg><use href="#i-overview"/></svg>Overview</button>
+        <button class="nav" data-page="trends"><svg><use href="#i-chart"/></svg>Energy trends</button>
+        <button class="nav" data-page="configuration"><svg><use href="#i-settings"/></svg>Configuration</button>
+      </nav>
+      <div class="estate-note"><i id="side-light"></i><span><b id="side-mode">Starting</b><small id="side-status">Waiting for telemetry</small></span></div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">TENUTA BAIAMONTE · ENERGY OPERATIONS</p><h1 id="page-title">Power overview</h1></div>
+        <div class="header-tools"><span id="last-check">Waiting for first evaluation</span><span class="mode-badge" id="mode">Connecting</span></div>
+      </header>
+
+      <section class="page active" id="overview">
+        <div class="hero">
+          <div class="hero-copy"><span>LOCAL · LEARNING · FAIL-SAFE</span><h2>Keep the estate online for longer.</h2><p>Power Guard learns real consumption, forecasts usable battery time, and sheds only explicitly categorized loads. Cameras, the kitchen refrigerator, and the estate main remain hard-protected.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking live energy telemetry…</b></div></div>
+          <div class="hero-emblem"><img src="brand-icon.png" alt="Baiamonte battery crest"><span><svg><use href="#i-shield"/></svg></span></div>
+        </div>
+
+        <div class="safety-banner"><svg><use href="#i-shield"/></svg><div><b id="safety-title">Observe mode — no physical switching</b><span id="safety-copy">Recommendations are visible, but no load will be operated until Automatic is explicitly enabled.</span></div></div>
+
+        <div class="overview-grid">
+          <article class="panel gauge-panel">
+            <div class="panel-head"><div><p>LIVE BATTERY RESERVE</p><h3>State of charge</h3></div><span class="status-badge" id="health-badge">Starting</span></div>
+            <div class="gauge-wrap">
+              <svg class="gauge" viewBox="0 0 180 180" aria-label="Battery state of charge gauge"><circle class="gauge-track" cx="90" cy="90" r="70"/><circle class="gauge-value" id="soc-ring" cx="90" cy="90" r="70"/><path d="M76 38h28v7H76zM70 45h40a8 8 0 0 1 8 8v78a8 8 0 0 1-8 8H70a8 8 0 0 1-8-8V53a8 8 0 0 1 8-8Z" class="battery-outline"/></svg>
+              <div class="gauge-number"><strong id="soc">—</strong><small>BATTERY SOC</small></div>
+            </div>
+            <div class="runtime-callout"><small>ESTIMATED PROTECTED RUNTIME</small><b id="runtime">—</b><span id="forecast-load">Planning load —</span></div>
+          </article>
+
+          <div class="status-column">
+            <article class="metric-card gold"><span><svg><use href="#i-bolt"/></svg></span><div><small>BATTERY POWER</small><h3 id="battery-power">—</h3><p id="power-direction">Waiting for telemetry</p></div></article>
+            <article class="metric-card brown"><span><svg><use href="#i-chart"/></svg></span><div><small>ESTATE LOAD</small><h3 id="load">—</h3><p id="learning">Learning baseline</p></div></article>
+            <article class="metric-card gold"><span><svg><use href="#i-bolt"/></svg></span><div><small>SOLAR INPUT</small><h3 id="solar">—</h3><p id="solar-forecast">Forecast unavailable</p></div></article>
+            <article class="metric-card brown"><span><svg><use href="#i-chart"/></svg></span><div><small>WEATHER OUTLOOK</small><h3 id="weather">—</h3><p id="renewable-outlook">Renewable outlook unavailable</p></div></article>
+            <article class="metric-card green"><span><svg><use href="#i-network"/></svg></span><div><small>PRIMARY INTERNET</small><h3 id="internet">—</h3><p>Starlink connectivity</p></div></article>
+            <article class="metric-card green"><span><svg><use href="#i-camera"/></svg></span><div><small>CAMERA CIRCUIT</small><h3 id="cameras">—</h3><p>Hard-protected supply</p></div></article>
+          </div>
+        </div>
+
+        <div class="decision-grid">
+          <article class="panel"><div class="panel-head"><div><p>INTELLIGENT DECISION</p><h3 id="decision-mode">Waiting</h3></div></div><p class="decision-copy" id="reason">Waiting for telemetry.</p><div class="managed" id="managed">No loads managed off</div><p class="error" id="error"></p></article>
+          <article class="panel"><div class="panel-head"><div><p>ORDERED LOAD CATEGORIES</p><h3>Current shedding plan</h3></div><button class="text-button" data-go="configuration">Edit categories →</button></div><div class="category-list" id="category-list"></div></article>
+        </div>
+      </section>
+
+      <section class="page" id="trends">
+        <div class="section-head"><div><p>LOCAL POWER GUARD HISTORY</p><h2>Energy trends</h2><span>Live samples retained by Power Guard for the configured history window.</span></div><span class="badge" id="history-window">24 hours</span></div>
+        <article class="panel chart-panel"><div class="panel-head"><div><p>POWER FLOW</p><h3>Battery, estate load, and solar</h3></div><div class="legend"><i class="gold-dot"></i>Battery <i class="brown-dot"></i>Load <i class="green-dot"></i>Solar</div></div><canvas id="power-chart" height="260"></canvas><div class="chart-empty" id="power-empty">Collecting samples…</div></article>
+        <div class="chart-grid">
+          <article class="panel chart-panel"><div class="panel-head"><div><p>ENERGY RESERVE</p><h3>Battery SOC</h3></div><span>%</span></div><canvas id="soc-chart" height="220"></canvas></article>
+          <article class="panel chart-panel"><div class="panel-head"><div><p>FORECAST</p><h3>Protected runtime</h3></div><span>hours</span></div><canvas id="runtime-chart" height="220"></canvas></article>
+        </div>
+      </section>
+
+      <section class="page" id="configuration">
+        <div class="section-head"><div><p>VALIDATED LOCAL CONFIGURATION</p><h2>Power Guard settings</h2><span>Changes are stored locally and applied on the next evaluation. Invalid or unsafe combinations are rejected.</span></div><span class="badge neutral" id="config-source">Loading</span></div>
+        <form id="config-form">
+          <article class="panel config-section"><div class="config-title"><span><svg><use href="#i-shield"/></svg></span><div><h3>Operation and timing</h3><p>Automatic mode can physically switch categorized loads.</p></div></div><div class="form-grid">
+            <label>Control mode<select name="control_mode"><option value="observe">Observe only</option><option value="automatic">Automatic shedding</option></select></label>
+            <label>Evaluation interval (seconds)<input name="evaluation_interval_seconds" type="number" min="15" max="3600"></label>
+            <label>Escalation confirmation (seconds)<input name="confirm_seconds" type="number" min="0"></label>
+            <label>Stable recovery (seconds)<input name="restore_stable_seconds" type="number" min="300"></label>
+            <label>History window (hours)<input name="history_hours" type="number" min="1" max="168"></label>
+            <label>Learning rate<input name="learning_alpha" type="number" min="0.01" max="1" step="0.01"></label>
+          </div><label class="confirmation">Automatic-mode confirmation<input name="automatic_confirmation" placeholder="Type ENABLE AUTOMATIC only when commissioning is complete"><small>Required only when changing from Observe to Automatic.</small></label></article>
+
+          <article class="panel config-section"><div class="config-title"><span><svg><use href="#i-bolt"/></svg></span><div><h3>SOC stages and runtime forecast</h3><p>Higher stages shed earlier. The protected reserve is excluded from usable runtime.</p></div></div><div class="form-grid six">
+            <label>Restore SOC %<input name="restore_soc" type="number" min="0" max="100" step="0.1"></label><label>Economy SOC %<input name="economy_soc" type="number" min="0" max="100" step="0.1"></label><label>Conserve SOC %<input name="conserve_soc" type="number" min="0" max="100" step="0.1"></label><label>Protect SOC %<input name="protect_soc" type="number" min="0" max="100" step="0.1"></label><label>Emergency SOC %<input name="emergency_soc" type="number" min="0" max="100" step="0.1"></label><label>Protected reserve %<input name="reserve_soc" type="number" min="0" max="100" step="0.1"></label>
+            <label>Economy runtime h<input name="economy_runtime_hours" type="number" min="0" step="0.1"></label><label>Conserve runtime h<input name="conserve_runtime_hours" type="number" min="0" step="0.1"></label><label>Protect runtime h<input name="protect_runtime_hours" type="number" min="0" step="0.1"></label><label>Emergency runtime h<input name="emergency_runtime_hours" type="number" min="0" step="0.1"></label><label>Forecast margin %<input name="forecast_margin_percent" type="number" min="0" max="100" step="0.1"></label><label>Minimum planning load W<input name="minimum_planning_load_w" type="number" min="1" step="1"></label>
+          </div></article>
+
+          <article class="panel config-section"><div class="config-title"><span><svg><use href="#i-chart"/></svg></span><div><h3>Battery, weather, and solar planning</h3><p>Solar credit is weather-discounted and capped. Forecast energy is never counted before sunrise.</p></div></div><div class="form-grid"><label>Fallback capacity kWh<input name="battery_capacity_kwh" type="number" min="0.1" step="0.01"></label><label>Charging recovery threshold W<input name="restore_charge_power_w" type="number" min="0" step="1"></label><label>Solar surplus threshold W<input name="restore_solar_surplus_w" type="number" min="0" step="1"></label><label>Solar forecast confidence %<input name="solar_forecast_credit_percent" type="number" min="0" max="100" step="1"></label><label>Maximum solar credit kWh<input name="maximum_solar_credit_kwh" type="number" min="0" step="0.1"></label><label>Overnight buffer h<input name="overnight_buffer_hours" type="number" min="0" max="12" step="0.1"></label><label>Poor-weather penalty %<input name="poor_weather_load_penalty_percent" type="number" min="0" max="100" step="1"></label></div></article>
+
+          <article class="panel config-section"><div class="config-title"><span><svg><use href="#i-settings"/></svg></span><div><h3>Editable shedding categories</h3><p>Comma-separated switch entity IDs. A switch may appear in only one category.</p></div></div><div class="category-editor">
+            <label><b>1 · Shed first / Economy</b><textarea name="shed_first" rows="3"></textarea><small>LTE backup by default.</small></label><label><b>2 · Flexible appliances</b><textarea name="shed_tier_1" rows="3"></textarea><small>Dishwasher, washing machine, ice maker.</small></label><label><b>3 · Protected operation</b><textarea name="shed_tier_2" rows="3"></textarea><small>Wine refrigerator and cistern pump.</small></label><label><b>4 · Emergency</b><textarea name="shed_tier_3" rows="3"></textarea><small>Lighting circuit.</small></label>
+          </div><label class="wide-field">Additional never-shed switches<textarea name="protected_entities" rows="3"></textarea><small>The estate main, camera circuit, and kitchen refrigerator are hard-protected in code even if omitted here.</small></label></article>
+
+          <details class="panel advanced"><summary>Advanced telemetry entities</summary><div class="form-grid entity-grid"><label>Battery SOC<input name="battery_soc_entity"></label><label>Battery power<input name="battery_power_entity"></label><label>Battery online<input name="battery_online_entity"></label><label>Remaining energy<input name="remaining_energy_entity"></label><label>Nominal energy<input name="nominal_energy_entity"></label><label>Estate load<input name="estate_load_entity"></label><label>Live solar power<input name="solar_power_entity"></label><label>Solar forecast now<input name="solar_forecast_now_entity"></label><label>Solar remaining today<input name="solar_remaining_today_entity"></label><label>Solar tomorrow<input name="solar_tomorrow_entity"></label><label>Weather<input name="weather_entity"></label><label>Internet health<input name="internet_health_entity"></label></div></details>
+
+          <div class="save-bar"><div><b id="save-title">No unsaved changes</b><span id="save-message">Settings are validated before being written.</span></div><button type="submit" id="save-button">Save configuration</button></div>
+        </form>
+      </section>
+    </main>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

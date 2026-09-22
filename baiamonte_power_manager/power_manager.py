@@ -2,7 +2,7 @@
 
 The app observes battery and load telemetry, learns a conservative load baseline,
 and can shed only explicitly allow-listed noncritical switches. It never writes to
-the inverter/BMS and never operates the estate main, camera, or LTE breakers.
+the inverter/BMS and never operates the estate main, camera, or refrigerator feeds.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import urllib.request
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 try:
@@ -31,14 +32,75 @@ API_BASE = "http://supervisor/core/api"
 WEB_ROOT = Path("/web")
 STATE_PATH = Path(os.environ.get("POWER_GUARD_STATE", "/data/power_guard_state.json"))
 OPTIONS_PATH = Path(os.environ.get("POWER_GUARD_OPTIONS", "/data/options.json"))
+UI_OPTIONS_PATH = Path(os.environ.get("POWER_GUARD_UI_OPTIONS", "/data/power_guard_ui_options.json"))
 RUNNING = True
 LOCK = threading.Lock()
+HISTORY: list[dict[str, object]] = []
 STATUS: dict[str, object] = {
     "service": "starting",
     "mode": "telemetry_lost",
     "control_mode": "observe",
     "last_error": None,
     "managed_off": [],
+}
+
+EDITABLE_OPTIONS = (
+    "control_mode",
+    "protected_entities", "shed_first", "shed_tier_1", "shed_tier_2", "shed_tier_3",
+    "battery_capacity_kwh", "reserve_soc", "economy_soc", "conserve_soc",
+    "protect_soc", "emergency_soc", "restore_soc", "economy_runtime_hours",
+    "conserve_runtime_hours", "protect_runtime_hours", "emergency_runtime_hours",
+    "forecast_margin_percent", "minimum_planning_load_w", "restore_charge_power_w",
+    "restore_solar_surplus_w", "evaluation_interval_seconds", "confirm_seconds",
+    "restore_stable_seconds", "history_hours", "learning_alpha",
+    "battery_soc_entity", "battery_power_entity", "battery_online_entity",
+    "remaining_energy_entity", "nominal_energy_entity", "estate_load_entity",
+    "solar_power_entity", "internet_health_entity", "solar_forecast_now_entity",
+    "solar_remaining_today_entity", "solar_tomorrow_entity", "weather_entity",
+    "solar_forecast_credit_percent", "maximum_solar_credit_kwh",
+    "overnight_buffer_hours", "poor_weather_load_penalty_percent",
+)
+STRING_OPTIONS = {
+    "control_mode", "protected_entities", "shed_first", "shed_tier_1", "shed_tier_2",
+    "shed_tier_3", "battery_soc_entity", "battery_power_entity", "battery_online_entity",
+    "remaining_energy_entity", "nominal_energy_entity", "estate_load_entity",
+    "solar_power_entity", "internet_health_entity",
+    "solar_forecast_now_entity", "solar_remaining_today_entity", "solar_tomorrow_entity",
+    "weather_entity",
+}
+INTEGER_OPTIONS = {
+    "evaluation_interval_seconds", "confirm_seconds", "restore_stable_seconds", "history_hours",
+}
+DEFAULT_UI_OPTIONS: dict[str, object] = {
+    "control_mode": "observe",
+    "battery_soc_entity": "sensor.baiamonte_can_bank_soc",
+    "battery_power_entity": "sensor.baiamonte_can_bank_power",
+    "battery_online_entity": "binary_sensor.baiamonte_can_bank_all_batteries_online",
+    "remaining_energy_entity": "sensor.baiamonte_can_bank_remaining_energy",
+    "nominal_energy_entity": "sensor.baiamonte_can_bank_nominal_energy",
+    "estate_load_entity": "sensor.baiamonte_estate_load",
+    "solar_power_entity": "sensor.total_dc_input_power",
+    "internet_health_entity": "binary_sensor.starlink_connectivity",
+    "solar_forecast_now_entity": "sensor.solcast_pv_forecast_power_now",
+    "solar_remaining_today_entity": "sensor.solcast_pv_forecast_forecast_remaining_today",
+    "solar_tomorrow_entity": "sensor.solcast_pv_forecast_forecast_tomorrow",
+    "weather_entity": "weather.forecast_home",
+    "protected_entities": "switch.wifi_din_rail_40a_main,switch.wifi_din_rail_10a_cameras_switch,switch.smart_power_outlet_3",
+    "shed_first": "switch.wifi_din_rail_10a_nokia_lte_switch",
+    "shed_tier_1": "switch.smart_power_outlet_6,switch.smart_power_outlet_4,switch.smart_power_outlet_5",
+    "shed_tier_2": "switch.smart_power_outlet_2,switch.smart_power_outlet_1",
+    "shed_tier_3": "switch.wifi_din_rail_10a_lights_switch",
+    "battery_capacity_kwh": 10.24,
+    "reserve_soc": 30, "economy_soc": 70, "conserve_soc": 60,
+    "protect_soc": 45, "emergency_soc": 35, "restore_soc": 80,
+    "economy_runtime_hours": 12, "conserve_runtime_hours": 10,
+    "protect_runtime_hours": 6, "emergency_runtime_hours": 2.5,
+    "forecast_margin_percent": 15, "minimum_planning_load_w": 500,
+    "restore_charge_power_w": 100, "restore_solar_surplus_w": 200,
+    "solar_forecast_credit_percent": 35, "maximum_solar_credit_kwh": 2,
+    "overnight_buffer_hours": 1, "poor_weather_load_penalty_percent": 10,
+    "evaluation_interval_seconds": 60, "confirm_seconds": 120,
+    "restore_stable_seconds": 1800, "history_hours": 24, "learning_alpha": 0.06,
 }
 
 
@@ -59,11 +121,81 @@ def load_json(path: Path, default: dict) -> dict:
         return default
 
 
+def effective_options() -> dict:
+    base = dict(DEFAULT_UI_OPTIONS)
+    base.update(load_json(OPTIONS_PATH, {}))
+    overrides = load_json(UI_OPTIONS_PATH, {})
+    if isinstance(overrides, dict):
+        base.update({key: value for key, value in overrides.items() if key in EDITABLE_OPTIONS})
+    return base
+
+
+def validate_ui_options(payload: dict, current: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Configuration must be a JSON object")
+    candidate = dict(current)
+    clean: dict[str, object] = {}
+    for key in EDITABLE_OPTIONS:
+        if key not in payload:
+            continue
+        raw = payload[key]
+        if key in STRING_OPTIONS:
+            value = str(raw).strip()
+        elif key in INTEGER_OPTIONS:
+            value = int(float(raw))
+        else:
+            value = float(raw)
+        candidate[key] = value
+        clean[key] = value
+
+    if candidate.get("control_mode") not in {"observe", "automatic"}:
+        raise ValueError("Control mode must be observe or automatic")
+    if (
+        candidate.get("control_mode") == "automatic"
+        and current.get("control_mode") != "automatic"
+        and payload.get("automatic_confirmation") != "ENABLE AUTOMATIC"
+    ):
+        raise ValueError("Type ENABLE AUTOMATIC to enable physical load switching")
+
+    for key in ("reserve_soc", "economy_soc", "conserve_soc", "protect_soc", "emergency_soc", "restore_soc"):
+        if not 0 <= float(candidate.get(key, 0)) <= 100:
+            raise ValueError(f"{key} must be between 0 and 100")
+    if not 15 <= int(candidate.get("evaluation_interval_seconds", 60)) <= 3600:
+        raise ValueError("Evaluation interval must be between 15 and 3600 seconds")
+    if not 1 <= int(candidate.get("history_hours", 24)) <= 168:
+        raise ValueError("History must be between 1 and 168 hours")
+    if not 0.01 <= float(candidate.get("learning_alpha", 0.06)) <= 1:
+        raise ValueError("Learning alpha must be between 0.01 and 1")
+    if not 0 <= float(candidate.get("forecast_margin_percent", 15)) <= 100:
+        raise ValueError("Forecast margin must be between 0 and 100 percent")
+    if not 0 <= float(candidate.get("solar_forecast_credit_percent", 35)) <= 100:
+        raise ValueError("Solar forecast confidence must be between 0 and 100 percent")
+    if not 0 <= float(candidate.get("poor_weather_load_penalty_percent", 10)) <= 100:
+        raise ValueError("Poor-weather penalty must be between 0 and 100 percent")
+    if float(candidate.get("maximum_solar_credit_kwh", 2)) < 0:
+        raise ValueError("Maximum solar credit cannot be negative")
+    if not 0 <= float(candidate.get("overnight_buffer_hours", 1)) <= 12:
+        raise ValueError("Overnight buffer must be between 0 and 12 hours")
+    if float(candidate.get("battery_capacity_kwh", 10.24)) <= 0:
+        raise ValueError("Battery capacity must be greater than zero")
+    configure(candidate)
+    return clean
+
+
+def save_ui_options(overrides: dict) -> None:
+    existing = load_json(UI_OPTIONS_PATH, {})
+    existing.update(overrides)
+    temporary = UI_OPTIONS_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.replace(UI_OPTIONS_PATH)
+
+
 def save_state(learning: LearningState, managed_off: set[str], current_mode: str) -> None:
     payload = {
         "learning": learning.to_dict(),
         "managed_off": sorted(managed_off),
         "current_mode": current_mode,
+        "history": HISTORY,
         "saved_at": time.time(),
     }
     temporary = STATE_PATH.with_suffix(".tmp")
@@ -129,6 +261,14 @@ def configure(options: dict) -> tuple[Policy, dict[int, list[str]], set[str]]:
         protect_runtime_hours=float(options.get("protect_runtime_hours", 6)),
         emergency_runtime_hours=float(options.get("emergency_runtime_hours", 2.5)),
         battery_capacity_kwh=float(options.get("battery_capacity_kwh", 10.24)),
+        forecast_margin_percent=float(options.get("forecast_margin_percent", 15)),
+        minimum_planning_load_w=float(options.get("minimum_planning_load_w", 500)),
+        restore_charge_power_w=float(options.get("restore_charge_power_w", 100)),
+        restore_solar_surplus_w=float(options.get("restore_solar_surplus_w", 200)),
+        solar_forecast_credit_percent=float(options.get("solar_forecast_credit_percent", 35)),
+        maximum_solar_credit_kwh=float(options.get("maximum_solar_credit_kwh", 2)),
+        overnight_buffer_hours=float(options.get("overnight_buffer_hours", 1)),
+        poor_weather_load_penalty_percent=float(options.get("poor_weather_load_penalty_percent", 10)),
     )
     tiers = {
         0: csv_entities(options.get("shed_first")),
@@ -159,6 +299,8 @@ def configure(options: dict) -> tuple[Policy, dict[int, list[str]], set[str]]:
 
 
 def make_snapshot(options: dict, states: dict[str, dict]) -> Snapshot:
+    weather = states.get(str(options.get("weather_entity", "")), {})
+    sun = states.get("sun.sun", {})
     return Snapshot(
         timestamp=time.time(),
         soc=numeric(states, str(options["battery_soc_entity"])),
@@ -170,7 +312,35 @@ def make_snapshot(options: dict, states: dict[str, dict]) -> Snapshot:
         internet_online=boolean(states, str(options["internet_health_entity"])),
         cameras_powered=boolean(states, "switch.wifi_din_rail_10a_cameras_switch"),
         nominal_energy_kwh=numeric(states, str(options["nominal_energy_entity"])),
+        solar_forecast_now_w=numeric(states, str(options.get("solar_forecast_now_entity", ""))),
+        solar_remaining_today_kwh=numeric(states, str(options.get("solar_remaining_today_entity", ""))),
+        solar_tomorrow_kwh=numeric(states, str(options.get("solar_tomorrow_entity", ""))),
+        weather_condition=str(weather.get("state")) if weather.get("state") not in (None, "unknown", "unavailable") else None,
+        cloud_coverage_percent=_attribute_number(weather, "cloud_coverage"),
+        sun_above_horizon=True if sun.get("state") == "above_horizon" else False if sun.get("state") == "below_horizon" else None,
+        hours_to_sunrise=_hours_until(sun.get("attributes", {}).get("next_rising")),
+        hours_to_sunset=_hours_until(sun.get("attributes", {}).get("next_setting")),
     )
+
+
+def _attribute_number(state: dict, name: str) -> float | None:
+    try:
+        value = float(state.get("attributes", {}).get(name))
+        return value if value == value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _hours_until(value: object) -> float | None:
+    if not value:
+        return None
+    try:
+        target = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if target.tzinfo is None:
+            target = target.replace(tzinfo=timezone.utc)
+        return max(0.0, (target - datetime.now(timezone.utc)).total_seconds() / 3600)
+    except (TypeError, ValueError):
+        return None
 
 
 def desired_off(decision: Decision, tiers: dict[int, list[str]]) -> set[str]:
@@ -189,6 +359,9 @@ def publish_status(ha: HomeAssistant, decision: Decision, learning: LearningStat
         "cameras_protected": True,
         "lte_shed_first": "switch.wifi_din_rail_10a_nokia_lte_switch" in csv_entities(options.get("shed_first")),
         "shed_categories": options.get("shed_first", "") + " | " + options.get("shed_tier_1", "") + " | " + options.get("shed_tier_2", "") + " | " + options.get("shed_tier_3", ""),
+        "renewable_outlook": decision.renewable_outlook,
+        "solar_credit_kwh": round(decision.solar_credit_kwh, 2),
+        "season": decision.season,
     }
     ha.publish("sensor.baiamonte_power_guard_status", decision.mode, common)
     ha.publish(
@@ -204,10 +377,12 @@ def publish_status(ha: HomeAssistant, decision: Decision, learning: LearningStat
 
 
 def run() -> None:
-    options = load_json(OPTIONS_PATH, {})
+    global HISTORY
+    options = effective_options()
     policy, tiers, protected = configure(options)
     stored = load_json(STATE_PATH, {})
     learning = LearningState.from_dict(stored.get("learning", {}))
+    HISTORY = [row for row in stored.get("history", []) if isinstance(row, dict)][-10_080:]
     managed_off = set(stored.get("managed_off", [])) - protected
     current_mode = str(stored.get("current_mode", "normal"))
     candidate_mode = current_mode
@@ -215,9 +390,7 @@ def run() -> None:
     recovery_since: float | None = None
     last_save = 0.0
     ha = HomeAssistant(TOKEN)
-    interval = max(15, int(options.get("evaluation_interval_seconds", 60)))
-    confirm_seconds = max(0, int(options.get("confirm_seconds", 120)))
-    restore_seconds = max(300, int(options.get("restore_stable_seconds", 1800)))
+    interval = 60
     control_mode = str(options.get("control_mode", "observe"))
     with LOCK:
         STATUS.update(
@@ -229,9 +402,16 @@ def run() -> None:
 
     while RUNNING:
         try:
+            options = effective_options()
+            policy, tiers, protected = configure(options)
+            interval = max(15, int(options.get("evaluation_interval_seconds", 60)))
+            confirm_seconds = max(0, int(options.get("confirm_seconds", 120)))
+            restore_seconds = max(300, int(options.get("restore_stable_seconds", 1800)))
+            control_mode = str(options.get("control_mode", "observe"))
+            managed_off.difference_update(protected)
             states = ha.states()
             snapshot = make_snapshot(options, states)
-            learning.update(snapshot)
+            learning.update(snapshot, alpha=float(options.get("learning_alpha", 0.06)))
             decision = decide(snapshot, learning, policy)
             now = time.time()
             if decision.mode != candidate_mode:
@@ -276,6 +456,18 @@ def run() -> None:
 
             publish_status(ha, decision, learning, managed_off, options)
             with LOCK:
+                HISTORY.append({
+                    "timestamp": now,
+                    "soc": snapshot.soc,
+                    "battery_power_w": snapshot.battery_power_w,
+                    "estate_load_w": snapshot.estate_load_w,
+                    "solar_power_w": snapshot.solar_power_w,
+                    "solar_forecast_now_w": snapshot.solar_forecast_now_w,
+                    "runtime_hours": decision.runtime_hours,
+                    "mode": decision.mode,
+                })
+                cutoff = now - int(options.get("history_hours", 24)) * 3600
+                HISTORY = [row for row in HISTORY if float(row.get("timestamp", 0)) >= cutoff]
                 STATUS.update(
                     service="running",
                     mode=decision.mode,
@@ -283,9 +475,20 @@ def run() -> None:
                     reason=decision.reason,
                     runtime_hours=decision.runtime_hours,
                     expected_load_w=decision.expected_load_w,
+                    battery_only_runtime_hours=decision.battery_only_runtime_hours,
+                    solar_credit_kwh=decision.solar_credit_kwh,
+                    renewable_outlook=decision.renewable_outlook,
+                    season=decision.season,
                     soc=snapshot.soc,
                     battery_power_w=snapshot.battery_power_w,
                     estate_load_w=snapshot.estate_load_w,
+                    solar_power_w=snapshot.solar_power_w,
+                    solar_forecast_now_w=snapshot.solar_forecast_now_w,
+                    solar_remaining_today_kwh=snapshot.solar_remaining_today_kwh,
+                    solar_tomorrow_kwh=snapshot.solar_tomorrow_kwh,
+                    weather_condition=snapshot.weather_condition,
+                    hours_to_sunrise=snapshot.hours_to_sunrise,
+                    hours_to_sunset=snapshot.hours_to_sunset,
                     internet_online=snapshot.internet_online,
                     cameras_powered=snapshot.cameras_powered,
                     telemetry_ok=decision.telemetry_ok,
@@ -295,6 +498,9 @@ def run() -> None:
                     learned_discharge_w=learning.learned_discharge_w,
                     samples=learning.samples,
                     recovery_stable_seconds=0 if recovery_since is None else int(now - recovery_since),
+                    protected_entities=sorted(protected),
+                    shed_categories={"first": tiers[0], "stage_2": tiers[1], "stage_3": tiers[2], "emergency": tiers[3]},
+                    config_source="web" if UI_OPTIONS_PATH.exists() else "app options",
                     last_evaluation=time.time(),
                     last_error=None,
                 )
@@ -311,17 +517,38 @@ def run() -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def send_json(self, value: object, status: int = 200) -> None:
+        payload = json.dumps(value, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path.rstrip("/").endswith("/api/status"):
             with LOCK:
-                payload = json.dumps(STATUS, separators=(",", ":")).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+                value = dict(STATUS)
+            self.send_json(value)
+            return
+        if path.rstrip("/").endswith("/api/history"):
+            with LOCK:
+                value = list(HISTORY)
+            self.send_json({"history": value})
+            return
+        if path.rstrip("/").endswith("/api/config"):
+            options = effective_options()
+            self.send_json({
+                "options": {key: options.get(key) for key in EDITABLE_OPTIONS},
+                "source": "web" if UI_OPTIONS_PATH.exists() else "app options",
+                "hard_protected": [
+                    "switch.wifi_din_rail_40a_main",
+                    "switch.wifi_din_rail_10a_cameras_switch",
+                    "switch.smart_power_outlet_3",
+                ],
+            })
             return
         name = path.rstrip("/").rsplit("/", 1)[-1]
         target = WEB_ROOT / (name if "." in name else "index.html")
@@ -335,6 +562,30 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if not path.rstrip("/").endswith("/api/config"):
+            self.send_json({"error": "Not found"}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 65_536:
+                raise ValueError("Configuration request is empty or too large")
+            payload = json.loads(self.rfile.read(length))
+            current = effective_options()
+            clean = validate_ui_options(payload, current)
+            save_ui_options(clean)
+            with LOCK:
+                STATUS["config_source"] = "web"
+                STATUS["config_saved_at"] = time.time()
+            self.send_json({
+                "ok": True,
+                "message": "Configuration saved; it will apply on the next evaluation",
+                "options": {key: effective_options().get(key) for key in EDITABLE_OPTIONS},
+            })
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            self.send_json({"ok": False, "error": str(exc)}, 400)
 
     def log_message(self, _format: str, *_args: object) -> None:
         return

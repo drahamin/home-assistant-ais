@@ -1,8 +1,9 @@
 name: "Baiamonte Power Guard"
-version: "0.2.0"
+version: "0.3.0"
 slug: "baiamonte_power_manager"
 description: "Learning battery runtime forecast and protected load management"
 url: "https://github.com/drahamin/home-assistant-ais"
+icon: "icon.png"
 arch: ["aarch64", "amd64"]
 image: "ghcr.io/drahamin/home-assistant-power-manager"
 startup: "application"
@@ -24,6 +25,10 @@ options:
   nominal_energy_entity: "sensor.baiamonte_can_bank_nominal_energy"
   estate_load_entity: "sensor.baiamonte_estate_load"
   solar_power_entity: "sensor.total_dc_input_power"
+  solar_forecast_now_entity: "sensor.solcast_pv_forecast_power_now"
+  solar_remaining_today_entity: "sensor.solcast_pv_forecast_forecast_remaining_today"
+  solar_tomorrow_entity: "sensor.solcast_pv_forecast_forecast_tomorrow"
+  weather_entity: "weather.forecast_home"
   internet_health_entity: "binary_sensor.starlink_connectivity"
   protected_entities: "switch.wifi_din_rail_40a_main,switch.wifi_din_rail_10a_cameras_switch,switch.smart_power_outlet_3"
   shed_first: "switch.wifi_din_rail_10a_nokia_lte_switch"
@@ -41,6 +46,16 @@ options:
   conserve_runtime_hours: 10
   protect_runtime_hours: 6
   emergency_runtime_hours: 2.5
+  forecast_margin_percent: 15
+  minimum_planning_load_w: 500
+  restore_charge_power_w: 100
+  restore_solar_surplus_w: 200
+  solar_forecast_credit_percent: 35
+  maximum_solar_credit_kwh: 2
+  overnight_buffer_hours: 1
+  poor_weather_load_penalty_percent: 10
+  history_hours: 24
+  learning_alpha: 0.06
   evaluation_interval_seconds: 60
   confirm_seconds: 120
   restore_stable_seconds: 1800
@@ -53,6 +68,10 @@ schema:
   nominal_energy_entity: "str"
   estate_load_entity: "str"
   solar_power_entity: "str"
+  solar_forecast_now_entity: "str"
+  solar_remaining_today_entity: "str"
+  solar_tomorrow_entity: "str"
+  weather_entity: "str"
   internet_health_entity: "str"
   protected_entities: "str"
   shed_first: "str"
@@ -70,6 +89,16 @@ schema:
   conserve_runtime_hours: "float"
   protect_runtime_hours: "float"
   emergency_runtime_hours: "float"
+  forecast_margin_percent: "float"
+  minimum_planning_load_w: "float"
+  restore_charge_power_w: "float"
+  restore_solar_surplus_w: "float"
+  solar_forecast_credit_percent: "float"
+  maximum_solar_credit_kwh: "float"
+  overnight_buffer_hours: "float"
+  poor_weather_load_penalty_percent: "float"
+  history_hours: "int"
+  learning_alpha: "float"
   evaluation_interval_seconds: "int"
   confirm_seconds: "int"
   restore_stable_seconds: "int"
@@ -92,6 +121,36 @@ configuration:
   shed_tier_3:
     name: Stage 4 — emergency only
     description: Lighting circuit by default. Cameras, main power, and kitchen refrigerator are hard-protected.
+  forecast_margin_percent:
+    name: Forecast safety margin
+    description: Percentage added to the conservative learned planning load.
+  minimum_planning_load_w:
+    name: Minimum planning load
+    description: Lowest load in watts that may be used for runtime planning.
+  restore_charge_power_w:
+    name: Charging recovery threshold
+    description: Minimum battery charging power required before managed loads can recover.
+  restore_solar_surplus_w:
+    name: Solar recovery surplus
+    description: Required solar surplus above estate load before recovery can begin.
+  solar_forecast_credit_percent:
+    name: Solar forecast confidence
+    description: Conservative percentage of the weather-discounted remaining solar forecast credited to runtime.
+  maximum_solar_credit_kwh:
+    name: Maximum solar credit
+    description: Hard cap on forecast solar energy credited to a decision.
+  overnight_buffer_hours:
+    name: Overnight survival buffer
+    description: Extra battery runtime required beyond the next sunrise.
+  poor_weather_load_penalty_percent:
+    name: Poor-weather penalty
+    description: Additional planning-load margin applied when weather is unfavorable for solar.
+  history_hours:
+    name: Graph history
+    description: Number of hours retained for the Power Guard Web UI graphs.
+  learning_alpha:
+    name: Learning rate
+    description: Weight assigned to each new load sample from 0.01 to 1.00.
   restore_stable_seconds:
     name: Stable recovery time
     description: Healthy charging must remain stable this long before loads managed by this app are restored.

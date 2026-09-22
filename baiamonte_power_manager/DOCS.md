@@ -48,9 +48,9 @@ with a hard-protected load prevents the app from starting rather than guessing.
 
 ## How the learning works
 
-Every evaluation stores an exponentially weighted load average plus a separate
-average for each hour of the day. The runtime calculation deliberately uses the
-highest credible value among live estate load, learned hourly load, and learned
+Every evaluation stores exponentially weighted load averages for the estate,
+each hour of the day, and each month of the year. The runtime calculation deliberately uses the
+highest credible value among live estate load, learned hourly/monthly load, and learned
 battery discharge. A brief low-power reading therefore cannot create an
 optimistic runtime estimate. Learning data and the managed-load journal survive
 app restarts in `/data/power_guard_state.json`.
@@ -58,6 +58,14 @@ app restarts in `/data/power_guard_state.json`.
 Decisions use both battery SOC and predicted runtime. Runtime can trigger
 conservation before a simple SOC threshold would. Missing or invalid battery
 telemetry freezes automatic switching and reports `telemetry_lost`.
+
+The forecast also uses Solcast remaining-today and tomorrow energy, current
+weather, cloud cover when available, and the next sunrise/sunset from Home
+Assistant. Solar credit is deliberately discounted by weather and capped; it is
+never counted during the night. If battery-only runtime cannot safely reach the
+next sunrise plus the configured buffer, the decision escalates. This naturally
+adapts overnight planning to the time of year without depending on an external
+cloud service beyond the configured Home Assistant forecast entities.
 
 ## Commissioning
 
@@ -78,7 +86,23 @@ telemetry freezes automatic switching and reports `telemetry_lost`.
 8. Test each shedding-category switch individually in Home Assistant and confirm it
    does not remove Home Assistant, Internet, cameras, refrigeration, a safety
    system, medical equipment, or another essential load.
-9. Change **Control mode** to `automatic`, save, and restart the app.
+9. In the Power Guard Web UI, change **Control mode** to `automatic`, enter the
+   required confirmation phrase, and save. The change applies on the next evaluation.
+
+## Web UI configuration and graphs
+
+Open **Power Guard** from the Home Assistant sidebar. The Configuration page can
+edit operation mode, all four shedding categories, SOC and runtime stages,
+recovery timing, forecast margin, learning rate, graph retention, and advanced
+telemetry entity IDs. Weather/solar confidence, the solar-energy credit cap,
+overnight buffer, and poor-weather margin are also editable. Settings are validated and stored in protected app data;
+they take effect on the next evaluation without a restart. Enabling physical
+switching requires entering `ENABLE AUTOMATIC` when changing modes.
+
+The Energy trends page retains up to seven days of local Power Guard samples and
+graphs battery power, estate load, solar input, SOC, and estimated protected
+runtime. Home Assistant remains the long-term system of record for history
+beyond this local window.
 
 ## Anti-flapping and recovery
 
