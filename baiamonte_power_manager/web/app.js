@@ -2,6 +2,10 @@ const $ = id => document.getElementById(id);
 const titles = {overview:'Power overview',trends:'Energy trends',configuration:'Configuration'};
 let latestHistory = [];
 let configLoaded = false;
+let availableSwitches = [];
+let hardProtected = new Set();
+let activeSelector = null;
+let selectorDraft = new Set();
 
 async function api(path, options={}) {
   const response = await fetch(`./api/${path}`, {cache:'no-store', ...options});
@@ -15,6 +19,59 @@ function fmt(value, unit='', digits=0) {
 }
 function online(value) { return value === true ? 'Online' : value === false ? 'Offline' : 'Unknown'; }
 function shortEntity(value) { return String(value).replace(/^switch\./,'').replaceAll('_',' '); }
+function switchInfo(entityId) { return availableSwitches.find(item => item.entity_id === entityId) || {entity_id:entityId,name:shortEntity(entityId),state:'not found'}; }
+function selectorEntities(selector) { return selector.querySelector('input[type="hidden"]').value.split(',').map(value=>value.trim()).filter(Boolean); }
+function setSelectorEntities(selector, entities) {
+  const unique = [...new Set(entities)];
+  selector.querySelector('input[type="hidden"]').value = unique.join(',');
+  const values = selector.querySelector('.selector-values'); values.replaceChildren();
+  unique.forEach(entityId => {
+    const info = switchInfo(entityId), chip = document.createElement('span'), light = document.createElement('i');
+    chip.className = 'device-chip'; light.className = info.state === 'on' ? '' : 'off';
+    const name = document.createElement('span'); name.textContent = info.name;
+    chip.title = entityId; chip.append(light,name); values.append(chip);
+  });
+}
+
+function renderDeviceOptions() {
+  const query = $('device-search').value.trim().toLowerCase(), list = $('device-options'); list.replaceChildren();
+  const matches = availableSwitches.filter(item => `${item.name} ${item.entity_id}`.toLowerCase().includes(query));
+  if (!matches.length) { const empty=document.createElement('div');empty.className='device-empty';empty.textContent='No matching switches found';list.append(empty);return; }
+  matches.forEach(item => {
+    const row=document.createElement('label');row.className='device-option';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.value=item.entity_id;checkbox.checked=selectorDraft.has(item.entity_id);
+    const copy=document.createElement('span'), name=document.createElement('b'), entity=document.createElement('small'), state=document.createElement('em');
+    name.textContent=item.name;entity.textContent=item.entity_id;state.textContent=item.state;
+    copy.append(name,entity);row.append(checkbox,copy,state);
+    checkbox.addEventListener('change',()=>checkbox.checked?selectorDraft.add(item.entity_id):selectorDraft.delete(item.entity_id));
+    list.append(row);
+  });
+}
+
+function openDeviceSelector(selector) {
+  activeSelector=selector;selectorDraft=new Set(selectorEntities(selector));
+  $('device-dialog-title').textContent=`Select · ${selector.dataset.label}`;$('device-search').value='';renderDeviceOptions();$('device-dialog').showModal();
+}
+document.querySelectorAll('.selector-open').forEach(button=>button.addEventListener('click',()=>openDeviceSelector(button.closest('.entity-selector'))));
+$('device-search').addEventListener('input',renderDeviceOptions);
+function closeDeviceSelector(){ $('device-dialog').close();activeSelector=null; }
+$('device-cancel').addEventListener('click',closeDeviceSelector);$('device-dialog-close').addEventListener('click',closeDeviceSelector);
+$('device-dialog').addEventListener('click',event=>{if(event.target===$('device-dialog'))closeDeviceSelector()});
+$('device-apply').addEventListener('click',()=>{
+  if(!activeSelector)return;
+  const targetName=activeSelector.dataset.name;
+  if(targetName!=='protected_entities'){
+    const blocked=[...selectorDraft].filter(entity=>hardProtected.has(entity));
+    if(blocked.length){$('save-title').textContent='Hard-protected device';$('save-message').textContent=`${switchInfo(blocked[0]).name} cannot be assigned to shedding.`;return}
+  }
+  document.querySelectorAll('.entity-selector').forEach(selector=>{
+    if(selector===activeSelector)return;
+    const remaining=selectorEntities(selector).filter(entity=>!selectorDraft.has(entity)||hardProtected.has(entity));
+    setSelectorEntities(selector,remaining);
+  });
+  setSelectorEntities(activeSelector,[...selectorDraft]);closeDeviceSelector();
+  $('config-form').dispatchEvent(new Event('input',{bubbles:true}));
+});
 
 function showPage(page) {
   document.querySelectorAll('.page').forEach(node => node.classList.toggle('active', node.id === page));
@@ -120,7 +177,7 @@ window.addEventListener('resize',()=>{if(document.querySelector('#trends.active'
 
 const numericNames = new Set(['battery_capacity_kwh','reserve_soc','economy_soc','conserve_soc','protect_soc','emergency_soc','restore_soc','economy_runtime_hours','conserve_runtime_hours','protect_runtime_hours','emergency_runtime_hours','forecast_margin_percent','minimum_planning_load_w','restore_charge_power_w','restore_solar_surplus_w','solar_forecast_credit_percent','maximum_solar_credit_kwh','overnight_buffer_hours','poor_weather_load_penalty_percent','evaluation_interval_seconds','confirm_seconds','restore_stable_seconds','history_hours','learning_alpha']);
 async function loadConfig(){
-  try{const data=await api('config');Object.entries(data.options||{}).forEach(([name,value])=>{const field=document.querySelector(`[name="${name}"]`);if(field&&value!=null)field.value=value});$('config-source').textContent=`Source: ${data.source}`;$('history-window').textContent=`${data.options.history_hours||24} hours`;configLoaded=true}catch(error){$('save-title').textContent='Could not load configuration';$('save-message').textContent=error.message}
+  try{const [data,switchData]=await Promise.all([api('config'),api('switches')]);availableSwitches=switchData.switches||[];hardProtected=new Set(data.hard_protected||[]);Object.entries(data.options||{}).forEach(([name,value])=>{const field=document.querySelector(`[name="${name}"]`);if(field&&value!=null)field.value=value});document.querySelectorAll('.entity-selector').forEach(selector=>setSelectorEntities(selector,selectorEntities(selector)));$('config-source').textContent=`Source: ${data.source}`;$('history-window').textContent=`${data.options.history_hours||24} hours`;configLoaded=true}catch(error){$('save-title').textContent='Could not load configuration';$('save-message').textContent=error.message}
 }
 $('config-form').addEventListener('input',()=>{$('save-title').textContent='Unsaved changes';$('save-message').textContent='Save to validate and apply these settings.'});
 $('config-form').addEventListener('submit',async event=>{

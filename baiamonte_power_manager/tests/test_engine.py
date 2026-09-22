@@ -7,7 +7,7 @@ from baiamonte_power_manager.engine import (
     decide,
     protected_overlap,
 )
-from baiamonte_power_manager.power_manager import configure, validate_ui_options
+from baiamonte_power_manager.power_manager import configure, switch_options, validate_ui_options
 
 
 def sample(soc=70, power=700, load=700, energy=None, online=True, solar=0):
@@ -122,6 +122,16 @@ class DecisionTests(unittest.TestCase):
                 {"shed_first": "switch.lte", "shed_tier_1": "switch.lte"},
                 {"control_mode": "observe"},
             )
+
+    def test_switch_selector_uses_friendly_names_and_keeps_missing_configured_switches(self):
+        states = {
+            "switch.alpha": {"state": "on", "attributes": {"friendly_name": "Kitchen Pump"}},
+            "sensor.not_a_switch": {"state": "1", "attributes": {}},
+        }
+        choices = switch_options(states, {"shed_first": "switch.missing"})
+        self.assertEqual([item["entity_id"] for item in choices], ["switch.alpha", "switch.missing"])
+        self.assertEqual(choices[0]["name"], "Kitchen Pump")
+        self.assertEqual(choices[1]["state"], "not found")
 
 
 if __name__ == "__main__":

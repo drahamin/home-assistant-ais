@@ -36,6 +36,7 @@ UI_OPTIONS_PATH = Path(os.environ.get("POWER_GUARD_UI_OPTIONS", "/data/power_gua
 RUNNING = True
 LOCK = threading.Lock()
 HISTORY: list[dict[str, object]] = []
+AVAILABLE_SWITCHES: list[dict[str, str]] = []
 STATUS: dict[str, object] = {
     "service": "starting",
     "mode": "telemetry_lost",
@@ -112,6 +113,21 @@ def csv_entities(value: object) -> list[str]:
     if not isinstance(value, str):
         return []
     return list(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
+
+
+def switch_options(states: dict[str, dict], options: dict) -> list[dict[str, str]]:
+    configured = set()
+    for key in ("protected_entities", "shed_first", "shed_tier_1", "shed_tier_2", "shed_tier_3"):
+        configured.update(csv_entities(options.get(key)))
+    entity_ids = configured.union(entity for entity in states if entity.startswith("switch."))
+    result = []
+    for entity_id in entity_ids:
+        state = states.get(entity_id, {})
+        attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
+        friendly_name = str(attributes.get("friendly_name") or entity_id.removeprefix("switch.").replace("_", " ").title())
+        value = str(state.get("state", "not found"))
+        result.append({"entity_id": entity_id, "name": friendly_name, "state": value})
+    return sorted(result, key=lambda item: (item["name"].casefold(), item["entity_id"]))
 
 
 def load_json(path: Path, default: dict) -> dict:
@@ -377,7 +393,7 @@ def publish_status(ha: HomeAssistant, decision: Decision, learning: LearningStat
 
 
 def run() -> None:
-    global HISTORY
+    global HISTORY, AVAILABLE_SWITCHES
     options = effective_options()
     policy, tiers, protected = configure(options)
     stored = load_json(STATE_PATH, {})
@@ -410,6 +426,7 @@ def run() -> None:
             control_mode = str(options.get("control_mode", "observe"))
             managed_off.difference_update(protected)
             states = ha.states()
+            available_switches = switch_options(states, options)
             snapshot = make_snapshot(options, states)
             learning.update(snapshot, alpha=float(options.get("learning_alpha", 0.06)))
             decision = decide(snapshot, learning, policy)
@@ -456,6 +473,7 @@ def run() -> None:
 
             publish_status(ha, decision, learning, managed_off, options)
             with LOCK:
+                AVAILABLE_SWITCHES = available_switches
                 HISTORY.append({
                     "timestamp": now,
                     "soc": snapshot.soc,
@@ -549,6 +567,13 @@ class Handler(BaseHTTPRequestHandler):
                     "switch.smart_power_outlet_3",
                 ],
             })
+            return
+        if path.rstrip("/").endswith("/api/switches"):
+            with LOCK:
+                switches = list(AVAILABLE_SWITCHES)
+            if not switches:
+                switches = switch_options({}, effective_options())
+            self.send_json({"switches": switches})
             return
         name = path.rstrip("/").rsplit("/", 1)[-1]
         target = WEB_ROOT / (name if "." in name else "index.html")
