@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from baiamonte_power_manager.engine import (
     LearningState,
@@ -132,6 +133,24 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual([item["entity_id"] for item in choices], ["switch.alpha", "switch.missing"])
         self.assertEqual(choices[0]["name"], "Kitchen Pump")
         self.assertEqual(choices[1]["state"], "not found")
+
+    def test_supported_sidebar_icon_is_used_everywhere(self):
+        root = Path(__file__).parents[1]
+        config = (root / "config.yaml").read_text(encoding="utf-8")
+        service = (root / "power_manager.py").read_text(encoding="utf-8")
+        self.assertIn('panel_icon: "mdi:shield-check"', config)
+        self.assertIn('"icon": "mdi:shield-check"', service)
+        self.assertNotIn("mdi:shield-lightning", config + service)
+
+    def test_all_declared_web_icons_are_packaged(self):
+        root = Path(__file__).parents[1]
+        for relative in (
+            "icon.png", "logo.png", "web/favicon-32.png", "web/apple-touch-icon.png",
+            "web/brand-icon.png", "web/icon-192.png", "web/icon-512.png",
+        ):
+            asset = root / relative
+            self.assertTrue(asset.is_file(), relative)
+            self.assertGreater(asset.stat().st_size, 1000, relative)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 name: "Baiamonte Power Guard"
-version: "0.3.1"
+version: "0.3.2"
 slug: "baiamonte_power_manager"
 description: "Learning battery runtime forecast and protected load management"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -12,7 +12,7 @@ init: false
 homeassistant_api: true
 ingress: true
 ingress_port: 8096
-panel_icon: "mdi:shield-lightning"
+panel_icon: "mdi:shield-check"
 panel_title: "Power Guard"
 panel_admin: true
 watchdog: "http://[HOST]:[PORT:8096]/api/status"
