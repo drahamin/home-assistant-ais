@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Replace the unavailable `mdi:shield-lightning` glyph with the broadly supported `mdi:shield-check` icon for the Home Assistant sidebar and Power Guard status entity.
+- Verify the complete icon set, PWA manifest, Web UI assets, APIs, selector inventory, safety state, and telemetry health.
+
 ## 0.3.1
 
 - Replace comma-separated shedding and protection fields with searchable, touch-friendly Home Assistant switch selectors.

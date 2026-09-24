@@ -366,7 +366,7 @@ def desired_off(decision: Decision, tiers: dict[int, list[str]]) -> set[str]:
 def publish_status(ha: HomeAssistant, decision: Decision, learning: LearningState, managed_off: set[str], options: dict) -> None:
     common = {
         "friendly_name": "Baiamonte Power Guard",
-        "icon": "mdi:shield-lightning",
+        "icon": "mdi:shield-check",
         "reason": decision.reason,
         "control_mode": options.get("control_mode", "observe"),
         "telemetry_ok": decision.telemetry_ok,
