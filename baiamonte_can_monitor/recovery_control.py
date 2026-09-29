@@ -161,7 +161,7 @@ def assess_recovery(
         state = "recovery"
     else:
         recommended = min(bms_limit, 50.0 * len(packs))
-        summary = "Both batteries are balanced and inside the guarded charging envelope."
+        summary = "All online batteries are balanced and inside the guarded charging envelope."
         action = f"Normal charging is permitted up to {recommended:.0f} A, subject to inverter and wiring limits."
         state = "normal"
     return RecoveryAssessment(
