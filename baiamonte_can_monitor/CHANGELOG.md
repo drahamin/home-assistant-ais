@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- Correct the healthy recovery summary so it describes every online battery in a multi-pack bank.
+
 ## 0.8.0
 
 - Add rolling five-minute RS485 poll quality and per-battery consecutive-miss diagnostics without increasing serial traffic.
