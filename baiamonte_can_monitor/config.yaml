@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.7.0"
+version: "0.8.0"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -29,8 +29,8 @@ options:
   serial_device: "auto"
   serial_baudrate: 115200
   rs485_baudrate: 9600
-  battery_addresses: "1,2"
-  standby_battery_addresses: "3"
+  battery_addresses: "1,2,3"
+  standby_battery_addresses: ""
   stale_after_seconds: 30
   publish_interval_seconds: 10
   recovery_control_enabled: false
@@ -83,10 +83,10 @@ configuration:
     description: LPBA batteries normally use Modbus RTU at 9600 baud, 8N1.
   battery_addresses:
     name: Active Felicity battery addresses
-    description: Comma-separated read-only Modbus addresses currently installed. Baiamonte Battery 1 and Battery 2 use addresses 1,2.
+    description: Comma-separated read-only Modbus addresses currently installed. The Baiamonte three-pack bank uses addresses 1,2,3.
   standby_battery_addresses:
     name: Provisioned standby battery addresses
-    description: Addresses prepared for future batteries. Address 3 is checked briefly every 30 seconds and automatically joins full monitoring after its first valid reply.
+    description: Optional addresses prepared for future batteries and checked infrequently until their first valid reply.
   stale_after_seconds:
     name: Data timeout
     description: Mark the connection or a battery offline when no valid reply is received for this many seconds.

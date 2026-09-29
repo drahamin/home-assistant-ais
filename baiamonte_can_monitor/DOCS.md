@@ -1,5 +1,7 @@
 # Baiamonte Battery Monitor
 
+Version 0.8 monitors the installed three-pack Felicity bank as one 300 Ah / 15.36 kWh system while retaining individual pack telemetry. The Overview adds five-minute RS485 poll quality, reply freshness, SOC and voltage agreement, current sharing, temperature comparison, cell balance, and focused exceptions. Trends include pack power contribution and seven-day bank-agreement history in addition to charging, energy, and individual-cell charts.
+
 The app reads the two installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Battery 3 is pre-provisioned at Modbus address 3 and automatically joins the monitored bank after its first valid reply. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, every active cell voltage, temperatures, raw replies, and troubleshooting.
 
 The **Trends** page reads recorder history only when opened. It shows the 24-hour charge curve, all 16 cell voltages together for each battery, and daily energy charged/discharged for the last 14 days. Queries are fixed to battery entities, downsampled, and cached so the page does not add continuous recorder or browser load.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- Add rolling five-minute RS485 poll quality and per-battery consecutive-miss diagnostics without increasing serial traffic.
+- Add pack current-share, voltage-difference, temperature-difference, monitoring-confidence, and focused warning entities.
+- Add a touch-friendly bank-confidence view with communication freshness, current sharing, balance, and actionable exceptions.
+- Add 24-hour pack power-contribution and seven-day bank-health charts while retaining on-demand cached history loading.
+- Make the installed three-battery, 300 Ah / 15.36 kWh configuration the default and remove obsolete standby wording.
+
 ## 0.7.0
 
 - Provision Battery 3 at Modbus address 3 as an efficient standby discovery slot.

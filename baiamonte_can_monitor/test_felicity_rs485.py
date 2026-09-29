@@ -78,6 +78,23 @@ class FelicityProtocolTests(unittest.TestCase):
         self.assertEqual(list(namespaced), ["battery_1_battery_soc"])
 
     @patch("felicity_rs485.serial.Serial")
+    def test_communication_diagnostics_are_rolling_and_per_battery(self, serial_class):
+        serial_class.return_value = Mock()
+        receiver = FelicityRs485Receiver("/dev/test", 9600, [1, 2])
+        receiver._record_poll(1, True, False, now=100)
+        receiver._record_poll(1, False, False, now=101)
+        receiver._record_poll(2, True, False, now=102)
+        receiver._record_poll(3, False, True, now=103)
+        with patch("felicity_rs485.time.monotonic", return_value=104):
+            diagnostics = receiver.communication_diagnostics(window_seconds=10)
+
+        self.assertEqual(diagnostics["attempts"], 3)
+        self.assertEqual(diagnostics["quality_percent"], 66.7)
+        self.assertEqual(diagnostics["packs"]["1"]["quality_percent"], 50.0)
+        self.assertEqual(diagnostics["packs"]["1"]["consecutive_misses"], 1)
+        self.assertEqual(diagnostics["packs"]["2"]["quality_percent"], 100.0)
+
+    @patch("felicity_rs485.serial.Serial")
     def test_standby_battery_is_discovered_then_promoted(self, serial_class):
         data = bytearray(20)
         data[8:10] = (5234).to_bytes(2, "big")

@@ -13,6 +13,7 @@ STANDBY_MEASUREMENTS = {
     "battery_voltage": ("V", "voltage"),
     "battery_current": ("A", "current"),
     "battery_power": ("W", "power"),
+    "net_input_power": ("W", "power"),
     "pack_temperature": ("°C", "temperature"),
     "remaining_capacity": ("Ah", None),
     "remaining_energy": ("kWh", "energy"),
@@ -27,6 +28,7 @@ STANDBY_MEASUREMENTS = {
     "discharge_current_limit": ("A", "current"),
     "charge_voltage_limit": ("V", "voltage"),
     "discharge_voltage_limit": ("V", "voltage"),
+    "current_share": ("%", None),
 }
 
 
@@ -100,11 +102,14 @@ def derive_bank_readings(
                     PACK_NOMINAL_ENERGY_KWH - remaining_kwh, charge_power
                 )
         if online and all(item is not None for item in (soc_reading, voltage_reading, current_reading, power_reading)):
+            temperature_reading = readings.get(prefix + "pack_temperature")
             packs.append({
+                "address": address,
                 "soc": float(soc_reading.value),
                 "voltage": float(voltage_reading.value),
                 "current": float(current_reading.value),
                 "power": float(power_reading.value),
+                "temperature": float(temperature_reading.value) if temperature_reading is not None else None,
             })
 
     configured = len(addresses)
@@ -131,6 +136,9 @@ def derive_bank_readings(
         if f"battery_{address}_cell_voltage_difference" in readings
     ]
     maximum_cell_spread = max(cell_spreads, default=0.0)
+    voltage_difference_mv = round((max(pack["voltage"] for pack in packs) - min(pack["voltage"] for pack in packs)) * 1000)
+    temperatures = [pack["temperature"] for pack in packs if pack["temperature"] is not None]
+    temperature_difference = round(max(temperatures) - min(temperatures), 1) if temperatures else 0.0
     remaining_energy = sum(PACK_NOMINAL_ENERGY_KWH * pack["soc"] / 100 for pack in packs)
     nominal_energy = configured * PACK_NOMINAL_ENERGY_KWH
     status = "charging" if current < -0.05 else "discharging" if current > 0.05 else "idle"
@@ -143,6 +151,39 @@ def derive_bank_readings(
     health = "healthy"
     if online != configured or soc_difference > 10 or maximum_cell_spread > 50:
         health = "attention"
+
+    current_magnitudes = [abs(pack["current"]) for pack in packs]
+    total_current_magnitude = sum(current_magnitudes)
+    current_shares: list[float] = []
+    if total_current_magnitude >= 3.0 and len(packs) > 1:
+        current_shares = [round(value / total_current_magnitude * 100, 1) for value in current_magnitudes]
+        current_share_difference = round(max(current_shares) - min(current_shares), 1)
+        opposing = [int(pack["address"]) for pack in packs if pack["current"] * current < -0.25]
+        current_sharing = "attention" if opposing else "balanced" if current_share_difference <= 15 else "monitor" if current_share_difference <= 25 else "attention"
+        current_sharing_summary = (
+            f"Attention: Battery {', '.join(map(str, opposing))} is flowing opposite to the bank."
+            if opposing else
+            f"{current_sharing.title()}: packs are carrying {min(current_shares):.0f}% to "
+            f"{max(current_shares):.0f}% of present battery current."
+        )
+    else:
+        current_share_difference = 0.0
+        current_sharing = "inactive"
+        current_sharing_summary = "Current is too low for a meaningful sharing comparison."
+    for pack, share in zip(packs, current_shares):
+        derived[f"battery_{int(pack['address'])}_current_share"] = _measurement(share, "%")
+    for pack in packs:
+        derived[f"battery_{int(pack['address'])}_net_input_power"] = _measurement(
+            round(-pack["power"], 1), "W", "power"
+        )
+
+    communication_warning = online != configured
+    balance_warning = soc_difference > 10 or maximum_cell_spread > 50
+    current_share_warning = current_sharing == "attention"
+    temperature_warning = temperature_difference > 5
+    attention_count = sum((communication_warning, balance_warning, current_share_warning, temperature_warning))
+    watch_condition = attention_count > 0 or current_sharing == "monitor" or soc_difference > 5 or maximum_cell_spread > 30
+    monitoring_confidence = "limited" if communication_warning else "watch" if watch_condition else "good"
 
     lowest_soc = min(pack["soc"] for pack in packs)
     if online != configured:
@@ -167,6 +208,7 @@ def derive_bank_readings(
         "bank_voltage": _measurement(voltage, "V", "voltage"),
         "bank_current": _measurement(current, "A", "current"),
         "bank_power": _measurement(power, "W", "power"),
+        "bank_net_input_power": _measurement(round(-power, 1), "W", "power"),
         "bank_charging_power": _measurement(round(max(-power, 0.0), 1), "W", "power"),
         "bank_discharging_power": _measurement(round(max(power, 0.0), 1), "W", "power"),
         "bank_time_to_empty_current_load": _duration_hours(remaining_energy, max(power, 0.0)),
@@ -178,6 +220,17 @@ def derive_bank_readings(
         "bank_flow_direction": Reading(status),
         "bank_soc": Reading(soc, "%", "battery", "measurement"),
         "bank_soc_difference": _measurement(soc_difference, "%"),
+        "bank_voltage_difference": _measurement(voltage_difference_mv, "mV", "voltage"),
+        "bank_temperature_difference": _measurement(temperature_difference, "°C", "temperature"),
+        "bank_current_share_difference": _measurement(current_share_difference, "%"),
+        "bank_current_sharing": Reading(current_sharing),
+        "bank_current_sharing_summary": Reading(current_sharing_summary),
+        "bank_communication_warning": Reading("on" if communication_warning else "off"),
+        "bank_balance_warning": Reading("on" if balance_warning else "off"),
+        "bank_current_share_warning": Reading("on" if current_share_warning else "off"),
+        "bank_temperature_warning": Reading("on" if temperature_warning else "off"),
+        "bank_attention_count": Reading(attention_count),
+        "bank_monitoring_confidence": Reading(monitoring_confidence),
         "bank_remaining_capacity": _measurement(round(sum(pack["soc"] for pack in packs), 1), "Ah"),
         "bank_remaining_energy": _measurement(
             round(remaining_energy, 3), "kWh", "energy"

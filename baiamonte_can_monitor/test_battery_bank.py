@@ -18,6 +18,7 @@ class BatteryBankTests(unittest.TestCase):
                 prefix + "battery_power": Reading(round(voltage * current, 1), "W"),
                 prefix + "battery_soc": Reading(soc, "%"),
                 prefix + "cell_voltage_difference": Reading(spread, "mV"),
+                prefix + "pack_temperature": Reading(20 + address, "°C"),
             })
 
     def test_equal_parallel_pack_totals(self):
@@ -46,6 +47,14 @@ class BatteryBankTests(unittest.TestCase):
         self.assertIn("CHARGING", result["bank_charge_verdict"].value)
         self.assertIn("entering batteries", result["bank_charge_verdict"].value)
         self.assertEqual(result["battery_soc"].value, 18.0)
+        self.assertEqual(result["bank_voltage_difference"].value, 20)
+        self.assertEqual(result["bank_temperature_difference"].value, 1.0)
+        self.assertEqual(result["battery_1_current_share"].value, 49.0)
+        self.assertEqual(result["battery_2_current_share"].value, 51.0)
+        self.assertEqual(result["bank_current_sharing"].value, "balanced")
+        self.assertEqual(result["bank_net_input_power"].value, 264.7)
+        self.assertEqual(result["bank_monitoring_confidence"].value, "watch")
+        self.assertEqual(result["bank_balance_warning"].value, "on")
 
     def test_offline_pack_is_reported_without_inventing_its_data(self):
         result = derive_bank_readings(self.readings, [1, 2], {1})
@@ -99,6 +108,33 @@ class BatteryBankTests(unittest.TestCase):
         self.assertEqual(result["bank_flow_direction"].value, "discharging")
         self.assertIn("Charge complete", result["bank_operating_recommendation"].value)
         self.assertIn("Do not force more current", result["bank_operating_recommendation"].value)
+
+    def test_current_share_warning_detects_one_pack_not_carrying_load(self):
+        self.readings["battery_1_battery_current"] = Reading(-9.0, "A")
+        self.readings["battery_1_battery_power"] = Reading(-467.1, "W")
+        self.readings["battery_2_battery_current"] = Reading(-1.0, "A")
+        self.readings["battery_2_battery_power"] = Reading(-51.9, "W")
+        self.readings["battery_1_battery_soc"] = Reading(50, "%")
+        self.readings["battery_2_battery_soc"] = Reading(50, "%")
+        self.readings["battery_1_cell_voltage_difference"] = Reading(3, "mV")
+        self.readings["battery_2_cell_voltage_difference"] = Reading(3, "mV")
+
+        result = derive_bank_readings(self.readings, [1, 2], {1, 2})
+
+        self.assertEqual(result["battery_1_current_share"].value, 90.0)
+        self.assertEqual(result["battery_2_current_share"].value, 10.0)
+        self.assertEqual(result["bank_current_sharing"].value, "attention")
+        self.assertEqual(result["bank_current_share_warning"].value, "on")
+        self.assertEqual(result["bank_monitoring_confidence"].value, "watch")
+
+    def test_current_share_warning_detects_opposing_pack_flow(self):
+        self.readings["battery_1_battery_current"] = Reading(-8.0, "A")
+        self.readings["battery_1_battery_power"] = Reading(-415.2, "W")
+        self.readings["battery_2_battery_current"] = Reading(2.0, "A")
+        self.readings["battery_2_battery_power"] = Reading(103.8, "W")
+        result = derive_bank_readings(self.readings, [1, 2], {1, 2})
+        self.assertEqual(result["bank_current_sharing"].value, "attention")
+        self.assertIn("opposite", result["bank_current_sharing_summary"].value)
 
 
 if __name__ == "__main__":

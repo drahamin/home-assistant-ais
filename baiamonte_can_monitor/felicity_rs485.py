@@ -185,10 +185,46 @@ class FelicityRs485Receiver:
         self._next_discovery_at = 0.0
         self._discovery_index = 0
         self._poll_interval = 0.5
+        self._poll_results: deque[tuple[float, int, bool]] = deque(maxlen=1200)
+        self._consecutive_misses = {address: 0 for address in self.addresses}
         self.last_error: str | None = None
 
     def _namespaced(self, address: int, readings: dict[str, Reading]) -> dict[str, Reading]:
         return {f"battery_{address}_{key}": value for key, value in readings.items()}
+
+    def _record_poll(self, address: int, success: bool, is_discovery: bool, now: float | None = None) -> None:
+        if is_discovery:
+            return
+        timestamp = time.monotonic() if now is None else now
+        self._poll_results.append((timestamp, address, success))
+        if success:
+            self._consecutive_misses[address] = 0
+        else:
+            self._consecutive_misses[address] = self._consecutive_misses.get(address, 0) + 1
+
+    def communication_diagnostics(self, window_seconds: float = 300.0) -> dict:
+        """Return bounded rolling poll quality without adding serial traffic."""
+        cutoff = time.monotonic() - window_seconds
+        recent = [result for result in self._poll_results if result[0] >= cutoff]
+        packs = {}
+        for address in self.addresses:
+            attempts = sum(1 for _, polled, _ in recent if polled == address)
+            replies = sum(1 for _, polled, success in recent if polled == address and success)
+            packs[str(address)] = {
+                "attempts": attempts,
+                "replies": replies,
+                "quality_percent": round(replies / attempts * 100, 1) if attempts else None,
+                "consecutive_misses": self._consecutive_misses.get(address, 0),
+            }
+        attempts = len(recent)
+        replies = sum(1 for _, _, success in recent if success)
+        return {
+            "window_seconds": int(window_seconds),
+            "attempts": attempts,
+            "replies": replies,
+            "quality_percent": round(replies / attempts * 100, 1) if attempts else None,
+            "packs": packs,
+        }
 
     def recv(self, timeout: float = 1.0) -> Rs485Message | None:
         delay = self._next_poll_at - time.monotonic()
@@ -230,6 +266,7 @@ class FelicityRs485Receiver:
                     break
 
         if not parsed:
+            self._record_poll(address, False, is_discovery)
             if is_discovery:
                 # A provisioned slot that has not been installed yet is normal,
                 # not a communication fault on the live bank.
@@ -250,6 +287,7 @@ class FelicityRs485Receiver:
         else:
             readings = decode_cell_information(data)
         if not readings:
+            self._record_poll(address, False, is_discovery)
             if is_discovery:
                 return None
             self.last_error = f"battery {address} returned implausible {label} values"
@@ -262,6 +300,8 @@ class FelicityRs485Receiver:
                 for poll_register, poll_count, poll_label in self.COMMANDS
             )
             self._startup_polls.append((address, 0xF80B, 1, "BMS version"))
+            self._consecutive_misses.setdefault(address, 0)
+        self._record_poll(address, True, is_discovery)
         self.last_error = None
         return Rs485Message(
             identifier=f"B{address}:0x{register:04X}",

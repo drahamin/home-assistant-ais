@@ -65,7 +65,7 @@ async function loadChart(name,renderer=lineChart){
 }
 async function refreshTrends(){
   trendsLoadedAt=Date.now();$('chart-refresh').disabled=true;
-  await Promise.all([loadChart('charging'),loadChart('battery1_cells'),loadChart('battery2_cells'),loadChart('battery3_cells'),loadChart('multi_day',barChart)]);
+  await Promise.all([loadChart('charging'),loadChart('pack_power'),loadChart('health'),loadChart('battery1_cells'),loadChart('battery2_cells'),loadChart('battery3_cells'),loadChart('multi_day',barChart)]);
   $('chart-refresh').disabled=false;
 }
 
@@ -155,6 +155,55 @@ function checksFor(health,data={}){
   if(health==='stale')return ['Check whether the inverter or battery master restarted.','Inspect the CAN cable and both monitoring-tap terminals.','Review the most recent frame ID and timestamp below.'];
   return ['USB adapter is connected.','Valid CAN frames are arriving.','Decoded battery values are updating in Home Assistant.'];
 }
+function packCommunication(data,address){
+  const stats=data.communication?.packs?.[String(address)]||{};
+  const quality=Number(stats.quality_percent);
+  return {
+    quality:Number.isFinite(quality)?quality:null,
+    misses:Number(stats.consecutive_misses||0),
+    lastSeen:data.battery_last_seen?.[String(address)]||null
+  };
+}
+function renderConfidence(readings,data){
+  const addresses=data.active_battery_addresses?.length?data.active_battery_addresses:(data.battery_addresses||[1,2,3]);
+  const online=addresses.filter(address=>readings[`battery_${address}_online`]?.value==='on');
+  const commQuality=Number(data.communication?.quality_percent);
+  const quality=Number.isFinite(commQuality)?commQuality:null;
+  const seenAges=online.map(address=>packCommunication(data,address).lastSeen).filter(Boolean).map(iso=>Math.max(0,(Date.now()-new Date(iso).getTime())/1000));
+  const oldest=seenAges.length?Math.max(...seenAges):null;
+  const confidence=readings.bank_monitoring_confidence?.value||'limited';
+  const qualityConcern=quality!==null&&quality<95;
+  const effectiveConfidence=online.length!==addresses.length?'limited':qualityConcern||confidence==='watch'?'watch':'good';
+  const confidenceLabel={good:'GOOD',watch:'WATCH',limited:'LIMITED'}[effectiveConfidence]||'CHECKING';
+  $('confidence-badge').textContent=confidenceLabel;
+  $('confidence-badge').className=`status-badge ${effectiveConfidence==='good'?'healthy':effectiveConfidence==='limited'?'error':'warning'}`;
+  const cards=[
+    ['Communication',`${online.length}/${addresses.length} fresh`,quality===null?'Learning five-minute poll quality':`${quality.toFixed(1)}% successful polls · oldest reply ${oldest===null?'unknown':oldest<2?'now':`${Math.round(oldest)}s`}`,'communication'],
+    ['Pack agreement',value(readings,'bank_soc_difference'),`${value(readings,'bank_voltage_difference')} voltage difference`,'agreement'],
+    ['Cell balance',value(readings,'bank_maximum_cell_spread'),`Largest spread across ${online.length} online packs`,'cells'],
+    ['Current sharing',(readings.bank_current_sharing?.value||'learning').replaceAll('_',' '),value(readings,'bank_current_sharing_summary','Waiting for meaningful current'),'sharing']
+  ];
+  replaceHtml('confidence-grid',cards.map(([label,headline,detail,key])=>`<div class="confidence-item ${key}"><small>${label.toUpperCase()}</small><b>${headline}</b><span>${detail}</span></div>`).join(''));
+
+  const alerts=[];
+  if(online.length!==addresses.length)alerts.push(['error','Battery communication',`${addresses.length-online.length} configured pack${addresses.length-online.length===1?' is':'s are'} offline. Do not rely on aggregate bank estimates.`]);
+  if(qualityConcern)alerts.push([quality<80?'error':'warning','RS485 poll quality',`${quality.toFixed(1)}% of polls succeeded in the last five minutes. Inspect LINK and RS485 connections if this persists.`]);
+  const socDifference=numeric(readings,'bank_soc_difference'),cellSpread=numeric(readings,'bank_maximum_cell_spread');
+  if(socDifference>10||cellSpread>50)alerts.push(['warning','Battery balance',`SOC differs by ${socDifference?.toFixed(1)||'—'}% and maximum cell spread is ${cellSpread?.toFixed(0)||'—'} mV. Continue gentle charging and watch the trend.`]);
+  else if(socDifference>5||cellSpread>30)alerts.push(['watch','Balance trend',`The bank is usable, but agreement is drifting: ${socDifference?.toFixed(1)||'—'}% SOC difference and ${cellSpread?.toFixed(0)||'—'} mV maximum cell spread.`]);
+  const sharing=readings.bank_current_sharing?.value;
+  if(sharing==='attention')alerts.push(['warning','Uneven current sharing',value(readings,'bank_current_sharing_summary')]);
+  else if(sharing==='monitor')alerts.push(['watch','Current sharing trend',value(readings,'bank_current_sharing_summary')]);
+  const tempDifference=numeric(readings,'bank_temperature_difference');
+  if(tempDifference>5)alerts.push(['warning','Temperature difference',`Pack temperatures differ by ${tempDifference.toFixed(1)} °C. Check airflow, terminals, and the warmest enclosure.`]);
+  const blocked=addresses.filter(address=>readings[`battery_${address}_charge_allowed`]?.value==='off');
+  const bankSoc=numeric(readings,'bank_soc');
+  if(blocked.length&&bankSoc<98)alerts.push(['error','BMS charging restriction',`Charging is blocked by Battery ${blocked.join(', ')} before the bank is full. Review its cells, temperature, and operating limits.`]);
+  else if(blocked.length)alerts.push(['healthy','Normal full-charge taper',`Battery ${blocked.join(', ')} is limiting charge at full SOC. This is expected BMS protection; do not force more current.`]);
+  const actionable=alerts.filter(([level])=>level!=='healthy').length;
+  $('attention-count').textContent=`${actionable} item${actionable===1?'':'s'}`;
+  replaceHtml('alert-list',alerts.length?alerts.map(([level,title,detail])=>`<div class="alert-item ${level}"><i aria-hidden="true"></i><div><b>${title}</b><span>${detail}</span></div></div>`).join(''):'<div class="alert-item healthy"><i aria-hidden="true"></i><div><b>No active battery warnings</b><span>All three packs are communicating and operating within the monitored agreement limits.</span></div></div>');
+}
 function renderBattery(readings){
   const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2,3];
   const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Time until empty','runtime_empty'],['Time until full','runtime_full'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
@@ -167,10 +216,11 @@ function renderBattery(readings){
     const direction=flowState(readings,prefix);
     const directionLabel=awaiting?'AWAITING CONNECTION':direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
     const statusLabel=awaiting?'READY FOR INSTALL':online?(balance==='attention'?'BALANCE ATTENTION':'ONLINE'):'OFFLINE';
-    const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Flow',null],['Current','battery_current'],['Power','battery_power'],['Time to empty','runtime_empty'],['Time to full','runtime_full'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['BMS version','bms_version']];
+    const communication=packCommunication(latest,address);
+    const metrics=[['State of charge','battery_soc'],['Voltage','battery_voltage'],['Flow',null],['Current','battery_current'],['Current share','current_share'],['Power','battery_power'],['Time to empty','runtime_empty'],['Time to full','runtime_full'],['Pack temperature','pack_temperature'],['Available energy','remaining_energy'],['Cell spread','cell_voltage_difference'],['5 min link quality','link_quality'],['Last reply','last_reply'],['BMS version','bms_version']];
     const cells=[];
     for(let i=1;i<=16;i++){const cell=readings[`${prefix}cell_${i}_voltage`];if(cell&&cell.value!=='unavailable')cells.push({number:i,...cell});}
-    return `<article class="panel battery-pack ${awaiting?'standby-pack':''}"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>${awaiting?'Provisioned standby slot · auto-detect enabled':'51.2 V · 100 Ah · 5.12 kWh'}</span></div><span class="pack-status ${statusClass}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${awaiting?'Waiting for battery':key===null?directionLabel:key==='runtime_empty'?liveRuntime(readings,prefix,'empty'):key==='runtime_full'?liveRuntime(readings,prefix,'full'):key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${awaiting?'Auto-loads after connection':value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):`<div class="empty">${awaiting?'Battery 3 is provisioned and will activate automatically when Modbus address 3 replies.':'Waiting for register 0x132A.'}</div>`}</div></article>`;
+    return `<article class="panel battery-pack ${awaiting?'standby-pack':''}"><div class="pack-title"><div class="pack-title-copy"><small class="pack-kicker">FELICITY LPBA48100-OL · ADDRESS ${address}</small><h3>Battery ${address}</h3><span>${awaiting?'Provisioned standby slot · auto-detect enabled':'51.2 V · 100 Ah · 5.12 kWh'}</span></div><span class="pack-status ${statusClass}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-metrics">${metrics.map(([label,key])=>`<div class="pack-metric"><small>${label.toUpperCase()}</small><b>${awaiting?'Waiting for battery':key===null?directionLabel:key==='runtime_empty'?liveRuntime(readings,prefix,'empty'):key==='runtime_full'?liveRuntime(readings,prefix,'full'):key==='link_quality'?communication.quality===null?'Learning':`${communication.quality.toFixed(1)}%`:key==='last_reply'?age(communication.lastSeen):key==='battery_current'||key==='battery_power'?flowValue(readings,prefix,key):value(readings,prefix+key)}</b></div>`).join('')}</div><div class="panel-head cells-panel"><div><p>CELL BALANCE</p><h3>Battery ${address} cell voltages</h3></div><span>${awaiting?'Auto-loads after connection':value(readings,prefix+'cell_voltage_difference','No data')}</span></div><div class="cell-grid">${cells.length?cells.map(cell=>`<div class="cell ${balance==='attention'?'attention':''}"><small>CELL ${cell.number}</small><b>${cell.value} ${cell.unit||'V'}</b></div>`).join(''):`<div class="empty">${awaiting?'This standby slot will activate automatically after its first valid reply.':'Waiting for register 0x132A.'}</div>`}</div></article>`;
   }).join('');
   replaceHtml('battery-pack-sections',sections);
 
@@ -179,7 +229,8 @@ function renderBattery(readings){
     const awaiting=readings[`${prefix}provisioning_status`]?.value==='awaiting_connection';
     const direction=flowState(readings,prefix), directionLabel=awaiting?'AWAITING CONNECTION':direction==='charging'?'CHARGING ↓':direction==='discharging'?'DISCHARGING ↑':direction==='idle'?'IDLE':'WAITING';
     const statusLabel=awaiting?'READY FOR INSTALL':online?(balance==='attention'?'ATTENTION':'ONLINE'):'OFFLINE';
-    return `<article class="pack-overview ${awaiting?'standby-pack':''}"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${awaiting?'Prepared':value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${awaiting?'planned':online?(balance==='attention'?'attention':'online'):''}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${awaiting?'—':value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${awaiting?'—':flowValue(readings,prefix,'battery_current')}</b></div><div><small>CELLS</small><b>${awaiting?'—':value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${awaiting?'—':value(readings,prefix+'pack_temperature')}</b></div></div></article>`;
+    const communication=packCommunication(latest,address);
+    return `<article class="pack-overview ${awaiting?'standby-pack':''}"><div class="pack-overview-head"><div><small class="pack-kicker">BATTERY ${address} · ADDRESS ${address}</small><h3>${awaiting?'Prepared':value(readings,prefix+'battery_soc','Waiting')}</h3></div><span class="pack-status ${awaiting?'planned':online?(balance==='attention'?'attention':'online'):''}">${statusLabel}</span></div><div class="pack-flow ${awaiting?'waiting':direction}">${directionLabel}</div><div class="pack-overview-values"><div><small>VOLTAGE</small><b>${awaiting?'—':value(readings,prefix+'battery_voltage')}</b></div><div><small>CURRENT</small><b>${awaiting?'—':flowValue(readings,prefix,'battery_current')}</b></div><div><small>SHARE</small><b>${awaiting?'—':value(readings,prefix+'current_share')}</b></div><div><small>CELLS</small><b>${awaiting?'—':value(readings,prefix+'cell_voltage_difference')}</b></div><div><small>TEMP</small><b>${awaiting?'—':value(readings,prefix+'pack_temperature')}</b></div><div><small>LINK</small><b>${awaiting?'—':communication.quality===null?'Learning':`${communication.quality.toFixed(0)}%`}</b></div></div></article>`;
   }).join(''));
 }
 function renderRecovery(readings,data){
@@ -267,6 +318,9 @@ function render(data){
   $('bus-summary').textContent=data.bus_active?'Live':data.frames_received?'Stopped':'No frames';
   $('bitrate-summary').textContent=data.transport==='RS485'?`${Number(data.bitrate||0)} baud`:`${Number(data.bitrate||0)/1000} kbit/s`;
   $('frames-summary').textContent=Number(data.frames_received||0).toLocaleString();
+  const installedCount=numeric(readings,'bank_configured_batteries')??3;
+  const nominalEnergy=numeric(readings,'bank_nominal_energy')??(installedCount*5.12);
+  $('bank-nameplate').textContent=`${installedCount} × FELICITY LPBA48100 · ${nominalEnergy.toFixed(2)} KWH`;
   $('soc').textContent=value(readings,'bank_soc',value(readings,'battery_soc'));
   const onlineCount=numeric(readings,'bank_online_batteries')??0, activeCount=numeric(readings,'bank_configured_batteries')??2, provisionedCount=numeric(readings,'bank_provisioned_batteries')??activeCount;
   const standbyCount=Math.max(0,provisionedCount-activeCount);
@@ -300,7 +354,7 @@ function render(data){
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
   replaceHtml('check-list',checksFor(displayHealth,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
-  renderBattery(readings);renderRecovery(readings,data);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
+  renderConfidence(readings,data);renderBattery(readings);renderRecovery(readings,data);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }
 async function refresh(){
   if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;}
