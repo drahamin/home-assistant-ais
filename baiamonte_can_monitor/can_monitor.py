@@ -55,6 +55,7 @@ STATUS: dict[str, object] = {
     "battery_addresses": [],
     "active_battery_addresses": [],
     "battery_last_seen": {},
+    "communication": {},
 }
 RECENT_FRAMES: deque[dict[str, object]] = deque(maxlen=24)
 FRAME_TIMES: deque[float] = deque(maxlen=4000)
@@ -164,7 +165,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 payload = json.dumps(result, separators=(",", ":")).encode()
                 status = 200
             except KeyError:
-                payload = json.dumps({"error": "Unknown chart. Use charging, battery1_cells, battery2_cells, or multi_day."}).encode()
+                payload = json.dumps({"error": "Unknown chart. Use charging, pack_power, health, battery1_cells, battery2_cells, battery3_cells, or multi_day."}).encode()
                 status = 400
             except HistoryError as exc:
                 payload = json.dumps({"error": str(exc)}).encode()
@@ -303,6 +304,7 @@ def binary_reading(key: str) -> bool:
         key.endswith("_active")
         or key.endswith("_enabled")
         or key.endswith("_online")
+        or key.endswith("_warning")
         or key.startswith("force_charge")
     )
 
@@ -676,6 +678,9 @@ def main() -> int:
 
         if message is None and getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
             update_status(last_error=getattr(receiver, "last_error", None))
+
+        if getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
+            update_status(communication=receiver.communication_diagnostics())
 
         connected = bool(last_frame_at and now - last_frame_at <= stale_after)
         if getattr(receiver, "monitor_transport", "can") == "felicity_rs485":

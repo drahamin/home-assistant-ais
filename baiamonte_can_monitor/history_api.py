@@ -40,6 +40,24 @@ CHARTS = {
         "bucket": 600,
         "entities": [(PREFIX + f"battery_3_cell_{number}_voltage", f"Cell {number}", "V") for number in range(1, 17)],
     },
+    "pack_power": {
+        "hours": 24,
+        "bucket": 300,
+        "entities": [
+            (PREFIX + "battery_1_net_input_power", "Battery 1", "W"),
+            (PREFIX + "battery_2_net_input_power", "Battery 2", "W"),
+            (PREFIX + "battery_3_net_input_power", "Battery 3", "W"),
+        ],
+    },
+    "health": {
+        "hours": 24 * 7,
+        "bucket": 1800,
+        "entities": [
+            (PREFIX + "bank_soc_difference", "SOC difference", "%"),
+            (PREFIX + "bank_maximum_cell_spread", "Maximum cell spread", "mV"),
+            (PREFIX + "bank_voltage_difference", "Pack voltage difference", "mV"),
+        ],
+    },
     "multi_day": {
         "hours": 24 * 14,
         "bucket": 3600,

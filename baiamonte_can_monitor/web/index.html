@@ -48,7 +48,7 @@
 
       <section class="page active" id="overview">
         <div class="hero">
-          <div class="hero-copy"><span>2 × FELICITY LPBA48100 · 10.24 KWH</span><h2>The complete battery bank, made visible.</h2><p>Read-only monitoring of both packs, combined storage, live cell balance, and guided diagnostics.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the battery adapter…</b></div></div>
+          <div class="hero-copy"><span id="bank-nameplate">3 × FELICITY LPBA48100 · 15.36 KWH</span><h2>The complete battery bank, made visible.</h2><p>Read-only monitoring of every pack, current sharing, cell balance, operating limits, and communication confidence.</p><div class="hero-state"><i id="hero-light"></i><b id="hero-status">Checking the battery adapter…</b></div></div>
           <div class="hero-emblem"><img src="brand-icon.png" alt="Baiamonte crest"><span><svg><use href="#i-battery"/></svg></span></div>
         </div>
 
@@ -64,9 +64,9 @@
         <div class="overview-grid">
           <article class="panel health-panel"><div class="panel-head"><div><p>LIVE DIAGNOSIS</p><h3>Connection health</h3></div><span class="status-badge" id="health-badge">Starting</span></div><div class="health-orbit"><span id="health-orbit"><svg><use href="#i-pulse"/></svg></span><div><h2 id="health-title">Checking hardware</h2><p id="diagnosis">The monitor is starting.</p></div></div><button class="text-button" data-go="diagnostics">Open troubleshooting →</button></article>
           <div class="status-column">
-            <article class="metric-card gold"><span><svg><use href="#i-battery"/></svg></span><div><small>BANK STATE OF CHARGE</small><h3 id="soc">—</h3><p id="battery-state">Waiting for both batteries</p></div></article>
+            <article class="metric-card gold"><span><svg><use href="#i-battery"/></svg></span><div><small>BANK STATE OF CHARGE</small><h3 id="soc">—</h3><p id="battery-state">Waiting for all batteries</p></div></article>
             <article class="metric-card flow-card idle" id="flow-card"><span><svg><use href="#i-pulse"/></svg></span><div><small>BATTERY POWER FLOW</small><h3><i id="flow-arrow">→</i> <span id="power">—</span></h3><p><b id="flow-state">WAITING</b> · <span id="voltage">—</span> · <span id="current">—</span></p></div></article>
-            <article class="metric-card green"><span><svg><use href="#i-shield"/></svg></span><div><small>BANK HEALTH</small><h3 id="safety">Unknown</h3><p id="safety-detail">Waiting for both batteries</p></div></article>
+            <article class="metric-card green"><span><svg><use href="#i-shield"/></svg></span><div><small>BANK HEALTH</small><h3 id="safety">Unknown</h3><p id="safety-detail">Waiting for all batteries</p></div></article>
             <article class="device-lights-card" aria-label="CANable indicator light software mirror">
               <div class="device-lights-copy"><small id="device-model">USB COMMUNICATION ADAPTER</small><h3>Device lights</h3><p id="device-lights-status">Checking adapter indicators</p></div>
               <div class="canable-face" id="canable-face">
@@ -84,6 +84,10 @@
           <article class="runtime-card discharge-runtime"><div><small>TIME UNTIL EMPTY</small><h3 id="time-to-empty">Calculating…</h3><p id="time-to-empty-detail">Waiting for a current discharge load.</p></div><span>↓</span></article>
           <article class="runtime-card charge-runtime"><div><small>TIME UNTIL FULL</small><h3 id="time-to-full">Calculating…</h3><p id="time-to-full-detail">Waiting for current charging input.</p></div><span>↑</span></article>
         </div>
+        <div class="monitoring-grid" aria-label="Battery monitoring confidence">
+          <article class="panel confidence-panel"><div class="panel-head"><div><p>BANK CONFIDENCE</p><h3>Are all three packs behaving normally?</h3></div><span class="status-badge" id="confidence-badge">Checking</span></div><div class="confidence-grid" id="confidence-grid"><div class="empty">Collecting pack comparisons.</div></div></article>
+          <article class="panel alert-panel"><div class="panel-head"><div><p>ACTIVE EXCEPTIONS</p><h3>What needs attention</h3></div><span id="attention-count">0 alerts</span></div><div class="alert-list" id="alert-list"><div class="empty">Assessing the battery bank.</div></div></article>
+        </div>
         <div class="pack-overview-grid" id="pack-overview-grid"></div>
       </section>
 
@@ -98,7 +102,7 @@
       </section>
 
       <section class="page" id="battery">
-        <div class="section-head"><div><p>FELICITY BMS BANK · READ ONLY</p><h2>Battery data</h2><span>Two active batteries are monitored now; Battery 3 is provisioned and joins the bank automatically when address 3 replies.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
+        <div class="section-head"><div><p>FELICITY BMS BANK · READ ONLY</p><h2>Battery data</h2><span>All three installed batteries are compared continuously for communication, current sharing, temperature, SOC, voltage, and cell balance.</span></div><span class="badge" id="battery-badge">Waiting</span></div>
         <div class="bank-summary" id="bank-summary"></div>
         <div id="battery-pack-sections"></div>
       </section>
@@ -109,10 +113,14 @@
           <div class="panel-head"><div><p>LAST 24 HOURS</p><h3>Charging curve</h3><span>Bank and pack state of charge with actual power entering the batteries.</span></div><span class="chart-status" id="charging-status">Open to load</span></div>
           <div class="chart-host" id="charging-chart"><div class="chart-empty">History will appear here.</div></div>
         </article>
+        <div class="chart-grid operational-chart-grid">
+          <article class="panel chart-panel"><div class="panel-head"><div><p>LAST 24 HOURS</p><h3>Pack power contribution</h3><span>Positive values are charging input; negative values are power supplied to loads.</span></div><span class="chart-status" id="pack_power-status">Waiting</span></div><div class="chart-host" id="pack_power-chart"><div class="chart-empty">History will appear here.</div></div></article>
+          <article class="panel chart-panel"><div class="panel-head"><div><p>LAST 7 DAYS</p><h3>Bank agreement</h3><span>SOC, pack-voltage, and maximum cell-spread differences reveal developing imbalance.</span></div><span class="chart-status" id="health-status">Waiting</span></div><div class="chart-host" id="health-chart"><div class="chart-empty">History will appear here.</div></div></article>
+        </div>
         <div class="chart-grid">
           <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 1 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Closely grouped lines indicate a balanced pack.</span></div><span class="chart-status" id="battery1_cells-status">Waiting</span></div><div class="chart-host" id="battery1_cells-chart"><div class="chart-empty">History will appear here.</div></div></article>
           <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 2 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Watch for a cell that separates from the group.</span></div><span class="chart-status" id="battery2_cells-status">Waiting</span></div><div class="chart-host" id="battery2_cells-chart"><div class="chart-empty">History will appear here.</div></div></article>
-          <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 3 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Prepared now; history begins automatically after installation.</span></div><span class="chart-status" id="battery3_cells-status">Awaiting battery</span></div><div class="chart-host" id="battery3_cells-chart"><div class="chart-empty">Battery 3 is provisioned at Modbus address 3.</div></div></article>
+          <article class="panel chart-panel"><div class="panel-head"><div><p>BATTERY 3 · LAST 24 HOURS</p><h3>All 16 cell voltages</h3><span>Watch for a cell that separates from the group.</span></div><span class="chart-status" id="battery3_cells-status">Waiting</span></div><div class="chart-host" id="battery3_cells-chart"><div class="chart-empty">History will appear here.</div></div></article>
         </div>
         <article class="panel chart-panel chart-feature">
           <div class="panel-head"><div><p>LAST 14 DAYS</p><h3>Multi-day battery energy</h3><span>Daily energy charged into the bank and discharged to loads.</span></div><span class="chart-status" id="multi_day-status">Waiting</span></div>
@@ -121,9 +129,9 @@
       </section>
 
       <section class="page" id="recovery">
-        <div class="section-head"><div><p>GUARDED BATTERY SUPERVISOR</p><h2>Recovery control</h2><span>Uses every active BMS and automatically includes Battery 3 after its first verified reply.</span></div><span class="badge warning" id="recovery-badge">Checking</span></div>
+        <div class="section-head"><div><p>GUARDED BATTERY SUPERVISOR</p><h2>Recovery control</h2><span>Uses all three BMS operating envelopes and never overrides a pack’s internal safety limits.</span></div><span class="badge warning" id="recovery-badge">Checking</span></div>
         <div class="recovery-hero" id="recovery-hero">
-          <div><small id="recovery-kicker">ASSESSING BOTH BATTERIES</small><h2 id="recovery-title">Waiting for BMS limits</h2><p id="recovery-summary">The controller is collecting cell and operating-limit data.</p></div>
+          <div><small id="recovery-kicker">ASSESSING ALL THREE BATTERIES</small><h2 id="recovery-title">Waiting for BMS limits</h2><p id="recovery-summary">The controller is collecting cell and operating-limit data.</p></div>
           <div class="recovery-rate"><small>RECOMMENDED BANK LIMIT</small><b id="recovery-limit">—</b><span id="full-rate-state">Full rate locked</span></div>
         </div>
         <div class="safety-banner"><svg><use href="#i-shield"/></svg><div><b>The BMS safety envelope is never overridden</b><span>This controller can connect or disconnect an existing generator AC input. It cannot regulate amperage, force balancing, close a blocked BMS MOSFET, or write battery configuration.</span></div></div>

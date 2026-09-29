@@ -61,6 +61,15 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(len(payload["series"]), 16)
         self.assertEqual(payload["series"][0]["entity_id"], "sensor.baiamonte_can_battery_3_cell_1_voltage")
 
+    def test_pack_power_and_health_charts_are_predefined(self):
+        client = HistoryClient("secret", opener=lambda *_args, **_kwargs: Response(b"[]"))
+        power = client.chart("pack_power")
+        health = client.chart("health")
+        self.assertEqual(len(power["series"]), 3)
+        self.assertEqual(power["series"][2]["entity_id"], "sensor.baiamonte_can_battery_3_net_input_power")
+        self.assertEqual(health["hours"], 24 * 7)
+        self.assertEqual(len(health["series"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()
