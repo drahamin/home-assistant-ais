@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 import can
 
 from can_decoder import Reading, decode_frame
-from battery_bank import derive_bank_readings
+from battery_bank import derive_bank_readings, derive_parallel_link_readings
 from energy_meter import EnergyMeter
 from felicity_rs485 import FelicityRs485Receiver
 from recovery_control import RecoveryController, assess_recovery
@@ -305,6 +305,7 @@ def binary_reading(key: str) -> bool:
         or key.endswith("_enabled")
         or key.endswith("_online")
         or key.endswith("_warning")
+        or key.endswith("_verified")
         or key.startswith("force_charge")
     )
 
@@ -679,8 +680,10 @@ def main() -> int:
         if message is None and getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
             update_status(last_error=getattr(receiver, "last_error", None))
 
+        communication = {}
         if getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
-            update_status(communication=receiver.communication_diagnostics())
+            communication = receiver.communication_diagnostics()
+            update_status(communication=communication)
 
         connected = bool(last_frame_at and now - last_frame_at <= stale_after)
         if getattr(receiver, "monitor_transport", "can") == "felicity_rs485":
@@ -695,6 +698,13 @@ def main() -> int:
                 configured_addresses,
                 online_addresses,
                 provisioned_addresses,
+            )
+            derived.update(
+                derive_parallel_link_readings(
+                    configured_addresses,
+                    online_addresses,
+                    communication,
+                )
             )
             derived.update(assess_recovery(all_readings, configured_addresses, online_addresses).readings())
             all_readings.update(derived)

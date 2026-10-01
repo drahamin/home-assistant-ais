@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0
+
+- Add a three-pack link indicator backed by individual address replies and rolling communication quality.
+- Publish Home Assistant entities for pack-link verification, responding-pack count, and direct CAN instrumentation state.
+- Keep direct CAN verification explicitly separate so RS485 evidence is never mislabeled as captured CAN traffic.
+
 ## 0.8.1
 
 - Correct the healthy recovery summary so it describes every online battery in a multi-pack bank.

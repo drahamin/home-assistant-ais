@@ -204,6 +204,26 @@ function renderConfidence(readings,data){
   $('attention-count').textContent=`${actionable} item${actionable===1?'':'s'}`;
   replaceHtml('alert-list',alerts.length?alerts.map(([level,title,detail])=>`<div class="alert-item ${level}"><i aria-hidden="true"></i><div><b>${title}</b><span>${detail}</span></div></div>`).join(''):'<div class="alert-item healthy"><i aria-hidden="true"></i><div><b>No active battery warnings</b><span>All three packs are communicating and operating within the monitored agreement limits.</span></div></div>');
 }
+
+function renderLinkVerification(readings,data){
+  const status=readings.bank_parallel_link_status?.value||'learning';
+  const verified=readings.bank_parallel_link_verified?.value==='on';
+  const addresses=data.active_battery_addresses?.length?data.active_battery_addresses:[1,2,3];
+  const responding=Number(readings.bank_parallel_link_responding?.value||0);
+  $('link-verification').className=`link-verification ${verified?'verified':status==='degraded'?'degraded':'learning'}`;
+  $('link-title').textContent=verified?`Pack link verified · ${responding}/${addresses.length} responding`:status==='degraded'?`Pack link degraded · ${responding}/${addresses.length} responding`:'Verifying B1 ↔ B2 ↔ B3';
+  $('link-summary').textContent=value(readings,'bank_parallel_link_summary','Collecting a reply from every configured battery address.');
+  replaceHtml('pack-link-nodes',addresses.map((address,index)=>{
+    const diagnostics=data.communication?.packs?.[String(address)]||{};
+    const active=readings[`battery_${address}_online`]?.value==='on'&&Number(diagnostics.replies||0)>0&&Number(diagnostics.consecutive_misses||0)<3;
+    const connector=index<addresses.length-1?`<i class="${verified?'active':''}"></i>`:'';
+    return `<span class="${active?'active':''}">B${address}<em>${active?'LIVE':'WAIT'}</em></span>${connector}`;
+  }).join(''));
+  const canState=readings.bank_can_verification?.value||'not_instrumented';
+  $('can-proof-state').textContent=canState==='observed'?'OBSERVED':'NOT INSTRUMENTED';
+  $('can-proof-state').className=canState==='observed'?'observed':'';
+  $('can-proof-summary').textContent=value(readings,'bank_can_verification_summary','A separate listen-only CAN tap is required to verify LINK pins 7/8.');
+}
 function renderBattery(readings){
   const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2,3];
   const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Time until empty','runtime_empty'],['Time until full','runtime_full'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
@@ -354,7 +374,7 @@ function render(data){
   $('frame-count').textContent=`${Number(data.frames_received||0).toLocaleString()} total`;
   replaceHtml('check-list',checksFor(displayHealth,data).map((item,index)=>`<div class="check"><i>${index+1}</i><span>${item}</span></div>`).join(''));
   $('last-check').textContent=`Updated ${new Date().toLocaleTimeString()}`;
-  renderConfidence(readings,data);renderBattery(readings);renderRecovery(readings,data);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
+  renderLinkVerification(readings,data);renderConfidence(readings,data);renderBattery(readings);renderRecovery(readings,data);renderFrames(data.recent_frames||[]);renderTraffic(data);renderDeviceLights(data);
 }
 async function refresh(){
   if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;}

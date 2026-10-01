@@ -1,5 +1,7 @@
 # Baiamonte Battery Monitor
 
+The overview distinguishes verified pack-link communication from direct CAN capture. Individual replies from every configured BMS verify the installed master/LINK path; a separate listen-only CAN tap is required before the interface will claim direct CAN observation on LINK pins 7/8.
+
 Version 0.8 monitors the installed three-pack Felicity bank as one 300 Ah / 15.36 kWh system while retaining individual pack telemetry. The Overview adds five-minute RS485 poll quality, reply freshness, SOC and voltage agreement, current sharing, temperature comparison, cell balance, and focused exceptions. Trends include pack power contribution and seven-day bank-agreement history in addition to charging, energy, and individual-cell charts.
 
 The app reads the two installed Felicity LPBA48100-OL batteries independently over the dedicated USB RS485 adapter and combines them into the Baiamonte 200 Ah / 10.24 kWh battery bank. Battery 3 is pre-provisioned at Modbus address 3 and automatically joins the monitored bank after its first valid reply. Open **Battery** from the Home Assistant sidebar for pack status, bank energy, every active cell voltage, temperatures, raw replies, and troubleshooting.
