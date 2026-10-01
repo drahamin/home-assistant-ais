@@ -1,6 +1,6 @@
 import unittest
 
-from battery_bank import derive_bank_readings
+from battery_bank import derive_bank_readings, derive_parallel_link_readings
 from can_decoder import Reading
 
 
@@ -135,6 +135,39 @@ class BatteryBankTests(unittest.TestCase):
         result = derive_bank_readings(self.readings, [1, 2], {1, 2})
         self.assertEqual(result["bank_current_sharing"].value, "attention")
         self.assertIn("opposite", result["bank_current_sharing_summary"].value)
+
+    def test_parallel_link_is_verified_without_claiming_can_capture(self):
+        communication = {
+            "packs": {
+                "1": {"replies": 100, "quality_percent": 99.0, "consecutive_misses": 0},
+                "2": {"replies": 98, "quality_percent": 97.0, "consecutive_misses": 0},
+                "3": {"replies": 99, "quality_percent": 98.0, "consecutive_misses": 0},
+            }
+        }
+
+        result = derive_parallel_link_readings([1, 2, 3], {1, 2, 3}, communication)
+
+        self.assertEqual(result["bank_parallel_link_verified"].value, "on")
+        self.assertEqual(result["bank_parallel_link_status"].value, "verified")
+        self.assertEqual(result["bank_parallel_link_responding"].value, 3)
+        self.assertIn("All 3 batteries", result["bank_parallel_link_summary"].value)
+        self.assertEqual(result["bank_can_verification"].value, "not_instrumented")
+
+    def test_parallel_link_degrades_when_one_pack_stops_replying(self):
+        communication = {
+            "packs": {
+                "1": {"replies": 100, "quality_percent": 99.0, "consecutive_misses": 0},
+                "2": {"replies": 95, "quality_percent": 94.0, "consecutive_misses": 0},
+                "3": {"replies": 90, "quality_percent": 89.0, "consecutive_misses": 3},
+            }
+        }
+
+        result = derive_parallel_link_readings([1, 2, 3], {1, 2, 3}, communication)
+
+        self.assertEqual(result["bank_parallel_link_verified"].value, "off")
+        self.assertEqual(result["bank_parallel_link_status"].value, "degraded")
+        self.assertEqual(result["bank_parallel_link_responding"].value, 2)
+        self.assertIn("Battery 3", result["bank_parallel_link_summary"].value)
 
 
 if __name__ == "__main__":

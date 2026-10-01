@@ -44,6 +44,76 @@ def _duration_hours(energy_kwh: float, power_w: float) -> Reading:
     return Reading(round(hours, 1), "h", "duration", "measurement")
 
 
+def derive_parallel_link_readings(
+    addresses: list[int],
+    online_addresses: set[int],
+    communication: dict[str, object],
+    direct_can_observed: bool = False,
+) -> dict[str, Reading]:
+    """Describe what the installed monitor can prove about the pack link.
+
+    Individual Modbus replies verify that every addressed BMS is reachable via
+    the installed master/link path.  They do not prove that CAN frames are
+    present on LINK pins 7/8, so direct CAN verification remains a separate
+    state until a listen-only CAN tap is installed.
+    """
+    packs = communication.get("packs", {})
+    packs = packs if isinstance(packs, dict) else {}
+    responding: list[int] = []
+    qualities: list[float] = []
+    for address in addresses:
+        diagnostics = packs.get(str(address), {})
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        replies = int(diagnostics.get("replies", 0) or 0)
+        misses = int(diagnostics.get("consecutive_misses", 0) or 0)
+        quality = diagnostics.get("quality_percent")
+        if quality is not None:
+            qualities.append(float(quality))
+        if address in online_addresses and replies > 0 and misses < 3:
+            responding.append(address)
+
+    configured = len(addresses)
+    all_responding = configured > 0 and len(responding) == configured
+    minimum_quality = min(qualities) if len(qualities) == configured else None
+    verified = all_responding and minimum_quality is not None and minimum_quality >= 80.0
+    learning = configured > 0 and (not packs or minimum_quality is None)
+    status = "verified" if verified else "learning" if learning else "degraded"
+    count = len(responding)
+    if verified:
+        summary = (
+            f"All {configured} batteries are responding through the installed master/link path; "
+            f"lowest five-minute reply quality is {minimum_quality:.1f}%."
+        )
+    elif learning:
+        summary = "Collecting replies from each configured battery address before verifying the pack link."
+    elif all_responding and minimum_quality is not None:
+        summary = (
+            f"All {configured} batteries are replying, but five-minute quality has fallen to "
+            f"{minimum_quality:.1f}%; keep the link under observation."
+        )
+    else:
+        missing = [str(address) for address in addresses if address not in responding]
+        summary = (
+            f"Only {count} of {configured} batteries have a healthy recent reply path."
+            + (f" Check Battery {', '.join(missing)} and its LINK cable." if missing else "")
+        )
+
+    can_status = "observed" if direct_can_observed else "not_instrumented"
+    can_summary = (
+        "CAN frames are being observed directly by a listen-only interface."
+        if direct_can_observed else
+        "Direct CAN traffic is not instrumented; RS485 replies verify the pack link, not CAN pins 7/8."
+    )
+    return {
+        "bank_parallel_link_verified": Reading("on" if verified else "off"),
+        "bank_parallel_link_status": Reading(status),
+        "bank_parallel_link_responding": Reading(count),
+        "bank_parallel_link_summary": Reading(summary),
+        "bank_can_verification": Reading(can_status),
+        "bank_can_verification_summary": Reading(can_summary),
+    }
+
+
 def derive_bank_readings(
     readings: dict[str, Reading],
     addresses: list[int],

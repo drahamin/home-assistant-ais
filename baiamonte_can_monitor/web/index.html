@@ -61,6 +61,22 @@
           <div><small>MESSAGES RECEIVED</small><b id="frames-summary">0</b></div>
         </div>
 
+        <article class="link-verification" id="link-verification" aria-label="Three-battery communication verification">
+          <div class="link-copy">
+            <small>THREE-BATTERY LINK</small>
+            <h3 id="link-title">Verifying B1 ↔ B2 ↔ B3</h3>
+            <p id="link-summary">Collecting a reply from every configured battery address.</p>
+          </div>
+          <div class="pack-link-nodes" id="pack-link-nodes" aria-label="Battery link nodes">
+            <span>B1</span><i></i><span>B2</span><i></i><span>B3</span>
+          </div>
+          <div class="can-proof">
+            <small>DIRECT CAN PROOF</small>
+            <b id="can-proof-state">NOT INSTRUMENTED</b>
+            <span id="can-proof-summary">A separate listen-only CAN tap is required to verify LINK pins 7/8.</span>
+          </div>
+        </article>
+
         <div class="overview-grid">
           <article class="panel health-panel"><div class="panel-head"><div><p>LIVE DIAGNOSIS</p><h3>Connection health</h3></div><span class="status-badge" id="health-badge">Starting</span></div><div class="health-orbit"><span id="health-orbit"><svg><use href="#i-pulse"/></svg></span><div><h2 id="health-title">Checking hardware</h2><p id="diagnosis">The monitor is starting.</p></div></div><button class="text-button" data-go="diagnostics">Open troubleshooting →</button></article>
           <div class="status-column">
