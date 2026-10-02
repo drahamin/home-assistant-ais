@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+- Show `3 / 3 ONLINE` prominently on Battery Data.
+- Label available energy as part of the full 15.36 kWh installed bank and show the installed count beneath aggregate cards.
+- Remove the last two-battery loading fallback and legacy dual-battery configuration wording.
+
 ## 0.9.0
 
 - Add a three-pack link indicator backed by individual address replies and rolling communication quality.
