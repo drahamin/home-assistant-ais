@@ -226,8 +226,11 @@ function renderLinkVerification(readings,data){
 }
 function renderBattery(readings){
   const addresses=latest?.battery_addresses?.length?latest.battery_addresses:[1,2,3];
-  const bankCards=[['Bank SOC','bank_soc'],['Available energy','bank_remaining_energy'],['Time until empty','runtime_empty'],['Time until full','runtime_full'],['SOC difference','bank_soc_difference'],['Largest cell spread','bank_maximum_cell_spread']];
-  replaceHtml('bank-summary',bankCards.map(([label,key])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${key==='runtime_empty'?liveRuntime(readings,'bank_','empty'):key==='runtime_full'?liveRuntime(readings,'bank_','full'):value(readings,key)}</h3><p>${key==='runtime_empty'?'At current net load':key==='runtime_full'?'At current net input':'Combined battery bank'}</p></article>`).join(''));
+  const installed=numeric(readings,'bank_configured_batteries')??addresses.length;
+  const online=numeric(readings,'bank_online_batteries')??addresses.filter(address=>readings[`battery_${address}_online`]?.value==='on').length;
+  const nominal=numeric(readings,'bank_nominal_energy')??installed*5.12;
+  const bankCards=[['Bank SOC','bank_soc',`${online} of ${installed} batteries online`],['Available energy','bank_remaining_energy',`of ${nominal.toFixed(2)} kWh installed`],['Time until empty','runtime_empty','At current net load'],['Time until full','runtime_full','At current net input'],['SOC difference','bank_soc_difference',`Across all ${installed} batteries`],['Largest cell spread','bank_maximum_cell_spread',`Across all ${installed} batteries`]];
+  replaceHtml('bank-summary',bankCards.map(([label,key,detail])=>`<article class="reading-card"><small>${label.toUpperCase()}</small><h3>${key==='runtime_empty'?liveRuntime(readings,'bank_','empty'):key==='runtime_full'?liveRuntime(readings,'bank_','full'):value(readings,key)}</h3><p>${detail}</p></article>`).join(''));
   const sections=addresses.map(address=>{
     const prefix=`battery_${address}_`, online=readings[`${prefix}online`]?.value==='on';
     const provisioning=readings[`${prefix}provisioning_status`]?.value||'offline', awaiting=provisioning==='awaiting_connection';
@@ -342,7 +345,7 @@ function render(data){
   const nominalEnergy=numeric(readings,'bank_nominal_energy')??(installedCount*5.12);
   $('bank-nameplate').textContent=`${installedCount} × FELICITY LPBA48100 · ${nominalEnergy.toFixed(2)} KWH`;
   $('soc').textContent=value(readings,'bank_soc',value(readings,'battery_soc'));
-  const onlineCount=numeric(readings,'bank_online_batteries')??0, activeCount=numeric(readings,'bank_configured_batteries')??2, provisionedCount=numeric(readings,'bank_provisioned_batteries')??activeCount;
+  const onlineCount=numeric(readings,'bank_online_batteries')??0, activeCount=numeric(readings,'bank_configured_batteries')??3, provisionedCount=numeric(readings,'bank_provisioned_batteries')??activeCount;
   const standbyCount=Math.max(0,provisionedCount-activeCount);
   $('battery-state').textContent=`${onlineCount} of ${activeCount} active online${standbyCount?` · ${standbyCount} prepared slot`:''} · ${value(readings,'bank_remaining_energy','calculating')}`;
   const flow=flowState(readings,'bank_');
@@ -364,7 +367,7 @@ function render(data){
   const bankAttention=readings.bank_health?.value==='attention';
   $('safety').textContent=alarm||protection||bankAttention?'Attention':'Normal';
   $('safety-detail').textContent=protection?value(readings,'protection_flags'):alarm?value(readings,'alarm_flags'):bankAttention?`${value(readings,'bank_soc_difference')} SOC difference · ${value(readings,'bank_maximum_cell_spread')} max cell spread`:`${onlineCount} active batteries balanced and online${standbyCount?' · Battery 3 ready to install':''}`;
-  $('battery-badge').textContent=data.bus_active?'Live':'Waiting';
+  $('battery-badge').textContent=data.bus_active?`${onlineCount} / ${activeCount} ONLINE`:'Waiting';
   $('service-detail').textContent=data.service||'—';
   $('adapter-detail').textContent=data.adapter||'—';
   $('bitrate-detail').textContent=`${Number(data.bitrate||0).toLocaleString()} ${data.transport==='RS485'?'baud':'bit/s'}`;

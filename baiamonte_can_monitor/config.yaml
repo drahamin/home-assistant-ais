@@ -1,5 +1,5 @@
 name: "Baiamonte Battery Monitor"
-version: "0.9.0"
+version: "0.9.1"
 slug: "baiamonte_can_monitor"
 description: "Read-only Felicity battery monitoring over CAN or RS485"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -62,7 +62,7 @@ schema:
 configuration:
   adapter:
     name: Battery connection
-    description: Felicity RS485 is the installed dual-battery connection. CAN modes remain available for future diagnostics.
+    description: Felicity RS485 is the installed three-battery connection. CAN modes remain available for future diagnostics.
   bus_mode:
     name: CAN participation mode
     description: Use listen_only when tapping an active inverter-to-battery bus. Use standalone_ack when the CANable is connected directly to the battery without a working inverter; it acknowledges CAN frames but the app never sends data or control commands.
