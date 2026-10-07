@@ -6,10 +6,11 @@ import json
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone, tzinfo
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 PREFIX = "sensor.baiamonte_can_"
@@ -69,6 +70,12 @@ CHARTS = {
     },
 }
 
+RANGES = {
+    "day": {"hours": 24, "bucket": 0, "ttl": 300},
+    "week": {"hours": 24 * 7, "bucket": 1800, "ttl": 300},
+    "month": {"hours": 24 * 30, "bucket": 7200, "ttl": 900},
+}
+
 
 class HistoryError(RuntimeError):
     """History could not be read from Home Assistant."""
@@ -102,7 +109,7 @@ def bucket_points(states: list[dict], seconds: int) -> list[list[float]]:
     return [[bucket * 1000, round(sum(values) / len(values), 4)] for bucket, values in sorted(buckets.items())]
 
 
-def daily_changes(states: list[dict]) -> list[list[float]]:
+def daily_changes(states: list[dict], local_zone=timezone.utc) -> list[list[float]]:
     """Convert a reset-safe cumulative energy sensor into per-day increments."""
     days: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for state in states:
@@ -110,7 +117,7 @@ def daily_changes(states: list[dict]) -> list[list[float]]:
         timestamp = _timestamp(state.get("last_changed") or state.get("last_updated"))
         if value is None or timestamp is None:
             continue
-        day = datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
+        day = datetime.fromtimestamp(timestamp, local_zone).date().isoformat()
         days[day].append((timestamp, value))
     result = []
     previous: float | None = None
@@ -120,7 +127,8 @@ def daily_changes(states: list[dict]) -> list[list[float]]:
         baseline = previous if previous is not None else first
         change = last - baseline if last >= baseline else last
         previous = last
-        noon = datetime.fromisoformat(day).replace(tzinfo=timezone.utc) + timedelta(hours=12)
+        local_day = datetime.fromisoformat(day).date()
+        noon = datetime.combine(local_day, datetime_time(hour=12), tzinfo=local_zone)
         result.append([int(noon.timestamp() * 1000), round(max(0.0, change), 4)])
     return result
 
@@ -134,26 +142,54 @@ class HistoryClient:
         self.opener = opener
         self._cache: dict[str, tuple[float, dict]] = {}
         self._lock = threading.Lock()
+        self._time_zone_cache: tuple[float, str, tzinfo] | None = None
 
-    def chart(self, name: str) -> dict:
+    def chart(self, name: str, range_name: str | None = None) -> dict:
         if name not in CHARTS:
             raise KeyError(name)
-        ttl = 900 if name == "multi_day" else 300
+        if range_name is not None and range_name not in RANGES:
+            raise ValueError(range_name)
+        ttl = RANGES[range_name]["ttl"] if range_name else 900 if name == "multi_day" else 300
+        cache_key = f"{name}:{range_name or 'default'}"
         with self._lock:
-            cached = self._cache.get(name)
+            cached = self._cache.get(cache_key)
             if cached and time.time() - cached[0] < ttl:
                 return {**cached[1], "cached": True}
-        payload = self._fetch(name)
+        payload = self._fetch(name, range_name)
         with self._lock:
-            self._cache[name] = (time.time(), payload)
+            self._cache[cache_key] = (time.time(), payload)
         return payload
 
-    def _fetch(self, name: str) -> dict:
+    def _home_assistant_time_zone(self) -> tuple[str, tzinfo]:
+        now = time.time()
+        if self._time_zone_cache and now - self._time_zone_cache[0] < 3600:
+            return self._time_zone_cache[1], self._time_zone_cache[2]
+        name = "UTC"
+        request = Request(
+            f"{self.api_root}/config",
+            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/json"},
+        )
+        try:
+            with self.opener(request, timeout=10) as response:
+                raw = json.load(response)
+            if isinstance(raw, dict) and isinstance(raw.get("time_zone"), str):
+                name = raw["time_zone"]
+            zone = ZoneInfo(name)
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, ZoneInfoNotFoundError):
+            name, zone = "UTC", timezone.utc
+        self._time_zone_cache = (now, name, zone)
+        return name, zone
+
+    def _fetch(self, name: str, range_name: str | None = None) -> dict:
         if not self.token:
             raise HistoryError("Home Assistant API token is unavailable")
         config = CHARTS[name]
+        range_config = RANGES.get(range_name, {})
+        hours = int(range_config.get("hours", config["hours"]))
+        bucket = max(int(config["bucket"]), int(range_config.get("bucket", 0)))
+        time_zone_name, local_zone = self._home_assistant_time_zone()
         end = datetime.now(timezone.utc)
-        start = end - timedelta(hours=config["hours"])
+        start = end - timedelta(hours=hours)
         entity_ids = [entity[0] for entity in config["entities"]]
         query = urlencode({
             "filter_entity_id": ",".join(entity_ids),
@@ -175,12 +211,17 @@ class HistoryClient:
         series = []
         for entity_id, label, unit in config["entities"]:
             states = by_entity.get(entity_id, [])
-            points = daily_changes(states) if config.get("daily_change") else bucket_points(states, config["bucket"])
+            points = daily_changes(states, local_zone) if config.get("daily_change") else bucket_points(states, bucket)
             series.append({"entity_id": entity_id, "name": label, "unit": unit, "points": points})
         return {
             "chart": name,
+            "range": range_name or "default",
+            "time_zone": time_zone_name,
             "generated_at": end.isoformat(),
-            "hours": config["hours"],
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "hours": hours,
+            "bucket_seconds": bucket,
             "cached": False,
             "series": series,
         }

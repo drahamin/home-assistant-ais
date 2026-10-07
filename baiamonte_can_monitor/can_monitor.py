@@ -159,13 +159,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if request_path.rstrip("/").endswith("/api/history"):
-            chart = parse_qs(parsed.query).get("chart", [""])[0]
+            query = parse_qs(parsed.query)
+            chart = query.get("chart", [""])[0]
+            range_name = query.get("range", [None])[0]
             try:
-                result = HISTORY.chart(chart)
+                result = HISTORY.chart(chart, range_name)
                 payload = json.dumps(result, separators=(",", ":")).encode()
                 status = 200
             except KeyError:
                 payload = json.dumps({"error": "Unknown chart. Use charging, pack_power, health, battery1_cells, battery2_cells, battery3_cells, or multi_day."}).encode()
+                status = 400
+            except ValueError:
+                payload = json.dumps({"error": "Unknown range. Use day, week, or month."}).encode()
                 status = 400
             except HistoryError as exc:
                 payload = json.dumps({"error": str(exc)}).encode()

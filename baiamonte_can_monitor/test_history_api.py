@@ -2,6 +2,7 @@ import io
 import json
 import unittest
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from history_api import HistoryClient, bucket_points, daily_changes
 
@@ -38,22 +39,30 @@ class HistoryTests(unittest.TestCase):
 
         def opener(request, timeout):
             calls.append((request.full_url, timeout, request.headers))
+            if request.full_url.endswith("/config"):
+                return Response(json.dumps({"time_zone": "Europe/Rome"}).encode())
             entity = "sensor.baiamonte_can_bank_soc"
             return Response(json.dumps([[{"entity_id": entity, "state": "42", "last_changed": "2026-09-14T10:00:00Z"}]]).encode())
 
         client = HistoryClient("secret", opener=opener)
         first = client.chart("charging")
         second = client.chart("charging")
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)
         self.assertFalse(first["cached"])
         self.assertTrue(second["cached"])
-        self.assertIn("filter_entity_id=sensor.baiamonte_can_bank_soc", calls[0][0])
+        self.assertIn("filter_entity_id=sensor.baiamonte_can_bank_soc", calls[1][0])
         self.assertEqual(first["series"][0]["points"][0][1], 42)
+        self.assertEqual(first["time_zone"], "Europe/Rome")
 
     def test_unknown_chart_is_rejected_without_request(self):
         client = HistoryClient("secret")
         with self.assertRaises(KeyError):
             client.chart("arbitrary")
+
+    def test_unknown_range_is_rejected_without_request(self):
+        client = HistoryClient("secret")
+        with self.assertRaises(ValueError):
+            client.chart("charging", "year")
 
     def test_battery_three_cell_chart_is_predefined(self):
         client = HistoryClient("secret", opener=lambda *_args, **_kwargs: Response(b"[]"))
@@ -69,6 +78,36 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(power["series"][2]["entity_id"], "sensor.baiamonte_can_battery_3_net_input_power")
         self.assertEqual(health["hours"], 24 * 7)
         self.assertEqual(len(health["series"]), 3)
+
+    def test_day_week_and_month_ranges_change_hours_and_sampling(self):
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if request.full_url.endswith("/config"):
+                return Response(json.dumps({"time_zone": "Europe/Rome"}).encode())
+            return Response(b"[]")
+
+        client = HistoryClient("secret", opener=opener)
+        day = client.chart("charging", "day")
+        week = client.chart("charging", "week")
+        month = client.chart("charging", "month")
+
+        self.assertEqual([day["hours"], week["hours"], month["hours"]], [24, 168, 720])
+        self.assertEqual([day["bucket_seconds"], week["bucket_seconds"], month["bucket_seconds"]], [300, 1800, 7200])
+        self.assertEqual(len(calls), 4)
+
+    def test_daily_energy_uses_home_assistant_local_calendar_day(self):
+        states = [
+            {"state": "10", "last_changed": "2026-10-06T21:30:00Z"},
+            {"state": "11", "last_changed": "2026-10-06T22:30:00Z"},
+            {"state": "13", "last_changed": "2026-10-07T20:00:00Z"},
+        ]
+
+        points = daily_changes(states, ZoneInfo("Europe/Rome"))
+
+        self.assertEqual([point[1] for point in points], [0.0, 3.0])
+        self.assertEqual(datetime.fromtimestamp(points[1][0] / 1000, ZoneInfo("Europe/Rome")).hour, 12)
 
 
 if __name__ == "__main__":
