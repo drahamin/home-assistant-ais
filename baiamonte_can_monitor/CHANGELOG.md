@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+- Format chart axes and tooltips in Home Assistant's configured timezone instead of the viewing browser's timezone.
+- Aggregate daily energy on Home Assistant local calendar days, including daylight-saving transitions.
+- Add touch-friendly Day, Week, and Month views across every battery history chart.
+- Use range-aware sampling and caching to keep month views responsive and resource efficient.
+
 ## 0.9.1
 
 - Show `3 / 3 ONLINE` prominently on Battery Data.
