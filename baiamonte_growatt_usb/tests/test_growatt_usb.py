@@ -86,6 +86,14 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(sample["source"], "estimated_power_balance")
         self.assertEqual(sample["quality"], "estimated")
 
+    def test_legacy_bluetti_generator_mapping_is_migrated(self):
+        self.assertEqual(
+            growatt.configured_generator_power_entity(
+                {"fallback_generator_power_entity": "sensor.bluetti_main_breaker_power"}
+            ),
+            "sensor.generator_main_breaker_phase_a_power",
+        )
+
     @patch.object(growatt, "direct_growatt_power", return_value=1800.0)
     def test_online_solar_prefers_direct_growatt_pv(self, _direct):
         sample = growatt.calculate_solar_sample(

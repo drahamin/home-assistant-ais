@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.2
+
+- Corrects the default generator source to the dedicated generator-main-breaker power meter.
+- Prevents the unrelated Bluetti breaker load from being subtracted from estimated solar production.
+
 ## 1.4.1
 
 - Publishes a dedicated continuous solar-input power sensor instead of treating generator input as solar while Growatt is offline.
