@@ -26,6 +26,27 @@ configuration:
   publish_to_home_assistant:
     name: Crea sensori Home Assistant
     description: Pubblica le letture come entità sensor.baiamonte_growatt_*.
+  fallback_enabled:
+    name: Stima potenza in ingresso offline
+    description: Continua a calcolare potenza ed energia in ingresso dal carico locale e dal flusso batteria quando Growatt è offline.
+  fallback_load_power_entity:
+    name: Entità potenza carico tenuta
+    description: Sensore Home Assistant della potenza istantanea usata dalla tenuta.
+  fallback_battery_power_entity:
+    name: Entità potenza banco batterie
+    description: Sensore firmato della potenza batteria usato nel bilancio.
+  fallback_battery_power_positive_is_discharge:
+    name: Potenza batteria positiva significa scarica
+    description: Lascia attivo per la telemetria batterie Baiamonte; la carica è negativa e la scarica positiva.
+  fallback_source_stale_seconds:
+    name: Timeout sorgenti stima
+    description: Rifiuta letture di carico o batteria più vecchie di questo numero di secondi.
+  fallback_poll_interval_seconds:
+    name: Intervallo aggiornamento stima
+    description: Secondi tra gli aggiornamenti del bilancio locale.
+  fallback_learning_enabled:
+    name: Apprendi calibrazione stima
+    description: Apprende una correzione limitata delle perdite quando la potenza Growatt diretta è disponibile.
   read_only:
     name: Blocco sicurezza sola lettura
     description: Mantienilo attivo per il monitoraggio. Disattivalo solo insieme all'opzione modifiche durante la configurazione.

@@ -26,6 +26,27 @@ configuration:
   publish_to_home_assistant:
     name: Create Home Assistant sensors
     description: Publish readings as sensor.baiamonte_growatt_* entities.
+  fallback_enabled:
+    name: Offline incoming-power fallback
+    description: Continue incoming power and energy from the local load and battery balance when Growatt is offline.
+  fallback_load_power_entity:
+    name: Estate load power entity
+    description: Home Assistant sensor for the estate's current power use.
+  fallback_battery_power_entity:
+    name: Battery bank power entity
+    description: Signed Home Assistant battery power sensor used in the balance.
+  fallback_battery_power_positive_is_discharge:
+    name: Positive battery power means discharge
+    description: Keep enabled for Baiamonte battery telemetry; charging is negative and discharging is positive.
+  fallback_source_stale_seconds:
+    name: Fallback source timeout
+    description: Reject load or battery readings older than this many seconds.
+  fallback_poll_interval_seconds:
+    name: Fallback update interval
+    description: Seconds between local balance updates.
+  fallback_learning_enabled:
+    name: Learn estimate calibration
+    description: Learn a bounded conversion-loss correction while direct Growatt power is available.
   read_only:
     name: Read-only safety lock
     description: Keep enabled for monitoring. Disable it only with the separate setting-change option during commissioning.

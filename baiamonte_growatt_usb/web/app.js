@@ -17,7 +17,9 @@ function render(data){
   ['#top-light','#hero-light'].forEach(sel=>{$(sel).className=healthy?'healthy':offline?'offline':''});
   $('#top-status').textContent=healthLabel(data.health);$('#hero-status').textContent=data.diagnosis;$('#health-badge').textContent=healthLabel(data.health);$('#health-badge').className=`badge ${healthy?'healthy':offline?'offline':warning?'warning':'neutral'}`;
   $('#updated').textContent=data.last_success_at?`Updated ${age(data.last_success_at)}`:'Waiting for data';
-  $('#pv-power').textContent=reading(data,'pv_input_power','— W');$('#pv-detail').textContent=`${reading(data,'pv_input_voltage','— V')} · ${reading(data,'pv_input_current_for_battery','— A')}`;
+  const incoming=data.incoming_power_w, incomingSource=data.incoming_power_source;
+  $('#pv-power').textContent=incoming===null||incoming===undefined?'— W':`${Number(incoming).toLocaleString(undefined,{maximumFractionDigits:1})} W`;
+  $('#pv-detail').textContent=incomingSource==='estimated_power_balance'?`Estimated · load ${data.incoming_estate_load_w??'—'} W · battery ${data.incoming_battery_power_w??'—'} W`:incomingSource==='direct_growatt'?`Direct Growatt · ${reading(data,'pv_input_voltage','— V')} · ${reading(data,'pv_input_current_for_battery','— A')}`:'Waiting for power sources';
   $('#mode').textContent=data.mode||'Unknown';$('#temperature').textContent=`Temperature ${reading(data,'inverter_heat_sink_temperature')}`;
   $('#load-power').textContent=reading(data,'ac_output_active_power','— W');$('#load-detail').textContent=`Load ${reading(data,'ac_output_load','— %')}`;
   $('#battery').textContent=reading(data,'battery_capacity','— %');$('#battery-detail').textContent=`${reading(data,'battery_voltage','— V')} · charge ${reading(data,'battery_charging_current','— A')}`;

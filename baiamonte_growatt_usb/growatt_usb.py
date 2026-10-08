@@ -24,12 +24,14 @@ TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
 OPTIONS_PATH = Path(os.environ.get("GROWATT_USB_OPTIONS", "/data/options.json"))
 STATE_PATH = Path(os.environ.get("GROWATT_USB_STATE", "/data/energy-state.json"))
+INCOMING_STATE_PATH = Path(os.environ.get("GROWATT_INCOMING_STATE", "/data/incoming-energy-state.json"))
 FIRMWARE_DIR = Path(os.environ.get("GROWATT_FIRMWARE_DIR", "/data/firmware"))
 WEB_ROOT = Path(os.environ.get("GROWATT_USB_WEB", "/web"))
 ENTITY_PREFIX = "baiamonte_growatt"
 STARTED_AT = time.time()
 RUNNING = True
 WAKE = threading.Event()
+CONTINUITY_WAKE = threading.Event()
 STATUS_LOCK = threading.Lock()
 DEVICE_IO_LOCK = threading.Lock()
 EVENTS: deque[dict[str, object]] = deque(maxlen=80)
@@ -37,11 +39,13 @@ PUBLISHED_STATES: dict[str, tuple[object, str, float]] = {}
 OPTIONS_CACHE: dict[str, object] = {"path": None, "mtime_ns": None, "value": {}}
 DEVICE_CACHE: dict[str, object] = {"configured": None, "at": 0.0, "devices": []}
 LAST_ENERGY_SAVE = 0.0
+LAST_INCOMING_SAVE = 0.0
 ENTITY_HEARTBEAT_SECONDS = 300
 ENERGY_SAVE_INTERVAL_SECONDS = 60
 SETTINGS_REFRESH_SECONDS = 900
 FIRMWARE_REFRESH_SECONDS = 21600
 FIRMWARE_RETRY_SECONDS = 900
+INCOMING_STATE_LOCK = threading.Lock()
 
 STATUS: dict[str, object] = {
     "service": "starting",
@@ -58,6 +62,17 @@ STATUS: dict[str, object] = {
     "warnings": {},
     "mode": "Unknown",
     "energy_today_kwh": 0.0,
+    "incoming_power_w": None,
+    "incoming_power_source": "unavailable",
+    "incoming_power_quality": "unavailable",
+    "incoming_last_update_at": None,
+    "incoming_energy_total_kwh": 0.0,
+    "incoming_energy_today_kwh": 0.0,
+    "incoming_estimated_power_w": None,
+    "incoming_estimate_difference_w": None,
+    "incoming_estate_load_w": None,
+    "incoming_battery_power_w": None,
+    "incoming_calibration_factor": 1.0,
     "settings": {},
     "settings_updated_at": None,
     "firmware": {},
@@ -787,6 +802,96 @@ def publish_state(
         return False
 
 
+def get_home_assistant_state(entity_id: str) -> dict[str, object] | None:
+    """Read one local Home Assistant state without relying on cloud services."""
+    if not TOKEN or not entity_id:
+        return None
+    request = urllib.request.Request(
+        f"{API_BASE}/{entity_id}",
+        headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read())
+        return payload if isinstance(payload, dict) else None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def numeric_home_assistant_state(
+    payload: dict[str, object] | None,
+    max_age_seconds: int,
+    now: datetime | None = None,
+) -> float | None:
+    """Return a finite, fresh numeric state or None for unavailable/stale data."""
+    if not payload:
+        return None
+    try:
+        value = float(payload.get("state"))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value):
+        return None
+    timestamp = payload.get("last_updated") or payload.get("last_changed")
+    if timestamp and max_age_seconds > 0:
+        try:
+            updated = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            reference = now or datetime.now(timezone.utc)
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if (reference.astimezone(timezone.utc) - updated.astimezone(timezone.utc)).total_seconds() > max_age_seconds:
+                return None
+        except ValueError:
+            return None
+    return value
+
+
+def derive_incoming_power(
+    estate_load_w: float,
+    battery_power_w: float,
+    positive_battery_power_is_discharge: bool = True,
+    calibration_factor: float = 1.0,
+) -> float:
+    """Balance generation from load and signed battery flow.
+
+    Baiamonte battery telemetry is positive while discharging and negative while
+    charging, so incoming = load - battery. The configurable sign guard keeps the
+    formula reusable if the source entity follows the opposite convention.
+    """
+    signed_battery = battery_power_w if positive_battery_power_is_discharge else -battery_power_w
+    balance = max(0.0, float(estate_load_w) - float(signed_battery))
+    factor = min(1.35, max(0.75, float(calibration_factor)))
+    return round(balance * factor, 1)
+
+
+def direct_growatt_power(status: dict[str, object], stale_after_seconds: int) -> float | None:
+    """Return fresh direct PV power when solar is the only incoming source.
+
+    Growatt reports PV input power, not total generator/grid plus PV input power.
+    While AC input is active, the whole-system balance remains the comparable
+    incoming-power value and must take precedence over this solar-only register.
+    """
+    if not status.get("connected"):
+        return None
+    last_success = status.get("last_success_epoch")
+    if not isinstance(last_success, (int, float)) or time.time() - float(last_success) > stale_after_seconds:
+        return None
+    readings = status.get("readings")
+    if not isinstance(readings, dict):
+        return None
+    try:
+        ac_input_voltage = float(dict(readings.get("ac_input_voltage", {})).get("value") or 0.0)
+    except (TypeError, ValueError):
+        ac_input_voltage = 0.0
+    if ac_input_voltage >= 80.0:
+        return None
+    try:
+        value = float(dict(readings.get("pv_input_power", {})).get("value"))
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, value) if math.isfinite(value) else None
+
+
 def publish_sensor(key: str, value: object, unit: str | None = None, min_interval_seconds: int = 30) -> None:
     definition = SENSORS.get(key)
     if definition:
@@ -1148,6 +1253,252 @@ def update_energy(energy: dict[str, object], readings: dict[str, dict[str, objec
         save_energy(energy)
 
 
+def load_incoming_energy() -> dict[str, object]:
+    today = datetime.now().astimezone().date().isoformat()
+    try:
+        data = json.loads(INCOMING_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("total_wh", 0.0)
+    data.setdefault("calibration_factor", 1.0)
+    if data.get("date") != today:
+        data.update({"date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None})
+    else:
+        data.setdefault("today_wh", 0.0)
+        data.setdefault("last_power", 0.0)
+        data.setdefault("last_at", None)
+    return data
+
+
+def save_incoming_energy(state: dict[str, object]) -> bool:
+    global LAST_INCOMING_SAVE
+    try:
+        INCOMING_STATE_PATH.write_text(json.dumps(state), encoding="utf-8")
+        LAST_INCOMING_SAVE = time.monotonic()
+        return True
+    except OSError as exc:
+        log(f"Could not save continuous incoming-energy estimate: {exc}", "warning")
+        return False
+
+
+def update_incoming_energy(
+    state: dict[str, object],
+    power_w: float | None,
+    poll_interval: int,
+    now_epoch: float | None = None,
+) -> None:
+    """Integrate a gap-safe daily and lifetime energy counter."""
+    today = datetime.now().astimezone().date().isoformat()
+    if state.get("date") != today:
+        state.update({"date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None})
+    now_value = time.time() if now_epoch is None else float(now_epoch)
+    if power_w is None or not math.isfinite(float(power_w)):
+        state.update({"last_power": 0.0, "last_at": None})
+        return
+    power = max(0.0, float(power_w))
+    last_at = state.get("last_at")
+    if isinstance(last_at, (int, float)):
+        elapsed = min(max(0.0, now_value - float(last_at)), poll_interval * 2.5)
+        increment = ((float(state.get("last_power", 0.0)) + power) / 2.0) * elapsed / 3600.0
+        state["today_wh"] = float(state.get("today_wh", 0.0)) + increment
+        state["total_wh"] = float(state.get("total_wh", 0.0)) + increment
+    state.update({"last_power": power, "last_at": now_value})
+
+
+def calculate_incoming_sample(
+    status: dict[str, object],
+    estate_load_w: float | None,
+    battery_power_w: float | None,
+    state: dict[str, object],
+    options: dict[str, object],
+) -> dict[str, object]:
+    """Select direct Growatt power or the local power-balance fallback."""
+    stale_after = max(10, int(options.get("stale_after_seconds", 45)))
+    direct = direct_growatt_power(status, stale_after)
+    factor = min(1.35, max(0.75, float(state.get("calibration_factor", 1.0))))
+    raw_estimate = None
+    if estate_load_w is not None and battery_power_w is not None:
+        raw_estimate = derive_incoming_power(
+            estate_load_w,
+            battery_power_w,
+            bool(options.get("fallback_battery_power_positive_is_discharge", True)),
+            1.0,
+        )
+
+    # Learn conversion/loss correction only while solar is the sole incoming
+    # source. An active generator/grid input would make PV and power balance
+    # intentionally represent different things.
+    readings = status.get("readings") if isinstance(status.get("readings"), dict) else {}
+    try:
+        ac_input_voltage = float(dict(readings.get("ac_input_voltage", {})).get("value") or 0.0)
+    except (TypeError, ValueError):
+        ac_input_voltage = 0.0
+    if (
+        bool(options.get("fallback_learning_enabled", True))
+        and direct is not None and direct >= 250.0
+        and raw_estimate is not None and raw_estimate >= 250.0
+        and ac_input_voltage < 80.0
+    ):
+        observed = min(1.35, max(0.75, direct / raw_estimate))
+        factor = round((factor * 0.95) + (observed * 0.05), 5)
+        state["calibration_factor"] = factor
+
+    estimated = None if raw_estimate is None else round(raw_estimate * factor, 1)
+    if direct is not None:
+        power = round(direct, 1)
+        source = "direct_growatt"
+        quality = "measured"
+    elif bool(options.get("fallback_enabled", True)) and estimated is not None:
+        power = estimated
+        source = "estimated_power_balance"
+        quality = "estimated"
+    else:
+        power = None
+        source = "unavailable"
+        quality = "unavailable"
+    return {
+        "power_w": power,
+        "source": source,
+        "quality": quality,
+        "estimated_power_w": estimated,
+        "raw_estimate_w": raw_estimate,
+        "direct_power_w": direct,
+        "difference_w": None if direct is None or estimated is None else round(estimated - direct, 1),
+        "estate_load_w": estate_load_w,
+        "battery_power_w": battery_power_w,
+        "calibration_factor": factor,
+    }
+
+
+def publish_incoming_sample(
+    sample: dict[str, object],
+    state: dict[str, object],
+    min_interval_seconds: int,
+) -> None:
+    source = str(sample["source"])
+    attributes = {
+        "friendly_name": "Growatt Incoming Power",
+        "unit_of_measurement": "W",
+        "device_class": "power",
+        "state_class": "measurement",
+        "icon": "mdi:transmission-tower-import",
+        "source": source,
+        "quality": sample["quality"],
+        "estate_load_w": sample["estate_load_w"],
+        "battery_power_w": sample["battery_power_w"],
+        "estimated_power_w": sample["estimated_power_w"],
+        "direct_power_w": sample["direct_power_w"],
+        "estimate_difference_w": sample["difference_w"],
+        "calibration_factor": sample["calibration_factor"],
+        "equation": "incoming = estate load - signed battery power",
+        "attribution": "Direct Growatt telemetry with local Baiamonte power-balance fallback",
+    }
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_incoming_power",
+        sample["power_w"] if sample["power_w"] is not None else "unavailable",
+        attributes,
+        min_interval_seconds,
+    )
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_incoming_power_source",
+        source,
+        {
+            "friendly_name": "Growatt Incoming Power Source",
+            "icon": "mdi:source-branch",
+            "quality": sample["quality"],
+        },
+        0,
+    )
+    publish_state(
+        f"binary_sensor.{ENTITY_PREFIX}_incoming_power_estimated",
+        "on" if source == "estimated_power_balance" else "off",
+        {
+            "friendly_name": "Growatt Incoming Power Estimated",
+            "device_class": "running",
+            "icon": "mdi:calculator-variant",
+        },
+        0,
+    )
+    energy_attributes = {
+        "friendly_name": "Growatt Incoming Energy",
+        "unit_of_measurement": "kWh",
+        "device_class": "energy",
+        "state_class": "total_increasing",
+        "icon": "mdi:lightning-bolt",
+        "source": source,
+        "quality": sample["quality"],
+        "attribution": "Integrated direct or locally estimated Growatt incoming power",
+    }
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_incoming_energy",
+        round(float(state.get("total_wh", 0.0)) / 1000.0, 3),
+        energy_attributes,
+        min_interval_seconds,
+    )
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_incoming_energy_today",
+        round(float(state.get("today_wh", 0.0)) / 1000.0, 3),
+        {
+            **energy_attributes,
+            "friendly_name": "Growatt Incoming Energy Today",
+            "state_class": "total",
+        },
+        min_interval_seconds,
+    )
+
+
+def incoming_continuity_loop() -> None:
+    """Keep incoming power available even during Growatt communication loss."""
+    global LAST_INCOMING_SAVE
+    options = load_options()
+    interval = max(5, int(options.get("fallback_poll_interval_seconds", 10)))
+    publish_interval = max(5, int(options.get("home_assistant_publish_interval_seconds", 30)))
+    max_age = max(interval * 3, int(options.get("fallback_source_stale_seconds", 120)))
+    publish_enabled = bool(options.get("publish_to_home_assistant", True))
+    state = load_incoming_energy()
+    last_source = None
+    while RUNNING:
+        load_payload = get_home_assistant_state(str(options.get("fallback_load_power_entity", "sensor.baiamonte_estate_load")))
+        battery_payload = get_home_assistant_state(str(options.get("fallback_battery_power_entity", "sensor.baiamonte_can_bank_power")))
+        estate_load = numeric_home_assistant_state(load_payload, max_age)
+        battery_power = numeric_home_assistant_state(battery_payload, max_age)
+        with STATUS_LOCK:
+            status = dict(STATUS)
+            status["readings"] = dict(STATUS.get("readings", {}))
+        with INCOMING_STATE_LOCK:
+            sample = calculate_incoming_sample(status, estate_load, battery_power, state, options)
+            update_incoming_energy(state, sample["power_w"], interval)
+            if time.monotonic() - LAST_INCOMING_SAVE >= ENERGY_SAVE_INTERVAL_SECONDS:
+                save_incoming_energy(state)
+            total_kwh = float(state.get("total_wh", 0.0)) / 1000.0
+            today_kwh = float(state.get("today_wh", 0.0)) / 1000.0
+        with STATUS_LOCK:
+            STATUS.update({
+                "incoming_power_w": sample["power_w"],
+                "incoming_power_source": sample["source"],
+                "incoming_power_quality": sample["quality"],
+                "incoming_last_update_at": now_iso(),
+                "incoming_energy_total_kwh": total_kwh,
+                "incoming_energy_today_kwh": today_kwh,
+                "incoming_estimated_power_w": sample["estimated_power_w"],
+                "incoming_estimate_difference_w": sample["difference_w"],
+                "incoming_estate_load_w": sample["estate_load_w"],
+                "incoming_battery_power_w": sample["battery_power_w"],
+                "incoming_calibration_factor": sample["calibration_factor"],
+            })
+        if sample["source"] != last_source:
+            log(f"Incoming power source: {sample['source']}")
+            last_source = sample["source"]
+        if publish_enabled:
+            publish_incoming_sample(sample, state, publish_interval)
+        CONTINUITY_WAKE.wait(interval)
+        CONTINUITY_WAKE.clear()
+    with INCOMING_STATE_LOCK:
+        save_incoming_energy(state)
+
+
 def retry_delay(poll_interval: int, failures: int, maximum: int = 300) -> int:
     """Back off expensive protocol discovery while remaining manually wakeable."""
     exponent = min(max(0, failures - 1), 8)
@@ -1502,6 +1853,7 @@ def stop(_signum: int, _frame: object) -> None:
     global RUNNING
     RUNNING = False
     WAKE.set()
+    CONTINUITY_WAKE.set()
 
 
 def main() -> int:
@@ -1510,12 +1862,15 @@ def main() -> int:
     server = ThreadingHTTPServer(("0.0.0.0", 8097), Handler)
     threading.Thread(target=server.serve_forever, name="growatt-dashboard", daemon=True).start()
     worker = threading.Thread(target=poll_loop, name="growatt-usb", daemon=True)
+    continuity_worker = threading.Thread(target=incoming_continuity_loop, name="growatt-incoming-power", daemon=True)
     worker.start()
+    continuity_worker.start()
     log("Baiamonte Growatt dashboard ready on Home Assistant ingress")
     while RUNNING:
         time.sleep(5)
     server.shutdown()
     worker.join(timeout=5)
+    continuity_worker.join(timeout=5)
     log("Baiamonte Growatt USB stopped")
     return 0
 

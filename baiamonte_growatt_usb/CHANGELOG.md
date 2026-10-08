@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Keeps a stable incoming-power sensor available when direct Growatt communication is offline by balancing estate load against signed battery power.
+- Publishes a persistent `total_increasing` incoming-energy entity for the Home Assistant Energy dashboard plus a daily energy counter.
+- Marks every value as direct, estimated, or unavailable and exposes an estimation binary sensor for dashboards and automations.
+- Learns a bounded conversion-loss correction while direct solar telemetry is healthy so offline values remain close to repaired Growatt readings.
+- Rejects stale or unavailable source entities and stops energy integration across telemetry gaps.
+
 ## 1.3.8
 
 - Uses the active baud rate discovered during raw-PI recovery for startup and manual firmware inquiries instead of retrying the configured rate that already failed.
