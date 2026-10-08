@@ -37,7 +37,7 @@ configuration:
     description: Sensore firmato della potenza batteria usato nel bilancio.
   fallback_generator_power_entity:
     name: Entità potenza ingresso generatore
-    description: Potenza del generatore sottratta dall'ingresso totale per isolare la potenza solare stimata.
+    description: Sensore opzionale dedicato esclusivamente al generatore. Lascia vuoto finché non è installato un contatore verificato.
   fallback_grid_power_entity:
     name: Entità potenza ingresso rete
     description: Importazione rete opzionale sottratta dall'ingresso totale. Lascia vuoto per un impianto off-grid.

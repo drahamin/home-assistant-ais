@@ -37,7 +37,7 @@ configuration:
     description: Signed Home Assistant battery power sensor used in the balance.
   fallback_generator_power_entity:
     name: Generator input power entity
-    description: Generator input subtracted from total incoming power to isolate estimated solar power.
+    description: Optional verified generator-only power sensor. Leave blank unless a meter measures generator production exclusively.
   fallback_grid_power_entity:
     name: Grid input power entity
     description: Optional grid import subtracted from total incoming power. Leave blank for an off-grid installation.

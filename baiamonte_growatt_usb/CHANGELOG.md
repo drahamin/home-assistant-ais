@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3
+
+- Stops treating either estate breaker meter as generator input; both track inverter/output load while the generator is stopped.
+- Migrates either incorrect saved mapping to no generator contribution so estimated solar remains available and accurate.
+- Keeps support for a future verified generator-only meter through the optional generator entity setting.
+
 ## 1.4.2
 
 - Corrects the default generator source to the dedicated generator-main-breaker power meter.

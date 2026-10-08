@@ -33,7 +33,7 @@ home_assistant_publish_interval_seconds: 30
 fallback_enabled: true
 fallback_load_power_entity: sensor.baiamonte_estate_load
 fallback_battery_power_entity: sensor.baiamonte_can_bank_power
-fallback_generator_power_entity: sensor.generator_main_breaker_phase_a_power
+fallback_generator_power_entity: ""
 fallback_grid_power_entity: ""
 fallback_battery_power_positive_is_discharge: true
 fallback_source_stale_seconds: 120
@@ -44,6 +44,8 @@ allow_setting_changes: false
 firmware_tools_enabled: true
 firmware_max_package_mb: 32
 ```
+
+Configure `fallback_generator_power_entity` only after installing a meter that measures generator production exclusively. The current Baiamonte breaker meters track inverter/output load and are intentionally ignored. While the generator is stopped, the blank default keeps generator contribution at zero and estimates solar from estate load plus battery charging.
 
 Use a stable `/dev/serial/by-id/...` path after commissioning if several serial USB adapters are connected. A by-id path is safer than `/dev/ttyUSB0` because numeric device names may change after a reboot.
 
