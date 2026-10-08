@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.4.0"
+version: "1.4.1"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -33,6 +33,8 @@ options:
   fallback_enabled: true
   fallback_load_power_entity: "sensor.baiamonte_estate_load"
   fallback_battery_power_entity: "sensor.baiamonte_can_bank_power"
+  fallback_generator_power_entity: "sensor.bluetti_main_breaker_power"
+  fallback_grid_power_entity: ""
   fallback_battery_power_positive_is_discharge: true
   fallback_source_stale_seconds: 120
   fallback_poll_interval_seconds: 10
@@ -55,6 +57,8 @@ schema:
   fallback_enabled: "bool"
   fallback_load_power_entity: "str"
   fallback_battery_power_entity: "str"
+  fallback_generator_power_entity: "str"
+  fallback_grid_power_entity: "str"
   fallback_battery_power_positive_is_discharge: "bool"
   fallback_source_stale_seconds: "int"
   fallback_poll_interval_seconds: "int"
@@ -103,6 +107,12 @@ configuration:
   fallback_battery_power_entity:
     name: Battery bank power entity
     description: Signed battery power sensor used in the fallback balance.
+  fallback_generator_power_entity:
+    name: Generator input power entity
+    description: AC generator input sensor subtracted from total incoming power to isolate estimated solar production.
+  fallback_grid_power_entity:
+    name: Grid input power entity
+    description: Optional grid-import power sensor subtracted from total incoming power. Leave blank for this off-grid estate.
   fallback_battery_power_positive_is_discharge:
     name: Positive battery power means discharge
     description: Keep enabled for Baiamonte CAN battery telemetry, where charging is negative and discharging is positive.

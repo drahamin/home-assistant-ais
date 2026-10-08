@@ -35,6 +35,12 @@ configuration:
   fallback_battery_power_entity:
     name: Battery bank power entity
     description: Signed Home Assistant battery power sensor used in the balance.
+  fallback_generator_power_entity:
+    name: Generator input power entity
+    description: Generator input subtracted from total incoming power to isolate estimated solar power.
+  fallback_grid_power_entity:
+    name: Grid input power entity
+    description: Optional grid import subtracted from total incoming power. Leave blank for an off-grid installation.
   fallback_battery_power_positive_is_discharge:
     name: Positive battery power means discharge
     description: Keep enabled for Baiamonte battery telemetry; charging is negative and discharging is positive.

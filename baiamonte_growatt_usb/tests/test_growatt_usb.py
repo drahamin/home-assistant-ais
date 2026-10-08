@@ -73,6 +73,43 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(sample["source"], "direct_growatt")
         self.assertEqual(sample["difference_w"], -100.0)
 
+    @patch.object(growatt, "direct_growatt_power", return_value=None)
+    def test_offline_solar_subtracts_generator_and_grid_from_total_incoming(self, _direct):
+        sample = growatt.calculate_solar_sample(
+            {"connected": False, "readings": {}},
+            {"power_w": 2403.6},
+            310.0,
+            0.0,
+            {"fallback_enabled": True},
+        )
+        self.assertEqual(sample["power_w"], 2093.6)
+        self.assertEqual(sample["source"], "estimated_power_balance")
+        self.assertEqual(sample["quality"], "estimated")
+
+    @patch.object(growatt, "direct_growatt_power", return_value=1800.0)
+    def test_online_solar_prefers_direct_growatt_pv(self, _direct):
+        sample = growatt.calculate_solar_sample(
+            {"connected": True, "readings": {}},
+            {"power_w": 2400.0},
+            300.0,
+            0.0,
+            {"fallback_enabled": True},
+        )
+        self.assertEqual(sample["power_w"], 1800.0)
+        self.assertEqual(sample["source"], "direct_growatt")
+
+    @patch.object(growatt, "direct_growatt_power", return_value=None)
+    def test_offline_solar_is_unavailable_without_generator_meter(self, _direct):
+        sample = growatt.calculate_solar_sample(
+            {"connected": False, "readings": {}},
+            {"power_w": 2400.0},
+            None,
+            0.0,
+            {"fallback_enabled": True},
+        )
+        self.assertIsNone(sample["power_w"])
+        self.assertEqual(sample["source"], "unavailable")
+
     def test_incoming_energy_is_monotonic_and_does_not_bridge_missing_data(self):
         state = {
             "date": growatt.datetime.now().astimezone().date().isoformat(),
@@ -89,6 +126,22 @@ class GrowattUsbTests(unittest.TestCase):
         growatt.update_incoming_energy(state, None, 10, now_epoch=120.0)
         growatt.update_incoming_energy(state, 1000.0, 10, now_epoch=1000.0)
         self.assertEqual(state["total_wh"], total_after_valid)
+
+    def test_solar_energy_is_monotonic_and_does_not_bridge_missing_data(self):
+        state = {
+            "date": growatt.datetime.now().astimezone().date().isoformat(),
+            "solar_today_wh": 0.0,
+            "solar_total_wh": 5000.0,
+            "solar_last_power": 0.0,
+            "solar_last_at": None,
+        }
+        growatt.update_solar_energy(state, 2000.0, 10, now_epoch=100.0)
+        growatt.update_solar_energy(state, 2000.0, 10, now_epoch=110.0)
+        self.assertAlmostEqual(state["solar_today_wh"], 2000.0 * 10.0 / 3600.0)
+        total_after_valid = state["solar_total_wh"]
+        growatt.update_solar_energy(state, None, 10, now_epoch=120.0)
+        growatt.update_solar_energy(state, 2000.0, 10, now_epoch=1000.0)
+        self.assertEqual(state["solar_total_wh"], total_after_valid)
 
     def test_retry_delay_backs_off_and_caps_at_five_minutes(self):
         self.assertEqual(growatt.retry_delay(10, 1), 10)

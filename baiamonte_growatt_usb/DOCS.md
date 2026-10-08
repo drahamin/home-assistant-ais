@@ -33,6 +33,8 @@ home_assistant_publish_interval_seconds: 30
 fallback_enabled: true
 fallback_load_power_entity: sensor.baiamonte_estate_load
 fallback_battery_power_entity: sensor.baiamonte_can_bank_power
+fallback_generator_power_entity: sensor.bluetti_main_breaker_power
+fallback_grid_power_entity: ""
 fallback_battery_power_positive_is_discharge: true
 fallback_source_stale_seconds: 120
 fallback_poll_interval_seconds: 10
@@ -110,6 +112,11 @@ The app publishes the readings supported by the connected firmware. The normal e
 - `binary_sensor.baiamonte_growatt_incoming_power_estimated`
 - `sensor.baiamonte_growatt_incoming_energy`
 - `sensor.baiamonte_growatt_incoming_energy_today`
+- `sensor.baiamonte_growatt_solar_input_power`
+- `sensor.baiamonte_growatt_solar_input_source`
+- `binary_sensor.baiamonte_growatt_solar_input_estimated`
+- `sensor.baiamonte_growatt_solar_input_energy`
+- `sensor.baiamonte_growatt_solar_input_energy_today`
 
 The daily energy value is a local estimate integrated from the inverter's live PV power. Use the Growatt lifetime/certified meter reading for accounting where exact revenue-grade totals are required.
 
@@ -121,7 +128,9 @@ The daily energy value is a local estimate integrated from the inverter's live P
 
 The Baiamonte battery monitor reports discharge as positive and charging as negative. Therefore the balance subtracts battery support from the estate load and adds energy entering the batteries. The source entity reports `direct_growatt`, `estimated_power_balance`, or `unavailable`, and the binary sensor is on whenever estimation is active.
 
-`sensor.baiamonte_growatt_incoming_energy` is persistent, monotonic, uses kWh with `device_class: energy` and `state_class: total_increasing`, and is the entity intended for the Home Assistant Energy dashboard. The app does not integrate across missing or stale source data. While direct Growatt telemetry is online and no AC input is present, it slowly learns a bounded conversion-loss factor to keep the fallback close to the direct reading.
+`sensor.baiamonte_growatt_incoming_energy` is persistent and monotonic for total-source reporting. The app does not integrate across missing or stale source data. While direct Growatt telemetry is online and no AC input is present, it slowly learns a bounded conversion-loss factor to keep the fallback close to the direct reading.
+
+For solar-specific dashboards and automation use `sensor.baiamonte_growatt_solar_input_power`. When Growatt is offline it removes the measured generator and optional grid contribution from total incoming power. Use `sensor.baiamonte_growatt_solar_input_energy` as the solar production source on the Home Assistant Energy dashboard.
 
 ## Troubleshooting
 

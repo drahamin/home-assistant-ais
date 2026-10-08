@@ -17,6 +17,7 @@ It is designed for the installed Growatt SPF 5000 ES. It natively supports the G
 - Estimated local PV energy for the current day
 - Stable `sensor.baiamonte_growatt_*` Home Assistant entities
 - Continuous incoming power and Energy-dashboard kWh using a local load/battery balance while the inverter link is offline
+- Continuous solar power and energy with measured generator/grid input removed from the offline estimate
 - Guided USB, protocol, cable, contention, and stale-data diagnostics
 - Home Assistant ingress dashboard in the Baiamonte visual system
 - Multi-architecture image publishing and Home Assistant automatic updates

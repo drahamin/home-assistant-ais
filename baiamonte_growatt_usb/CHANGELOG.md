@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+
+- Publishes a dedicated continuous solar-input power sensor instead of treating generator input as solar while Growatt is offline.
+- Calculates estimated solar as estate load minus signed battery power minus measured generator and optional grid input.
+- Adds persistent solar-input lifetime and daily energy entities suitable for Home Assistant energy reporting.
+
 ## 1.4.0
 
 - Keeps a stable incoming-power sensor available when direct Growatt communication is offline by balancing estate load against signed battery power.

@@ -80,7 +80,7 @@ DEFAULT_UI_OPTIONS: dict[str, object] = {
     "remaining_energy_entity": "sensor.baiamonte_can_bank_remaining_energy",
     "nominal_energy_entity": "sensor.baiamonte_can_bank_nominal_energy",
     "estate_load_entity": "sensor.baiamonte_estate_load",
-    "solar_power_entity": "sensor.total_dc_input_power",
+    "solar_power_entity": "sensor.baiamonte_growatt_solar_input_power",
     "internet_health_entity": "binary_sensor.starlink_connectivity",
     "solar_forecast_now_entity": "sensor.solcast_pv_forecast_power_now",
     "solar_remaining_today_entity": "sensor.solcast_pv_forecast_forecast_remaining_today",

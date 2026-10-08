@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Use the continuous Baiamonte Growatt solar-input sensor by default so planning and recovery logic keep receiving solar power while inverter communications are offline.
+
 ## 0.3.2
 
 - Replace the unavailable `mdi:shield-lightning` glyph with the broadly supported `mdi:shield-check` icon for the Home Assistant sidebar and Power Guard status entity.
