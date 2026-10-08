@@ -35,6 +35,12 @@ configuration:
   fallback_battery_power_entity:
     name: Entità potenza banco batterie
     description: Sensore firmato della potenza batteria usato nel bilancio.
+  fallback_generator_power_entity:
+    name: Entità potenza ingresso generatore
+    description: Potenza del generatore sottratta dall'ingresso totale per isolare la potenza solare stimata.
+  fallback_grid_power_entity:
+    name: Entità potenza ingresso rete
+    description: Importazione rete opzionale sottratta dall'ingresso totale. Lascia vuoto per un impianto off-grid.
   fallback_battery_power_positive_is_discharge:
     name: Potenza batteria positiva significa scarica
     description: Lascia attivo per la telemetria batterie Baiamonte; la carica è negativa e la scarica positiva.

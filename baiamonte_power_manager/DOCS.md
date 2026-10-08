@@ -10,6 +10,8 @@ wiring faults, an exhausted battery, or failed switching hardware can still
 cause an outage. Its purpose is to extend runtime and preserve the most useful
 services for as long as the available energy permits.
 
+Live solar power defaults to `sensor.baiamonte_growatt_solar_input_power`, which uses direct Growatt PV when available and the generator-adjusted Baiamonte power balance while Growatt is offline.
+
 ## Fixed safety boundary
 
 The app never sends commands to the BMS or inverter. It cannot change charge

@@ -73,6 +73,13 @@ STATUS: dict[str, object] = {
     "incoming_estate_load_w": None,
     "incoming_battery_power_w": None,
     "incoming_calibration_factor": 1.0,
+    "solar_input_power_w": None,
+    "solar_input_source": "unavailable",
+    "solar_input_quality": "unavailable",
+    "solar_input_energy_total_kwh": 0.0,
+    "solar_input_energy_today_kwh": 0.0,
+    "solar_input_generator_power_w": None,
+    "solar_input_grid_power_w": None,
     "settings": {},
     "settings_updated_at": None,
     "firmware": {},
@@ -1262,13 +1269,20 @@ def load_incoming_energy() -> dict[str, object]:
     if not isinstance(data, dict):
         data = {}
     data.setdefault("total_wh", 0.0)
+    data.setdefault("solar_total_wh", 0.0)
     data.setdefault("calibration_factor", 1.0)
     if data.get("date") != today:
-        data.update({"date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None})
+        data.update({
+            "date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None,
+            "solar_today_wh": 0.0, "solar_last_power": 0.0, "solar_last_at": None,
+        })
     else:
         data.setdefault("today_wh", 0.0)
         data.setdefault("last_power", 0.0)
         data.setdefault("last_at", None)
+        data.setdefault("solar_today_wh", 0.0)
+        data.setdefault("solar_last_power", 0.0)
+        data.setdefault("solar_last_at", None)
     return data
 
 
@@ -1305,6 +1319,33 @@ def update_incoming_energy(
         state["today_wh"] = float(state.get("today_wh", 0.0)) + increment
         state["total_wh"] = float(state.get("total_wh", 0.0)) + increment
     state.update({"last_power": power, "last_at": now_value})
+
+
+def update_solar_energy(
+    state: dict[str, object],
+    power_w: float | None,
+    poll_interval: int,
+    now_epoch: float | None = None,
+) -> None:
+    """Integrate the isolated solar input without bridging unavailable periods."""
+    today = datetime.now().astimezone().date().isoformat()
+    if state.get("date") != today:
+        state.update({
+            "date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None,
+            "solar_today_wh": 0.0, "solar_last_power": 0.0, "solar_last_at": None,
+        })
+    now_value = time.time() if now_epoch is None else float(now_epoch)
+    if power_w is None or not math.isfinite(float(power_w)):
+        state.update({"solar_last_power": 0.0, "solar_last_at": None})
+        return
+    power = max(0.0, float(power_w))
+    last_at = state.get("solar_last_at")
+    if isinstance(last_at, (int, float)):
+        elapsed = min(max(0.0, now_value - float(last_at)), poll_interval * 2.5)
+        increment = ((float(state.get("solar_last_power", 0.0)) + power) / 2.0) * elapsed / 3600.0
+        state["solar_today_wh"] = float(state.get("solar_today_wh", 0.0)) + increment
+        state["solar_total_wh"] = float(state.get("solar_total_wh", 0.0)) + increment
+    state.update({"solar_last_power": power, "solar_last_at": now_value})
 
 
 def calculate_incoming_sample(
@@ -1369,6 +1410,43 @@ def calculate_incoming_sample(
         "estate_load_w": estate_load_w,
         "battery_power_w": battery_power_w,
         "calibration_factor": factor,
+    }
+
+
+def calculate_solar_sample(
+    status: dict[str, object],
+    incoming_sample: dict[str, object],
+    generator_power_w: float | None,
+    grid_power_w: float | None,
+    options: dict[str, object],
+) -> dict[str, object]:
+    """Isolate solar from the whole-system balance when Growatt is offline."""
+    direct = direct_growatt_power(status, max(10, int(options.get("stale_after_seconds", 45))))
+    estimated = None
+    incoming_power = incoming_sample.get("power_w")
+    if incoming_power is not None and generator_power_w is not None and grid_power_w is not None:
+        estimated = round(max(0.0, float(incoming_power) - max(0.0, generator_power_w) - max(0.0, grid_power_w)), 1)
+    if direct is not None:
+        power = round(direct, 1)
+        source = "direct_growatt"
+        quality = "measured"
+    elif bool(options.get("fallback_enabled", True)) and estimated is not None:
+        power = estimated
+        source = "estimated_power_balance"
+        quality = "estimated"
+    else:
+        power = None
+        source = "unavailable"
+        quality = "unavailable"
+    return {
+        "power_w": power,
+        "source": source,
+        "quality": quality,
+        "direct_power_w": direct,
+        "estimated_power_w": estimated,
+        "incoming_power_w": incoming_power,
+        "generator_power_w": generator_power_w,
+        "grid_power_w": grid_power_w,
     }
 
 
@@ -1449,6 +1527,72 @@ def publish_incoming_sample(
     )
 
 
+def publish_solar_sample(
+    sample: dict[str, object],
+    state: dict[str, object],
+    min_interval_seconds: int,
+) -> None:
+    source = str(sample["source"])
+    common = {
+        "source": source,
+        "quality": sample["quality"],
+        "direct_power_w": sample["direct_power_w"],
+        "estimated_power_w": sample["estimated_power_w"],
+        "incoming_power_w": sample["incoming_power_w"],
+        "generator_power_w": sample["generator_power_w"],
+        "grid_power_w": sample["grid_power_w"],
+        "equation": "solar = estate load - signed battery power - generator - grid",
+        "attribution": "Direct Growatt telemetry with Baiamonte whole-system power-balance fallback",
+    }
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_solar_input_power",
+        sample["power_w"] if sample["power_w"] is not None else "unavailable",
+        {
+            **common,
+            "friendly_name": "Growatt Solar Input Power",
+            "unit_of_measurement": "W",
+            "device_class": "power",
+            "state_class": "measurement",
+            "icon": "mdi:solar-power",
+        },
+        min_interval_seconds,
+    )
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_solar_input_source",
+        source,
+        {"friendly_name": "Growatt Solar Input Source", "icon": "mdi:source-branch", "quality": sample["quality"]},
+        0,
+    )
+    publish_state(
+        f"binary_sensor.{ENTITY_PREFIX}_solar_input_estimated",
+        "on" if source == "estimated_power_balance" else "off",
+        {"friendly_name": "Growatt Solar Input Estimated", "device_class": "running", "icon": "mdi:calculator-variant"},
+        0,
+    )
+    energy_attributes = {
+        "friendly_name": "Growatt Solar Input Energy",
+        "unit_of_measurement": "kWh",
+        "device_class": "energy",
+        "state_class": "total_increasing",
+        "icon": "mdi:solar-power-variant",
+        "source": source,
+        "quality": sample["quality"],
+        "attribution": "Integrated direct or locally estimated Growatt solar input power",
+    }
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_solar_input_energy",
+        round(float(state.get("solar_total_wh", 0.0)) / 1000.0, 3),
+        energy_attributes,
+        min_interval_seconds,
+    )
+    publish_state(
+        f"sensor.{ENTITY_PREFIX}_solar_input_energy_today",
+        round(float(state.get("solar_today_wh", 0.0)) / 1000.0, 3),
+        {**energy_attributes, "friendly_name": "Growatt Solar Input Energy Today", "state_class": "total"},
+        min_interval_seconds,
+    )
+
+
 def incoming_continuity_loop() -> None:
     """Keep incoming power available even during Growatt communication loss."""
     global LAST_INCOMING_SAVE
@@ -1459,21 +1603,32 @@ def incoming_continuity_loop() -> None:
     publish_enabled = bool(options.get("publish_to_home_assistant", True))
     state = load_incoming_energy()
     last_source = None
+    last_solar_source = None
     while RUNNING:
         load_payload = get_home_assistant_state(str(options.get("fallback_load_power_entity", "sensor.baiamonte_estate_load")))
         battery_payload = get_home_assistant_state(str(options.get("fallback_battery_power_entity", "sensor.baiamonte_can_bank_power")))
+        generator_entity = str(options.get("fallback_generator_power_entity", "sensor.bluetti_main_breaker_power")).strip()
+        grid_entity = str(options.get("fallback_grid_power_entity", "")).strip()
+        generator_payload = get_home_assistant_state(generator_entity) if generator_entity else None
+        grid_payload = get_home_assistant_state(grid_entity) if grid_entity else None
         estate_load = numeric_home_assistant_state(load_payload, max_age)
         battery_power = numeric_home_assistant_state(battery_payload, max_age)
+        generator_power = numeric_home_assistant_state(generator_payload, max_age) if generator_entity else 0.0
+        grid_power = numeric_home_assistant_state(grid_payload, max_age) if grid_entity else 0.0
         with STATUS_LOCK:
             status = dict(STATUS)
             status["readings"] = dict(STATUS.get("readings", {}))
         with INCOMING_STATE_LOCK:
             sample = calculate_incoming_sample(status, estate_load, battery_power, state, options)
+            solar_sample = calculate_solar_sample(status, sample, generator_power, grid_power, options)
             update_incoming_energy(state, sample["power_w"], interval)
+            update_solar_energy(state, solar_sample["power_w"], interval)
             if time.monotonic() - LAST_INCOMING_SAVE >= ENERGY_SAVE_INTERVAL_SECONDS:
                 save_incoming_energy(state)
             total_kwh = float(state.get("total_wh", 0.0)) / 1000.0
             today_kwh = float(state.get("today_wh", 0.0)) / 1000.0
+            solar_total_kwh = float(state.get("solar_total_wh", 0.0)) / 1000.0
+            solar_today_kwh = float(state.get("solar_today_wh", 0.0)) / 1000.0
         with STATUS_LOCK:
             STATUS.update({
                 "incoming_power_w": sample["power_w"],
@@ -1487,12 +1642,23 @@ def incoming_continuity_loop() -> None:
                 "incoming_estate_load_w": sample["estate_load_w"],
                 "incoming_battery_power_w": sample["battery_power_w"],
                 "incoming_calibration_factor": sample["calibration_factor"],
+                "solar_input_power_w": solar_sample["power_w"],
+                "solar_input_source": solar_sample["source"],
+                "solar_input_quality": solar_sample["quality"],
+                "solar_input_energy_total_kwh": solar_total_kwh,
+                "solar_input_energy_today_kwh": solar_today_kwh,
+                "solar_input_generator_power_w": solar_sample["generator_power_w"],
+                "solar_input_grid_power_w": solar_sample["grid_power_w"],
             })
         if sample["source"] != last_source:
             log(f"Incoming power source: {sample['source']}")
             last_source = sample["source"]
+        if solar_sample["source"] != last_solar_source:
+            log(f"Solar input source: {solar_sample['source']}")
+            last_solar_source = solar_sample["source"]
         if publish_enabled:
             publish_incoming_sample(sample, state, publish_interval)
+            publish_solar_sample(solar_sample, state, publish_interval)
         CONTINUITY_WAKE.wait(interval)
         CONTINUITY_WAKE.clear()
     with INCOMING_STATE_LOCK:
