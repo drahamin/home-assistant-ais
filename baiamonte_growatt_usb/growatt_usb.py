@@ -46,8 +46,11 @@ SETTINGS_REFRESH_SECONDS = 900
 FIRMWARE_REFRESH_SECONDS = 21600
 FIRMWARE_RETRY_SECONDS = 900
 INCOMING_STATE_LOCK = threading.Lock()
-DEFAULT_GENERATOR_POWER_ENTITY = "sensor.generator_main_breaker_phase_a_power"
-LEGACY_INCORRECT_GENERATOR_ENTITY = "sensor.bluetti_main_breaker_power"
+DEFAULT_GENERATOR_POWER_ENTITY = ""
+LEGACY_INCORRECT_GENERATOR_ENTITIES = {
+    "sensor.bluetti_main_breaker_power",
+    "sensor.generator_main_breaker_phase_a_power",
+}
 
 STATUS: dict[str, object] = {
     "service": "starting",
@@ -858,7 +861,7 @@ def numeric_home_assistant_state(
 def configured_generator_power_entity(options: dict[str, object]) -> str:
     """Return the generator meter, migrating the estate's old incorrect mapping."""
     configured = str(options.get("fallback_generator_power_entity", DEFAULT_GENERATOR_POWER_ENTITY)).strip()
-    if configured == LEGACY_INCORRECT_GENERATOR_ENTITY:
+    if configured in LEGACY_INCORRECT_GENERATOR_ENTITIES:
         return DEFAULT_GENERATOR_POWER_ENTITY
     return configured
 

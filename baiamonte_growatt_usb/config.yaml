@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.4.2"
+version: "1.4.3"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -33,7 +33,7 @@ options:
   fallback_enabled: true
   fallback_load_power_entity: "sensor.baiamonte_estate_load"
   fallback_battery_power_entity: "sensor.baiamonte_can_bank_power"
-  fallback_generator_power_entity: "sensor.generator_main_breaker_phase_a_power"
+  fallback_generator_power_entity: ""
   fallback_grid_power_entity: ""
   fallback_battery_power_positive_is_discharge: true
   fallback_source_stale_seconds: 120
@@ -109,7 +109,7 @@ configuration:
     description: Signed battery power sensor used in the fallback balance.
   fallback_generator_power_entity:
     name: Generator input power entity
-    description: AC generator input sensor subtracted from total incoming power to isolate estimated solar production.
+    description: Optional verified generator-only power sensor. Leave blank unless a meter measures generator production exclusively; inverter/output breaker meters must not be used.
   fallback_grid_power_entity:
     name: Grid input power entity
     description: Optional grid-import power sensor subtracted from total incoming power. Leave blank for this off-grid estate.
