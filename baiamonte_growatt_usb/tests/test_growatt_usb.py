@@ -15,6 +15,81 @@ SPEC.loader.exec_module(growatt)
 
 
 class GrowattUsbTests(unittest.TestCase):
+    def test_power_balance_adds_charging_and_subtracts_discharge(self):
+        self.assertEqual(growatt.derive_incoming_power(500, -200), 700.0)
+        self.assertEqual(growatt.derive_incoming_power(500, 200), 300.0)
+        self.assertEqual(growatt.derive_incoming_power(200, 300), 0.0)
+
+    def test_power_balance_supports_opposite_battery_sign(self):
+        self.assertEqual(
+            growatt.derive_incoming_power(500, 200, positive_battery_power_is_discharge=False),
+            700.0,
+        )
+
+    def test_numeric_home_assistant_state_rejects_stale_and_unavailable(self):
+        now = growatt.datetime(2026, 10, 8, 12, 0, tzinfo=growatt.timezone.utc)
+        fresh = {"state": "723.5", "last_updated": "2026-10-08T11:59:30+00:00"}
+        stale = {"state": "723.5", "last_updated": "2026-10-08T11:55:00+00:00"}
+        self.assertEqual(growatt.numeric_home_assistant_state(fresh, 120, now), 723.5)
+        self.assertIsNone(growatt.numeric_home_assistant_state(stale, 120, now))
+        self.assertIsNone(growatt.numeric_home_assistant_state({"state": "unavailable"}, 120, now))
+
+    def test_direct_power_is_not_used_when_generator_or_grid_is_active(self):
+        status = {
+            "connected": True,
+            "last_success_epoch": growatt.time.time(),
+            "readings": {
+                "ac_input_voltage": {"value": 230.0},
+                "pv_input_power": {"value": 1500.0},
+            },
+        }
+        self.assertIsNone(growatt.direct_growatt_power(status, 45))
+
+    @patch.object(growatt, "direct_growatt_power", return_value=None)
+    def test_offline_sample_uses_calibrated_power_balance(self, _direct):
+        state = {"calibration_factor": 1.05}
+        sample = growatt.calculate_incoming_sample(
+            {"connected": False, "readings": {}},
+            500.0,
+            -200.0,
+            state,
+            {"fallback_enabled": True, "fallback_battery_power_positive_is_discharge": True},
+        )
+        self.assertEqual(sample["power_w"], 735.0)
+        self.assertEqual(sample["source"], "estimated_power_balance")
+        self.assertEqual(sample["quality"], "estimated")
+
+    @patch.object(growatt, "direct_growatt_power", return_value=800.0)
+    def test_online_sample_prefers_direct_power_and_reports_comparison(self, _direct):
+        state = {"calibration_factor": 1.0}
+        sample = growatt.calculate_incoming_sample(
+            {"connected": True, "readings": {"ac_input_voltage": {"value": 0}}},
+            500.0,
+            -200.0,
+            state,
+            {"fallback_enabled": True, "fallback_learning_enabled": False},
+        )
+        self.assertEqual(sample["power_w"], 800.0)
+        self.assertEqual(sample["source"], "direct_growatt")
+        self.assertEqual(sample["difference_w"], -100.0)
+
+    def test_incoming_energy_is_monotonic_and_does_not_bridge_missing_data(self):
+        state = {
+            "date": growatt.datetime.now().astimezone().date().isoformat(),
+            "today_wh": 0.0,
+            "total_wh": 10_000.0,
+            "last_power": 0.0,
+            "last_at": None,
+        }
+        growatt.update_incoming_energy(state, 1000.0, 10, now_epoch=100.0)
+        growatt.update_incoming_energy(state, 1000.0, 10, now_epoch=110.0)
+        self.assertAlmostEqual(state["today_wh"], 1000.0 * 10.0 / 3600.0)
+        self.assertGreater(state["total_wh"], 10_000.0)
+        total_after_valid = state["total_wh"]
+        growatt.update_incoming_energy(state, None, 10, now_epoch=120.0)
+        growatt.update_incoming_energy(state, 1000.0, 10, now_epoch=1000.0)
+        self.assertEqual(state["total_wh"], total_after_valid)
+
     def test_retry_delay_backs_off_and_caps_at_five_minutes(self):
         self.assertEqual(growatt.retry_delay(10, 1), 10)
         self.assertEqual(growatt.retry_delay(10, 4), 80)

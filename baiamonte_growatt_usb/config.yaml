@@ -1,5 +1,5 @@
 name: "Baiamonte Growatt USB"
-version: "1.3.8"
+version: "1.4.0"
 slug: "baiamonte_growatt_usb"
 description: "Local Growatt SPF USB telemetry, status, and guided diagnostics"
 url: "https://github.com/drahamin/home-assistant-ais"
@@ -30,6 +30,13 @@ options:
   stale_after_seconds: 45
   publish_to_home_assistant: true
   home_assistant_publish_interval_seconds: 30
+  fallback_enabled: true
+  fallback_load_power_entity: "sensor.baiamonte_estate_load"
+  fallback_battery_power_entity: "sensor.baiamonte_can_bank_power"
+  fallback_battery_power_positive_is_discharge: true
+  fallback_source_stale_seconds: 120
+  fallback_poll_interval_seconds: 10
+  fallback_learning_enabled: true
   read_only: true
   allow_setting_changes: false
   firmware_tools_enabled: true
@@ -45,6 +52,13 @@ schema:
   stale_after_seconds: "int"
   publish_to_home_assistant: "bool"
   home_assistant_publish_interval_seconds: "int"
+  fallback_enabled: "bool"
+  fallback_load_power_entity: "str"
+  fallback_battery_power_entity: "str"
+  fallback_battery_power_positive_is_discharge: "bool"
+  fallback_source_stale_seconds: "int"
+  fallback_poll_interval_seconds: "int"
+  fallback_learning_enabled: "bool"
   read_only: "bool"
   allow_setting_changes: "bool"
   firmware_tools_enabled: "bool"
@@ -80,6 +94,27 @@ configuration:
   home_assistant_publish_interval_seconds:
     name: Home Assistant publish interval
     description: Minimum seconds between changed sensor updates. Thirty seconds reduces database and network load while the app continues reading the inverter normally.
+  fallback_enabled:
+    name: Offline incoming-power fallback
+    description: Keep incoming power and energy available from the local load and battery power balance when Growatt communication is offline.
+  fallback_load_power_entity:
+    name: Estate load power entity
+    description: Home Assistant power sensor for all power currently used by the estate.
+  fallback_battery_power_entity:
+    name: Battery bank power entity
+    description: Signed battery power sensor used in the fallback balance.
+  fallback_battery_power_positive_is_discharge:
+    name: Positive battery power means discharge
+    description: Keep enabled for Baiamonte CAN battery telemetry, where charging is negative and discharging is positive.
+  fallback_source_stale_seconds:
+    name: Fallback source timeout
+    description: Reject load or battery readings older than this many seconds instead of integrating stale energy.
+  fallback_poll_interval_seconds:
+    name: Fallback update interval
+    description: Seconds between local incoming-power balance updates while direct Growatt communication is unavailable.
+  fallback_learning_enabled:
+    name: Learn direct-to-estimated calibration
+    description: While Growatt is online without AC input, learn a bounded conversion-loss correction so offline estimates closely match direct telemetry.
   read_only:
     name: Read-only safety lock
     description: Keep enabled for monitoring only. Disable this and separately enable setting changes to use the commissioning controls.
