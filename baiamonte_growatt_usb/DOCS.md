@@ -33,7 +33,7 @@ home_assistant_publish_interval_seconds: 30
 fallback_enabled: true
 fallback_load_power_entity: sensor.baiamonte_estate_load
 fallback_battery_power_entity: sensor.baiamonte_can_bank_power
-fallback_generator_power_entity: sensor.bluetti_main_breaker_power
+fallback_generator_power_entity: sensor.generator_main_breaker_phase_a_power
 fallback_grid_power_entity: ""
 fallback_battery_power_positive_is_discharge: true
 fallback_source_stale_seconds: 120
