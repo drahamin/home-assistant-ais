@@ -155,6 +155,50 @@ class GrowattUsbTests(unittest.TestCase):
         growatt.update_solar_energy(state, 2000.0, 10, now_epoch=1000.0)
         self.assertEqual(state["solar_total_wh"], total_after_valid)
 
+    def test_shared_daily_state_resets_solar_before_incoming_advances_date(self):
+        state = {
+            "date": "2000-01-01",
+            "today_wh": 1200.0,
+            "total_wh": 40_000.0,
+            "last_power": 600.0,
+            "last_at": 50.0,
+            "solar_today_wh": 7800.0,
+            "solar_total_wh": 35_000.0,
+            "solar_last_power": 900.0,
+            "solar_last_at": 50.0,
+        }
+
+        growatt.update_incoming_energy(state, 400.0, 10, now_epoch=100.0)
+        growatt.update_solar_energy(state, 700.0, 10, now_epoch=100.0)
+
+        self.assertEqual(state["today_wh"], 0.0)
+        self.assertEqual(state["solar_today_wh"], 0.0)
+        self.assertEqual(state["total_wh"], 40_000.0)
+        self.assertEqual(state["solar_total_wh"], 35_000.0)
+        self.assertEqual(state["last_power"], 400.0)
+        self.assertEqual(state["solar_last_power"], 700.0)
+
+    def test_loading_legacy_shared_state_discards_only_corrupt_daily_totals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "incoming-energy-state.json"
+            state_path.write_text(json.dumps({
+                "date": growatt.datetime.now().astimezone().date().isoformat(),
+                "today_wh": 1200.0,
+                "total_wh": 40_000.0,
+                "solar_today_wh": 7800.0,
+                "solar_total_wh": 35_000.0,
+                "calibration_factor": 1.015,
+            }))
+            with patch.object(growatt, "INCOMING_STATE_PATH", state_path):
+                state = growatt.load_incoming_energy()
+
+        self.assertEqual(state["daily_state_version"], 2)
+        self.assertEqual(state["today_wh"], 0.0)
+        self.assertEqual(state["solar_today_wh"], 0.0)
+        self.assertEqual(state["total_wh"], 40_000.0)
+        self.assertEqual(state["solar_total_wh"], 35_000.0)
+        self.assertEqual(state["calibration_factor"], 1.015)
+
     def test_retry_delay_backs_off_and_caps_at_five_minutes(self):
         self.assertEqual(growatt.retry_delay(10, 1), 10)
         self.assertEqual(growatt.retry_delay(10, 4), 80)

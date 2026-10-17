@@ -1284,7 +1284,13 @@ def load_incoming_energy() -> dict[str, object]:
     data.setdefault("total_wh", 0.0)
     data.setdefault("solar_total_wh", 0.0)
     data.setdefault("calibration_factor", 1.0)
-    if data.get("date") != today:
+    if int(data.get("daily_state_version", 0) or 0) < 2:
+        # Version 1 could retain solar_today_wh across date changes because the
+        # incoming integrator advanced the shared date first.  The affected
+        # daily value cannot be separated by day, so restart only the daily
+        # counters while preserving audited lifetime totals and calibration.
+        reset_daily_incoming_energy(data, today)
+    elif data.get("date") != today:
         data.update({
             "date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None,
             "solar_today_wh": 0.0, "solar_last_power": 0.0, "solar_last_at": None,
@@ -1310,6 +1316,25 @@ def save_incoming_energy(state: dict[str, object]) -> bool:
         return False
 
 
+def reset_daily_incoming_energy(state: dict[str, object], today: str) -> None:
+    """Reset every daily counter together before either integrator advances the date.
+
+    Incoming and isolated-solar energy share one persisted state object.  Resetting
+    only the counter owned by the first integrator made the second integrator see
+    the new date and retain yesterday's value indefinitely.
+    """
+    state.update({
+        "daily_state_version": 2,
+        "date": today,
+        "today_wh": 0.0,
+        "last_power": 0.0,
+        "last_at": None,
+        "solar_today_wh": 0.0,
+        "solar_last_power": 0.0,
+        "solar_last_at": None,
+    })
+
+
 def update_incoming_energy(
     state: dict[str, object],
     power_w: float | None,
@@ -1319,7 +1344,7 @@ def update_incoming_energy(
     """Integrate a gap-safe daily and lifetime energy counter."""
     today = datetime.now().astimezone().date().isoformat()
     if state.get("date") != today:
-        state.update({"date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None})
+        reset_daily_incoming_energy(state, today)
     now_value = time.time() if now_epoch is None else float(now_epoch)
     if power_w is None or not math.isfinite(float(power_w)):
         state.update({"last_power": 0.0, "last_at": None})
@@ -1343,10 +1368,7 @@ def update_solar_energy(
     """Integrate the isolated solar input without bridging unavailable periods."""
     today = datetime.now().astimezone().date().isoformat()
     if state.get("date") != today:
-        state.update({
-            "date": today, "today_wh": 0.0, "last_power": 0.0, "last_at": None,
-            "solar_today_wh": 0.0, "solar_last_power": 0.0, "solar_last_at": None,
-        })
+        reset_daily_incoming_energy(state, today)
     now_value = time.time() if now_epoch is None else float(now_epoch)
     if power_w is None or not math.isfinite(float(power_w)):
         state.update({"solar_last_power": 0.0, "solar_last_at": None})

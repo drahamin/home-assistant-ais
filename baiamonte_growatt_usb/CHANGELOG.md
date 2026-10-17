@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.4
+
+- Resets incoming and reconstructed-solar daily counters atomically at the local date boundary.
+- Prevents prior-day reconstructed solar energy from carrying forward after the incoming counter advances the shared state date.
+- Preserves lifetime energy totals and gap-safe integration while the Growatt connection is unavailable.
+
 ## 1.4.3
 
 - Stops treating either estate breaker meter as generator input; both track inverter/output load while the generator is stopped.
