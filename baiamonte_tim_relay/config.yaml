@@ -1,0 +1,46 @@
+name: Baiamonte Italian Wi-Fi Calling Relay
+version: "0.1.0"
+slug: rahamin_baiamonte_tim_relay
+description: Narrow stateful UDP relay for a reviewed Italian carrier ePDG endpoint
+url: https://github.com/drahamin/home-assistant-ais
+arch:
+  - aarch64
+startup: services
+boot: manual
+init: false
+ingress: true
+ingress_port: 8104
+panel_icon: mdi:phone-in-talk
+ports:
+  "15000/udp": 500
+  "14500/udp": 4500
+ports_description:
+  "15000/udp": IKE relay endpoint (host UDP 500)
+  "14500/udp": NAT-T relay endpoint (host UDP 4500)
+options:
+  enabled: false
+  provider_id: tim
+  allowed_source_ips: []
+  upstream_ips: []
+  max_sessions: 4
+  idle_timeout_seconds: 180
+  packets_per_second: 500
+  burst_packets: 1000
+  max_datagram_bytes: 65507
+  max_pending_packets: 256
+  max_pending_per_source: 64
+schema:
+  enabled: bool
+  provider_id: list(tim)
+  allowed_source_ips:
+    - str
+  upstream_ips:
+    - str
+  max_sessions: int(1,32)
+  idle_timeout_seconds: int(30,3600)
+  packets_per_second: int(10,5000)
+  burst_packets: int(10,10000)
+  max_datagram_bytes: int(512,65507)
+  max_pending_packets: int(8,512)
+  max_pending_per_source: int(4,128)
+
