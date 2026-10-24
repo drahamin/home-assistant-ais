@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baiamonte Egress</title>
+  <style>
+    body { font: 15px system-ui, sans-serif; max-width: 920px; margin: 2rem auto; padding: 0 1rem; color: #17212b; }
+    pre { background: #f3f5f7; padding: 1rem; border-radius: 8px; overflow: auto; }
+    .warning { border-left: 4px solid #c87b00; padding: .7rem 1rem; background: #fff8e7; }
+    button, input { font: inherit; margin: .25rem; }
+  </style>
+</head>
+<body>
+  <h1>Rahamin Baiamonte Egress</h1>
+  <p class="warning">Tunnel, DNS, and public egress are separate checks. Only the handset can prove TIM registration.</p>
+  <form action="api/profile" method="post" enctype="multipart/form-data">
+    <label>Approved connector profile <input name="profile" type="file" accept=".ovpn"></label>
+    <button type="submit">Store profile</button>
+  </form>
+  <p>
+    <button onclick="action('start')">Start</button>
+    <button onclick="action('stop')">Stop and clean rules</button>
+    <button onclick="action('health')">Run health checks</button>
+  </p>
+  <pre id="result"></pre>
+  <pre id="status">Loading…</pre>
+  <script>
+    async function refresh() {
+      const response = await fetch('api/status');
+      document.getElementById('status').textContent = JSON.stringify(await response.json(), null, 2);
+    }
+    async function action(name) {
+      const response = await fetch('api/' + name, {method: 'POST'});
+      document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+      await refresh();
+    }
+    refresh(); setInterval(refresh, 10000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+configuration:
+  auto_start:
+    name: Start connector automatically
+  mode:
+    name: Operating mode
+  wan_interface:
+    name: Baiamonte WAN-facing interface
+  allowed_source_cidrs:
+    name: Explicitly approved source CIDRs
+  allowed_udp_ports:
+    name: Explicitly approved UDP destination ports
+  tim_destination_ips:
+    name: Explicitly approved TIM ePDG destination IPs
+  probe_destination_ips:
+    name: Temporary exact HTTPS probe destination IPs
+  nat_enabled:
+    name: Source NAT approved traffic
+  health_hostname:
+    name: TIM ePDG health hostname
+  public_ip_url:
+    name: Public IP check URL
+  public_country_url:
+    name: Public country check URL
+  expected_country:
+    name: Expected ISO country code
+

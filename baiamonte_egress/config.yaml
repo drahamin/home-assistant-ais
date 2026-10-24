@@ -1,0 +1,57 @@
+name: "Rahamin Baiamonte Egress"
+version: "0.1.0"
+slug: "rahamin_baiamonte_egress"
+description: >-
+  Isolated CloudConnexa egress gateway for explicitly approved Italian carrier traffic.
+url: "https://github.com/rahamin/ha-vpn-gateway"
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: manual
+stage: experimental
+init: false
+ingress: true
+ingress_port: 8100
+ingress_stream: true
+panel_icon: mdi:phone-in-talk
+panel_title: "Baiamonte Egress"
+panel_admin: true
+devices:
+  - /dev/net/tun
+privileged:
+  - NET_ADMIN
+options:
+  auto_start: false
+  mode: probe_only
+  wan_interface: auto
+  allowed_source_cidrs:
+    - 192.168.86.127/32
+  allowed_udp_ports:
+    - 500
+    - 4500
+  tim_destination_ips: []
+  probe_destination_ips: []
+  nat_enabled: true
+  health_hostname: epdg.epc.mnc001.mcc222.pub.3gppnetwork.org
+  public_ip_url: https://api.ipify.org
+  public_country_url: https://api.country.is/
+  expected_country: IT
+schema:
+  auto_start: bool
+  mode: list(probe_only|https_probe|tim_egress)
+  wan_interface: str
+  allowed_source_cidrs:
+    - str
+  allowed_udp_ports:
+    - int
+  tim_destination_ips:
+    - str
+  probe_destination_ips:
+    - str
+  nat_enabled: bool
+  health_hostname: str
+  public_ip_url: url
+  public_country_url: url
+  expected_country: str
+
