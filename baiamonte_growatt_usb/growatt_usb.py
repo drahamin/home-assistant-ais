@@ -2167,6 +2167,8 @@ def local_solar_forecast_loop() -> None:
                 log(f"Local solar forecast could not save learning history: {exc}", "warning")
         if not forecast["points"]:
             training_day = None
+        archived = records.get(tomorrow.isoformat()) if saved_records == serialized else None
+        learning["next_forecast_saved_at"] = archived.get("issued_at") if archived else None
         publish_state(entity_id, forecast.get("total_kwh", "unavailable"), {
             **forecast,
             "tomorrow": next_day,
