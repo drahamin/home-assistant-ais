@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from solar_learning import apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
+from solar_learning import accuracy_archive, apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
 
 
 class SolarLearningTests(unittest.TestCase):
@@ -60,3 +60,17 @@ class SolarLearningTests(unittest.TestCase):
             path = Path(temporary) / "solar-learning.json"
             save_learning(path, recorded)
             self.assertEqual(load_learning(path), recorded)
+
+
+    def test_accuracy_archive_keeps_matching_solcast_even_without_hourly_weather(self):
+        records = {}
+        issued = datetime(2026, 11, 21, 22, 30, tzinfo=timezone.utc)
+        archive_forecast(records, {
+            "target_day": "2026-11-22", "solcast_used": True, "weather_hours": 0,
+            "total_kwh": 6, "solcast": {"total_kwh": 9}, "points": [{"power_w": 600}],
+        }, issued)
+        self.assertEqual(accuracy_archive(records)["2026-11-22"], {
+            "issued_at": issued.isoformat(), "local_kwh": 6, "solcast_kwh": 9,
+        })
+        profiles = {date(2026, 11, 22): {9: 6500}}
+        self.assertEqual(evaluate_forecasts(records, profiles, date(2026, 11, 23))["scored_days"], 0)

@@ -2,6 +2,7 @@
 
 import json
 from datetime import date, datetime, timedelta
+from math import isfinite
 from pathlib import Path
 from statistics import mean, median
 
@@ -30,14 +31,23 @@ def save_learning(path: Path, records: dict) -> None:
 def archive_forecast(records: dict, forecast: dict, issued: datetime) -> None:
     """Keep the latest genuine day-ahead forecast, and its unadjusted reference."""
     target = (issued.astimezone(ROME).date() + timedelta(days=1)).isoformat()
-    if (forecast.get("target_day") != target or not forecast.get("solcast_used")
-            or not forecast.get("weather_hours") or not forecast.get("points")):
+    if forecast.get("target_day") != target or not forecast.get("points"):
         return
-    baseline = forecast.get("uncalibrated_kwh", forecast.get("total_kwh"))
-    if baseline is None or baseline <= 0:
+    local = forecast.get("total_kwh")
+    baseline = forecast.get("uncalibrated_kwh", local)
+    if not isinstance(local, (int, float)) or not isfinite(local) or local < 0:
         return
     previous = records.get(target, {})
-    updated = {"baseline_kwh": baseline, "forecast_kwh": forecast["total_kwh"]}
+    solcast = (forecast.get("solcast") or {}).get("total_kwh")
+    updated = {
+        "baseline_kwh": baseline,
+        "forecast_kwh": local,
+        "solcast_kwh": solcast if isinstance(solcast, (int, float)) and isfinite(solcast) and solcast >= 0 else None,
+        "learning_eligible": bool(
+            forecast.get("solcast_used") and forecast.get("weather_hours")
+            and isinstance(baseline, (int, float)) and isfinite(baseline) and baseline > 0
+        ),
+    }
     if all(previous.get(key) == value for key, value in updated.items()):
         return
     records[target] = {**updated, "issued_at": issued.isoformat()}
@@ -58,7 +68,7 @@ def evaluate_forecasts(records: dict, profiles: dict[date, dict[int, float]], to
         if day < cutoff:
             del records[day]
     completed = [item for day, item in sorted(records.items())
-                 if day < today.isoformat() and "actual_kwh" in item]
+                 if day < today.isoformat() and "actual_kwh" in item and item.get("learning_eligible", True)]
     pairs = [(item["baseline_kwh"], item["actual_kwh"]) for item in completed]
     status = {
         "phase": "collecting",
@@ -88,6 +98,19 @@ def evaluate_forecasts(records: dict, profiles: dict[date, dict[int, float]], to
         "issued_mae_kwh": round(mean(abs(row["forecast_kwh"] - row["actual_kwh"]) for row in completed[-TRAINING_WINDOW:]), 3),
         "gain": round(_gain(pairs), 4) if improved else 1.0,
     }
+
+
+def accuracy_archive(records: dict) -> dict:
+    """Expose the saved totals without exposing internal calibration records."""
+    return {
+        day: {
+            "issued_at": row.get("issued_at"),
+            "local_kwh": row.get("forecast_kwh"),
+            "solcast_kwh": row.get("solcast_kwh"),
+        }
+        for day, row in sorted(records.items())[-32:]
+    }
+
 
 
 def apply_learning(forecast: dict, status: dict) -> dict:

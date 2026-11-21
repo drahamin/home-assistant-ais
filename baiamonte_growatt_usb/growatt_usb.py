@@ -24,7 +24,7 @@ from astral import Observer
 
 from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight, reconstructed_days, solcast_forecast, weather_hours
 
-from solar_learning import apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
+from solar_learning import accuracy_archive, apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
 
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
@@ -2182,6 +2182,13 @@ def local_solar_forecast_loop() -> None:
             "icon": "mdi:weather-sunny",
             "source": "Recent estate production with Solcast array and hourly cloud forecasts",
         }, 0)
+        if saved_records == serialized:
+            archive = accuracy_archive(records)
+            publish_state(f"sensor.{ENTITY_PREFIX}_solar_forecast_accuracy", len(archive), {
+                "friendly_name": "Solar Forecast Accuracy Archive",
+                "icon": "mdi:chart-timeline-variant",
+                "forecasts": archive,
+            }, 0)
         FORECAST_WAKE.wait(600)
 
 

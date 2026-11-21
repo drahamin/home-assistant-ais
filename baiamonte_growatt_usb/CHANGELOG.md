@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.9
+
+- Retain both day-ahead forecasts together for the Vineyard solar accuracy comparison.
+
 ## 1.4.8
 
 - Learn a bounded local forecast correction from saved day-ahead forecasts and completed daylight power balances.
