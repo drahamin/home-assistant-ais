@@ -2,6 +2,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "growatt_usb.py"
+sys.path.insert(0, str(MODULE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("growatt_usb", MODULE_PATH)
 growatt = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader

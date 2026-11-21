@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.6
+
+- Publish a separate local solar forecast from five complete estate power-balance days.
+
 ## 1.4.5
 
 - Use the measured estate main meter for the default solar power balance. Hold its reading for up to 45 minutes across normal report gaps, while keeping battery and other input freshness limits.

@@ -15,10 +15,14 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+from astral import Observer
+
+from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight
 
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
@@ -32,6 +36,7 @@ STARTED_AT = time.time()
 RUNNING = True
 WAKE = threading.Event()
 CONTINUITY_WAKE = threading.Event()
+FORECAST_WAKE = threading.Event()
 STATUS_LOCK = threading.Lock()
 DEVICE_IO_LOCK = threading.Lock()
 EVENTS: deque[dict[str, object]] = deque(maxlen=80)
@@ -2070,11 +2075,63 @@ def poll_loop() -> None:
     save_energy(energy)
 
 
+def _forecast_api(path: str, payload: dict | None = None) -> dict:
+    request = urllib.request.Request(
+        f"http://supervisor/core/api/{path}",
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)
+
+
+def local_solar_forecast_loop() -> None:
+    options = load_options()
+    if not TOKEN or not options.get("publish_to_home_assistant", True):
+        return
+    load = configured_load_power_entity(options)
+    bank = str(options.get("fallback_battery_power_entity", "sensor.baiamonte_can_bank_power"))
+    optional_sources = [configured_generator_power_entity(options), str(options.get("fallback_grid_power_entity", "")).strip()]
+    sources = [load, bank, *(entity for entity in optional_sources if entity)]
+    last_forecast = None
+    while RUNNING:
+        today = datetime.now(ROME).date()
+        if not last_forecast or not last_forecast["points"] or last_forecast["target_day"] != today.isoformat():
+            try:
+                config = _forecast_api("config")
+                data = _forecast_api("services/recorder/get_statistics?return_response", {
+                    "statistic_ids": sources,
+                    "start_time": midnight(today - timedelta(days=LOOKBACK_DAYS)).isoformat(),
+                    "end_time": midnight(today).isoformat(),
+                    "period": "hour",
+                    "types": ["mean"],
+                    "units": {"power": "W"},
+                })
+                last_forecast = local_forecast(
+                    data["service_response"]["statistics"], sources,
+                    Observer(float(config["latitude"]), float(config["longitude"])), today,
+                    battery_discharge_positive=bool(options.get("fallback_battery_power_positive_is_discharge", True)),
+                )
+            except (OSError, KeyError, TypeError, ValueError) as exc:
+                log(f"Local solar forecast could not read Recorder: {exc}", "warning")
+                last_forecast = None
+        forecast = last_forecast or {"target_day": today.isoformat(), "points": []}
+        publish_state(f"sensor.{ENTITY_PREFIX}_local_solar_forecast", forecast.get("total_kwh", "unavailable"), {
+            **forecast,
+            "friendly_name": "Local Solar Estimate",
+            "unit_of_measurement": "kWh",
+            "icon": "mdi:weather-sunny",
+            "source": "Five completed days of reconstructed incoming energy",
+        }, 0)
+        FORECAST_WAKE.wait(600)
+
+
 def stop(_signum: int, _frame: object) -> None:
     global RUNNING
     RUNNING = False
     WAKE.set()
     CONTINUITY_WAKE.set()
+    FORECAST_WAKE.set()
 
 
 def main() -> int:
@@ -2086,6 +2143,7 @@ def main() -> int:
     continuity_worker = threading.Thread(target=incoming_continuity_loop, name="growatt-incoming-power", daemon=True)
     worker.start()
     continuity_worker.start()
+    threading.Thread(target=local_solar_forecast_loop, name="local-solar-forecast", daemon=True).start()
     log("Baiamonte Growatt dashboard ready on Home Assistant ingress")
     while RUNNING:
         time.sleep(5)
