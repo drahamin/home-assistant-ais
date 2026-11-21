@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from astral import Observer
 
-from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight, reconstructed_days, solcast_forecast, weather_hours
+from solar_forecast import LOOKBACK_DAYS, ROME, display_forecast_values, local_forecast, midnight, reconstructed_days, solcast_forecast, weather_hours
 
 from solar_learning import accuracy_archive, apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
 
@@ -2188,6 +2188,22 @@ def local_solar_forecast_loop() -> None:
                 "friendly_name": "Solar Forecast Accuracy Archive",
                 "icon": "mdi:chart-timeline-variant",
                 "forecasts": archive,
+            }, 0)
+        values = display_forecast_values(forecast, next_day, datetime.now(ROME))
+        labels = {
+            "power_now": ("Local Solar Forecast Now", "W"),
+            "remaining": ("Local Solar Forecast Remaining", "kWh"),
+            "tomorrow": ("Local Solar Forecast Tomorrow", "kWh"),
+            "peak": ("Local Solar Forecast Peak", "W"),
+            "peak_time": ("Local Solar Forecast Peak Time", None),
+        }
+        for suffix, (name, unit) in labels.items():
+            value = values[suffix]
+            publish_state(f"{entity_id}_{suffix}", value if value is not None else "unavailable", {
+                "friendly_name": name,
+                "source": "Baiamonte local forecast",
+                "target_day": next_day["target_day"] if suffix == "tomorrow" else forecast["target_day"],
+                **({"unit_of_measurement": unit} if unit else {"device_class": "timestamp"}),
             }, 0)
         FORECAST_WAKE.wait(600)
 
