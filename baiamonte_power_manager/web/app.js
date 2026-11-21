@@ -118,8 +118,10 @@ async function refreshStatus() {
     $('power-direction').textContent = s.battery_power_w == null ? 'Waiting for telemetry' : s.battery_power_w < 0 ? 'Charging battery bank' : 'Discharging battery bank';
     $('load').textContent = fmt(s.estate_load_w,' W',0);
     $('learning').textContent = `${fmt(s.learned_load_w,' W',0)} learned · ${s.samples || 0} samples`;
-    $('solar').textContent = fmt(s.solar_power_w,' W',0);
-    $('solar-forecast').textContent = `${fmt(s.solar_remaining_today_kwh,' kWh',1)} remaining · ${fmt(s.solar_tomorrow_kwh,' kWh',1)} tomorrow`;
+    const solarDisplay = s.solar_display || {};
+    $('solar').textContent = fmt(solarDisplay.input_w,' W',0);
+    const source = solarDisplay.input_source === 'estimated_power_balance' ? 'Reconstructed input · ' : '';
+    $('solar-forecast').textContent = `${source}Local forecast · ${fmt(solarDisplay.remaining_kwh,' kWh',1)} left · ${fmt(solarDisplay.tomorrow_kwh,' kWh',1)} tomorrow`;
     $('weather').textContent = s.weather_condition ? String(s.weather_condition).replaceAll('-',' ') : 'Unknown';
     $('renewable-outlook').textContent = `${s.renewable_outlook || 'unavailable'} outlook · ${s.season || 'unknown'} · ${fmt(s.solar_credit_kwh,' kWh',1)} credited`;
     $('internet').textContent = online(s.internet_online);
