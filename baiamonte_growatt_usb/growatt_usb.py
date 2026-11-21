@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from astral import Observer
 
-from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight
+from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight, solcast_forecast, weather_hours
 
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
@@ -2093,10 +2093,17 @@ def local_solar_forecast_loop() -> None:
     bank = str(options.get("fallback_battery_power_entity", "sensor.baiamonte_can_bank_power"))
     optional_sources = [configured_generator_power_entity(options), str(options.get("fallback_grid_power_entity", "")).strip()]
     sources = [load, bank, *(entity for entity in optional_sources if entity)]
-    last_forecast = None
+    training_day = None
+    statistics = {}
+    observer = None
+    cached_cloud = {}
+    entity_id = f"sensor.{ENTITY_PREFIX}_local_solar_forecast"
+    prior = get_home_assistant_state(entity_id) or {}
+    cached_cloud.update(weather_hours((prior.get("attributes") or {}).get("cloud_forecast", [])))
     while RUNNING:
         today = datetime.now(ROME).date()
-        if not last_forecast or not last_forecast["points"] or last_forecast["target_day"] != today.isoformat():
+        tomorrow = today + timedelta(days=1)
+        if training_day != today:
             try:
                 config = _forecast_api("config")
                 data = _forecast_api("services/recorder/get_statistics?return_response", {
@@ -2107,21 +2114,46 @@ def local_solar_forecast_loop() -> None:
                     "types": ["mean"],
                     "units": {"power": "W"},
                 })
-                last_forecast = local_forecast(
-                    data["service_response"]["statistics"], sources,
-                    Observer(float(config["latitude"]), float(config["longitude"])), today,
-                    battery_discharge_positive=bool(options.get("fallback_battery_power_positive_is_discharge", True)),
-                )
+                statistics = data["service_response"]["statistics"]
+                observer = Observer(float(config["latitude"]), float(config["longitude"]))
+                training_day = today
             except (OSError, KeyError, TypeError, ValueError) as exc:
                 log(f"Local solar forecast could not read Recorder: {exc}", "warning")
-                last_forecast = None
-        forecast = last_forecast or {"target_day": today.isoformat(), "points": []}
-        publish_state(f"sensor.{ENTITY_PREFIX}_local_solar_forecast", forecast.get("total_kwh", "unavailable"), {
+        try:
+            weather = "weather.forecast_home"
+            result = _forecast_api("services/weather/get_forecasts?return_response", {
+                "entity_id": weather, "type": "hourly",
+            })
+            cached_cloud.update(weather_hours(result["service_response"][weather]["forecast"]))
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            log(f"Local solar forecast could not read hourly weather: {exc}", "warning")
+        cached_cloud = {stamp: cover for stamp, cover in cached_cloud.items() if midnight(today) <= stamp < midnight(tomorrow + timedelta(days=1))}
+        forecasts = []
+        for day, suffix in ((today, "today"), (tomorrow, "tomorrow")):
+            solcast = solcast_forecast(get_home_assistant_state(f"sensor.solcast_pv_forecast_forecast_{suffix}"), day)
+            if training_day == today and observer is not None:
+                forecast = local_forecast(
+                    statistics, sources, observer, today, target_day=day,
+                    solcast=solcast, cloud_hours=cached_cloud,
+                    battery_discharge_positive=bool(options.get("fallback_battery_power_positive_is_discharge", True)),
+                )
+            else:
+                forecast = {"target_day": day.isoformat(), "points": []}
+            forecasts.append(forecast)
+        forecast, next_day = forecasts
+        if not forecast["points"]:
+            training_day = None
+        publish_state(entity_id, forecast.get("total_kwh", "unavailable"), {
             **forecast,
+            "tomorrow": next_day,
+            "cloud_forecast": [
+                {"datetime": stamp.isoformat(), "cloud_coverage": cover}
+                for stamp, cover in sorted(cached_cloud.items())
+            ],
             "friendly_name": "Local Solar Estimate",
             "unit_of_measurement": "kWh",
             "icon": "mdi:weather-sunny",
-            "source": "Five completed days of reconstructed incoming energy",
+            "source": "Recent estate production with Solcast array and hourly cloud forecasts",
         }, 0)
         FORECAST_WAKE.wait(600)
 

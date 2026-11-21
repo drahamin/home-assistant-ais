@@ -1,5 +1,6 @@
 """Advisory forecast based on recent complete estate power balances."""
 
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from math import isfinite
 from statistics import median
@@ -18,11 +19,78 @@ def midnight(day: date) -> datetime:
     return datetime.combine(day, time.min, tzinfo=ROME).astimezone(timezone.utc)
 
 
+def _number(value):
+    try:
+        result = float(value)
+        return result if isfinite(result) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _hour(value):
+    try:
+        stamp = datetime.fromisoformat(value)
+        if stamp.tzinfo is not None:
+            return stamp.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def solcast_forecast(sensor: dict | None, day: date) -> dict:
+    """Convert the combined configured arrays' P50 and range to hourly watts."""
+    sensor = sensor or {}
+    attrs = sensor.get("attributes") or {}
+    slices = attrs.get("detailedHourly") or attrs.get("detailedForecast") or []
+    buckets = defaultdict(list)
+    for row in slices:
+        if not isinstance(row, dict):
+            continue
+        stamp = _hour(row.get("period_start") or row.get("datetime") or row.get("time"))
+        power = _number(row.get("pv_estimate", row.get("estimate")))
+        if stamp is not None and stamp.astimezone(ROME).date() == day and power is not None and power >= 0:
+            low = _number(row.get("pv_estimate10", row.get("estimate10")))
+            high = _number(row.get("pv_estimate90", row.get("estimate90")))
+            buckets[stamp].append((power, low, high))
+    points = []
+    for stamp, values in sorted(buckets.items()):
+        def watts(index):
+            valid = [row[index] for row in values if row[index] is not None]
+            return round(1000 * sum(valid) / len(valid), 1) if valid else None
+
+        points.append({
+            "observed_at": stamp.astimezone(ROME).isoformat(),
+            "power_w": watts(0), "low_w": watts(1), "high_w": watts(2),
+        })
+    return {
+        "total_kwh": _number(sensor.get("state")),
+        "low": _number(attrs.get("estimate10")),
+        "high": _number(attrs.get("estimate90")),
+        "points": points,
+    }
+
+
+def weather_hours(rows: list[dict]) -> dict[datetime, float]:
+    """Read hourly predicted cloud percentages from Home Assistant."""
+    result = {}
+    for row in rows:
+        stamp = _hour(row.get("datetime"))
+        cover = _number(row.get("cloud_coverage"))
+        if stamp is not None and cover is not None and 0 <= cover <= 100:
+            result[stamp] = cover
+    return result
+
+
+
 def local_forecast(
     statistics: dict, sources: list[str], observer: Observer, today: date,
-    *, battery_discharge_positive: bool = True,
+    *, battery_discharge_positive: bool = True, target_day: date | None = None,
+    solcast: dict | None = None, cloud_hours: dict[datetime, float] | None = None,
 ) -> dict:
-    """Scale a recent hourly profile to the median of five complete days."""
+    """Calibrate a weather and panel forecast against five complete local days."""
+    target_day = target_day or today
+    solcast = solcast or {}
+    cloud_hours = cloud_hours or {}
     def hours(day):
         start = midnight(day)
         count = (midnight(day + timedelta(days=1)) - start) // HOUR
@@ -68,26 +136,47 @@ def local_forecast(
         if len(samples) == TRAINING_DAYS:
             break
     if len(samples) != TRAINING_DAYS:
-        return {"days_used": len(samples), "target_day": today.isoformat(), "points": []}
+        return {"days_used": len(samples), "target_day": target_day.isoformat(), "points": []}
 
-    daily_wh = median(sum(profile.values()) for profile in samples)
-    daylight_today = set(daylight(today))
+    baseline_wh = median(sum(profile.values()) for profile in samples)
+    target_hours = hours(target_day)
+    daylight_target = set(daylight(target_day))
     estimates = [
         median(profile.get(stamp.astimezone(ROME).hour, 0) for profile in samples)
-        if stamp in daylight_today else 0
-        for stamp in hours(today)
+        if stamp in daylight_target else 0
+        for stamp in target_hours
     ]
     profile_wh = sum(estimates)
-    if not profile_wh and daily_wh:
-        return {"days_used": len(samples), "target_day": today.isoformat(), "points": []}
-    scale = daily_wh / profile_wh if profile_wh else 0
+    if not profile_wh and baseline_wh:
+        return {"days_used": len(samples), "target_day": target_day.isoformat(), "points": []}
+
+    # Blend only usable Solcast panels for the target date. Keep the local
+    # baseline dominant because the day-ahead backtest favored it.
+    solcast_profile = {_hour(row["observed_at"]): row["power_w"] for row in solcast.get("points", [])}
+    model_profile = [solcast_profile.get(stamp, 0) if stamp in daylight_target else 0 for stamp in target_hours]
+    model_wh = sum(model_profile)
+    total_kwh = solcast.get("total_kwh")
+    solcast_wh = model_wh if total_kwh is None else total_kwh * 1000
+    solcast_used = bool(model_wh and sum(stamp in solcast_profile for stamp in daylight_target) >= len(daylight_target) / 2)
+    daily_wh = baseline_wh
+    if solcast_used:
+        daily_wh += max(-0.1 * baseline_wh, min(0.1 * baseline_wh, 0.1 * (solcast_wh - baseline_wh)))
+        if profile_wh:
+            estimates = [0.65 * local + 0.35 * pv * profile_wh / model_wh for local, pv in zip(estimates, model_profile)]
+    weather_count = sum(stamp in cloud_hours for stamp in daylight_target)
+    estimates = [power * (1 - 0.25 * cloud_hours.get(stamp, 0) / 100) for stamp, power in zip(target_hours, estimates)]
+    shaped_wh = sum(estimates)
+    scale = daily_wh / shaped_wh if shaped_wh else 0
     return {
         "days_used": len(samples),
         "training_dates": training_dates,
-        "target_day": today.isoformat(),
+        "target_day": target_day.isoformat(),
         "total_kwh": round(daily_wh / 1000, 2),
+        "solcast_used": solcast_used,
+        "weather_hours": weather_count,
+        "solcast": solcast,
         "points": [
             {"observed_at": stamp.astimezone(ROME).isoformat(), "power_w": round(power * scale, 1)}
-            for stamp, power in zip(hours(today), estimates)
+            for stamp, power in zip(target_hours, estimates)
         ],
     }
