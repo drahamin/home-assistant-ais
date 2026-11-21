@@ -1,12 +1,12 @@
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from astral import Observer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from solar_forecast import midnight, local_forecast, reconstructed_days, solcast_forecast, weather_hours
+from solar_forecast import display_forecast_values, midnight, local_forecast, reconstructed_days, solcast_forecast, weather_hours
 
 
 class LocalForecastTests(unittest.TestCase):
@@ -68,3 +68,16 @@ class LocalForecastTests(unittest.TestCase):
         self.assertLess(hybrid["points"][9]["power_w"], hybrid["points"][10]["power_w"])
         self.assertEqual(hybrid["points"][1]["power_w"], 0)
         self.assertAlmostEqual(sum(p["power_w"] for p in hybrid["points"]) / 1000, hybrid["total_kwh"], places=2)
+
+    def test_display_values_use_the_same_curve_and_prorate_the_current_hour(self):
+        now = datetime.fromisoformat("2026-11-21T11:30:00+01:00")
+        values = display_forecast_values({
+            "target_day": "2026-11-21",
+            "points": [{"observed_at": f"2026-11-21T{hour}:00:00+01:00", "power_w": power}
+                       for hour, power in ((10, 500), (11, 1000), (12, 2000))],
+        }, {"target_day": "2026-11-22", "total_kwh": 7.22}, now)
+        self.assertEqual(values, {
+            "power_now": 1000, "remaining": 2.5, "tomorrow": 7.22,
+            "peak": 2000, "peak_time": "2026-11-21T11:00:00+00:00",
+        })
+        self.assertIsNone(display_forecast_values({"target_day": "2026-11-20"}, {}, now)["remaining"])

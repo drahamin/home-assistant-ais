@@ -187,3 +187,29 @@ def local_forecast(
             for stamp, power in zip(target_hours, estimates)
         ],
     }
+
+
+def display_forecast_values(forecast: dict, tomorrow: dict, now: datetime) -> dict:
+    """Read current, future and peak values from the curve shown by Energy."""
+    moment = now.astimezone(timezone.utc)
+    today = moment.astimezone(ROME).date()
+    points = []
+    if forecast.get("target_day") == today.isoformat():
+        for row in forecast.get("points", []):
+            stamp = _hour(row.get("observed_at"))
+            power = _number(row.get("power_w"))
+            if stamp is not None and power is not None and power >= 0:
+                points.append((stamp, power))
+    peak = max(points, key=lambda row: row[1], default=(None, None))
+    remaining_wh = sum(
+        power * min(1, max(0, (stamp + HOUR - moment) / HOUR))
+        for stamp, power in points
+    )
+    return {
+        "power_now": next((power for stamp, power in points if stamp <= moment < stamp + HOUR), None),
+        "remaining": round(remaining_wh / 1000, 3) if points else None,
+        "tomorrow": _number(tomorrow.get("total_kwh"))
+            if tomorrow.get("target_day") == (today + timedelta(days=1)).isoformat() else None,
+        "peak": peak[1],
+        "peak_time": peak[0].isoformat() if peak[1] else None,
+    }

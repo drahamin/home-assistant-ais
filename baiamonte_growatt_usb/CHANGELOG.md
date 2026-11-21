@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.10
+
+- Publish shared local forecast values for current-hour power, remaining energy, tomorrow and peak.
+
 ## 1.4.9
 
 - Retain both day-ahead forecasts together for the Vineyard solar accuracy comparison.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Align the dashboard solar card with the shared estate forecast while keeping the configured policy signals separate.
+
 ## 0.3.3
 
 - Use the continuous Baiamonte Growatt solar-input sensor by default so planning and recovery logic keep receiving solar power while inverter communications are offline.

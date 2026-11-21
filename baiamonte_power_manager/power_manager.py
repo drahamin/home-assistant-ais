@@ -18,7 +18,8 @@ import urllib.request
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 
 try:
@@ -314,6 +315,25 @@ def configure(options: dict) -> tuple[Policy, dict[int, list[str]], set[str]]:
     return policy, tiers, protected
 
 
+def solar_display_values(states: dict[str, dict]) -> dict:
+    """Use the shared dashboard forecast while retaining separate policy inputs."""
+    today = datetime.now(ZoneInfo("Europe/Rome")).date()
+    prefix = "sensor.baiamonte_growatt_local_solar_forecast"
+
+    def forecast(suffix: str, day):
+        entity = f"{prefix}_{suffix}"
+        if (states.get(entity, {}).get("attributes") or {}).get("target_day") != day.isoformat():
+            return None
+        return numeric(states, entity)
+
+    return {
+        "input_w": numeric(states, "sensor.baiamonte_growatt_solar_input_power"),
+        "input_source": (states.get("sensor.baiamonte_growatt_solar_input_power", {}).get("attributes") or {}).get("source"),
+        "remaining_kwh": forecast("remaining", today),
+        "tomorrow_kwh": forecast("tomorrow", today + timedelta(days=1)),
+    }
+
+
 def make_snapshot(options: dict, states: dict[str, dict]) -> Snapshot:
     weather = states.get(str(options.get("weather_entity", "")), {})
     sun = states.get("sun.sun", {})
@@ -501,6 +521,7 @@ def run() -> None:
                     battery_power_w=snapshot.battery_power_w,
                     estate_load_w=snapshot.estate_load_w,
                     solar_power_w=snapshot.solar_power_w,
+                    solar_display=solar_display_values(states),
                     solar_forecast_now_w=snapshot.solar_forecast_now_w,
                     solar_remaining_today_kwh=snapshot.solar_remaining_today_kwh,
                     solar_tomorrow_kwh=snapshot.solar_tomorrow_kwh,
