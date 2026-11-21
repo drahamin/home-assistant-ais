@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.8
+
+- Learn a bounded local forecast correction from saved day-ahead forecasts and completed daylight power balances.
+
 ## 1.4.7
 
 - Forecast today and tomorrow from local production, the configured Solcast arrays, and hourly cloud cover.
