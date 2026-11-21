@@ -71,7 +71,11 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(payload["series"][0]["entity_id"], "sensor.baiamonte_can_battery_3_cell_1_voltage")
 
     def test_pack_power_and_health_charts_are_predefined(self):
-        client = HistoryClient("secret", opener=lambda *_args, **_kwargs: Response(b"[]"))
+        def opener(request, timeout):
+            payload = {"service_response": {"statistics": {}}} if request.data else []
+            return Response(json.dumps(payload).encode())
+
+        client = HistoryClient("secret", opener=opener)
         power = client.chart("pack_power")
         health = client.chart("health")
         self.assertEqual(len(power["series"]), 3)
@@ -79,14 +83,22 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(health["hours"], 24 * 7)
         self.assertEqual(len(health["series"]), 3)
 
-    def test_day_week_and_month_ranges_change_hours_and_sampling(self):
+    def test_day_requests_raw_history_and_long_ranges_request_hourly_averages(self):
         calls = []
+        entity = "sensor.baiamonte_can_bank_soc"
 
         def opener(request, timeout):
-            calls.append(request.full_url)
+            calls.append(request)
             if request.full_url.endswith("/config"):
-                return Response(json.dumps({"time_zone": "Europe/Rome"}).encode())
-            return Response(b"[]")
+                return Response(b'{"time_zone":"Europe/Rome"}')
+            if not request.data:
+                return Response(b"[]")
+            rows = [
+                {"start": "2026-11-01T00:00:00Z", "mean": 40},
+                {"start": "2026-11-01T01:00:00Z", "mean": 42},
+                {"start": "2026-11-01T02:00:00Z"},
+            ]
+            return Response(json.dumps({"service_response": {"statistics": {entity: rows}}}).encode())
 
         client = HistoryClient("secret", opener=opener)
         day = client.chart("charging", "day")
@@ -94,8 +106,40 @@ class HistoryTests(unittest.TestCase):
         month = client.chart("charging", "month")
 
         self.assertEqual([day["hours"], week["hours"], month["hours"]], [24, 168, 720])
-        self.assertEqual([day["bucket_seconds"], week["bucket_seconds"], month["bucket_seconds"]], [300, 1800, 7200])
+        self.assertEqual([day["bucket_seconds"], week["bucket_seconds"], month["bucket_seconds"]], [300, 3600, 7200])
+        self.assertIn("/history/period/", calls[1].full_url)
+        for request in calls[2:]:
+            self.assertTrue(request.full_url.endswith("/services/recorder/get_statistics?return_response"))
+            body = json.loads(request.data)
+            self.assertEqual(body["period"], "hour")
+            self.assertEqual(body["types"], ["mean"])
+            self.assertIn(entity, body["statistic_ids"])
+        self.assertEqual([p[1] for p in week["series"][0]["points"]], [40, 42])
+        self.assertEqual([p[1] for p in month["series"][0]["points"]], [41])
+        self.assertFalse(month["series"][1]["points"])
+        self.assertTrue(client.chart("charging", "month")["cached"])
         self.assertEqual(len(calls), 4)
+
+    def test_long_range_energy_uses_recorder_daily_changes(self):
+        entity = "sensor.baiamonte_can_bank_energy_charged"
+
+        def opener(request, timeout):
+            if request.full_url.endswith("/config"):
+                return Response(b'{"time_zone":"Europe/Rome"}')
+            body = json.loads(request.data)
+            self.assertEqual(body["period"], "day")
+            self.assertEqual(body["types"], ["change"])
+            start = datetime.fromisoformat(body["start_time"])
+            self.assertEqual(start.hour, 0)
+            self.assertEqual(start.minute, 0)
+            rows = [{"start": "2026-10-06T22:00:00Z", "change": 2.5}]
+            return Response(json.dumps({"service_response": {"statistics": {entity: rows}}}).encode())
+
+        payload = HistoryClient("secret", opener=opener).chart("multi_day", "week")
+        timestamp, change = payload["series"][0]["points"][0]
+        self.assertEqual(change, 2.5)
+        local = datetime.fromtimestamp(timestamp / 1000, ZoneInfo("Europe/Rome"))
+        self.assertEqual((local.day, local.hour), (7, 12))
 
     def test_daily_energy_uses_home_assistant_local_calendar_day(self):
         states = [

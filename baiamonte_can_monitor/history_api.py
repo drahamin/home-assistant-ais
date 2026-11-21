@@ -72,7 +72,7 @@ CHARTS = {
 
 RANGES = {
     "day": {"hours": 24, "bucket": 0, "ttl": 300},
-    "week": {"hours": 24 * 7, "bucket": 1800, "ttl": 300},
+    "week": {"hours": 24 * 7, "bucket": 3600, "ttl": 300},
     "month": {"hours": 24 * 30, "bucket": 7200, "ttl": 900},
 }
 
@@ -133,6 +133,19 @@ def daily_changes(states: list[dict], local_zone=timezone.utc) -> list[list[floa
     return result
 
 
+def daily_statistic_points(rows: list[dict], local_zone: tzinfo) -> list[list[float]]:
+    points = []
+    for row in rows:
+        value = _number(row.get("change"))
+        timestamp = _timestamp(row["start"])
+        if value is None or timestamp is None:
+            continue
+        day = datetime.fromtimestamp(timestamp, local_zone).date()
+        noon = datetime.combine(day, datetime_time(hour=12), tzinfo=local_zone)
+        points.append([int(noon.timestamp() * 1000), round(value, 4)])
+    return points
+
+
 class HistoryClient:
     """Fetch only predefined battery charts, with a short shared cache."""
 
@@ -191,27 +204,27 @@ class HistoryClient:
         end = datetime.now(timezone.utc)
         start = end - timedelta(hours=hours)
         entity_ids = [entity[0] for entity in config["entities"]]
-        query = urlencode({
-            "filter_entity_id": ",".join(entity_ids),
-            "end_time": end.isoformat().replace("+00:00", "Z"),
-            "minimal_response": "",
-            "no_attributes": "",
-        })
-        start_path = quote(start.isoformat().replace("+00:00", "Z"), safe=":-")
-        request = Request(
-            f"{self.api_root}/history/period/{start_path}?{query}",
-            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/json"},
-        )
-        try:
-            with self.opener(request, timeout=20) as response:
-                raw = json.load(response)
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise HistoryError(f"Home Assistant history request failed: {exc}") from exc
-        by_entity = {states[0].get("entity_id"): states for states in raw if states and states[0].get("entity_id")}
+        daily = config.get("daily_change", False)
+        use_statistics = hours > 24
+        if use_statistics and daily:
+            first_day = end.astimezone(local_zone).date() - timedelta(days=hours // 24 - 1)
+            start = datetime.combine(first_day, datetime_time.min, tzinfo=local_zone)
+        if use_statistics:
+            by_entity = self._statistics(entity_ids, start, end, daily)
+        else:
+            by_entity = self._history(entity_ids, start, end)
         series = []
         for entity_id, label, unit in config["entities"]:
-            states = by_entity.get(entity_id, [])
-            points = daily_changes(states, local_zone) if config.get("daily_change") else bucket_points(states, bucket)
+            rows = by_entity.get(entity_id, [])
+            if use_statistics and daily:
+                points = daily_statistic_points(rows, local_zone)
+            elif use_statistics:
+                points = bucket_points(
+                    [{"state": row.get("mean"), "last_changed": row["start"]} for row in rows],
+                    bucket,
+                )
+            else:
+                points = daily_changes(rows, local_zone) if daily else bucket_points(rows, bucket)
             series.append({"entity_id": entity_id, "name": label, "unit": unit, "points": points})
         return {
             "chart": name,
@@ -225,3 +238,47 @@ class HistoryClient:
             "cached": False,
             "series": series,
         }
+
+    def _statistics(self, entity_ids: list[str], start: datetime, end: datetime, daily: bool) -> dict:
+        request = Request(
+            f"{self.api_root}/services/recorder/get_statistics?return_response",
+            data=json.dumps({
+                "statistic_ids": entity_ids,
+                "start_time": start.isoformat(),
+                "end_time": end.isoformat(),
+                "period": "day" if daily else "hour",
+                "types": ["change" if daily else "mean"],
+            }).encode(),
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+        )
+        payload = self._read_json(request, "recorder statistics")
+        try:
+            return payload["service_response"]["statistics"]
+        except (KeyError, TypeError) as exc:
+            raise HistoryError("Home Assistant returned an invalid recorder statistics response") from exc
+
+    def _history(self, entity_ids: list[str], start: datetime, end: datetime) -> dict:
+        query = urlencode({
+            "filter_entity_id": ",".join(entity_ids),
+            "end_time": end.isoformat().replace("+00:00", "Z"),
+            "minimal_response": "",
+            "no_attributes": "",
+        })
+        start_path = quote(start.isoformat().replace("+00:00", "Z"), safe=":-")
+        request = Request(
+            f"{self.api_root}/history/period/{start_path}?{query}",
+            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/json"},
+        )
+        raw = self._read_json(request, "history")
+        return {states[0]["entity_id"]: states for states in raw if states and states[0].get("entity_id")}
+
+    def _read_json(self, request: Request, kind: str):
+        try:
+            with self.opener(request, timeout=20) as response:
+                return json.load(response)
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise HistoryError(f"Home Assistant {kind} request failed: {exc}") from exc

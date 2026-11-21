@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1
+
+- Load Week and Month charts from Recorder hourly statistics and daily energy changes.
+
 ## 0.10.0
 
 - Format chart axes and tooltips in Home Assistant's configured timezone instead of the viewing browser's timezone.
