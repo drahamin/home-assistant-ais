@@ -46,6 +46,9 @@ SETTINGS_REFRESH_SECONDS = 900
 FIRMWARE_REFRESH_SECONDS = 21600
 FIRMWARE_RETRY_SECONDS = 900
 INCOMING_STATE_LOCK = threading.Lock()
+ESTATE_MAIN_LOAD_ENTITY = "sensor.wifi_din_rail_40a_main_power"
+ESTATE_MAIN_LOAD_MAX_AGE_SECONDS = 45 * 60
+LEGACY_ESTATE_LOAD_ENTITY = "sensor.baiamonte_estate_load"
 DEFAULT_GENERATOR_POWER_ENTITY = ""
 LEGACY_INCORRECT_GENERATOR_ENTITIES = {
     "sensor.bluetti_main_breaker_power",
@@ -858,6 +861,12 @@ def numeric_home_assistant_state(
     return value
 
 
+def configured_load_power_entity(options: dict[str, object]) -> str:
+    """Use measured load for the default balance, avoiding the calculated fallback."""
+    configured = str(options.get("fallback_load_power_entity", ESTATE_MAIN_LOAD_ENTITY)).strip()
+    return ESTATE_MAIN_LOAD_ENTITY if configured == LEGACY_ESTATE_LOAD_ENTITY else configured
+
+
 def configured_generator_power_entity(options: dict[str, object]) -> str:
     """Return the generator meter, migrating the estate's old incorrect mapping."""
     configured = str(options.get("fallback_generator_power_entity", DEFAULT_GENERATOR_POWER_ENTITY)).strip()
@@ -1389,6 +1398,8 @@ def calculate_incoming_sample(
     battery_power_w: float | None,
     state: dict[str, object],
     options: dict[str, object],
+    *,
+    load_is_fresh: bool = True,
 ) -> dict[str, object]:
     """Select direct Growatt power or the local power-balance fallback."""
     stale_after = max(10, int(options.get("stale_after_seconds", 45)))
@@ -1412,7 +1423,8 @@ def calculate_incoming_sample(
     except (TypeError, ValueError):
         ac_input_voltage = 0.0
     if (
-        bool(options.get("fallback_learning_enabled", True))
+        load_is_fresh
+        and bool(options.get("fallback_learning_enabled", True))
         and direct is not None and direct >= 250.0
         and raw_estimate is not None and raw_estimate >= 250.0
         and ac_input_voltage < 80.0
@@ -1635,18 +1647,24 @@ def incoming_continuity_loop() -> None:
     interval = max(5, int(options.get("fallback_poll_interval_seconds", 10)))
     publish_interval = max(5, int(options.get("home_assistant_publish_interval_seconds", 30)))
     max_age = max(interval * 3, int(options.get("fallback_source_stale_seconds", 120)))
+    load_entity = configured_load_power_entity(options)
+    # The measured Wi-Fi meter publishes much less often than the CAN bank.
+    # Hold only this verified meter's latest value across its reporting interval.
+    load_max_age = max(max_age, ESTATE_MAIN_LOAD_MAX_AGE_SECONDS) if load_entity == ESTATE_MAIN_LOAD_ENTITY else max_age
     publish_enabled = bool(options.get("publish_to_home_assistant", True))
     state = load_incoming_energy()
     last_source = None
     last_solar_source = None
     while RUNNING:
-        load_payload = get_home_assistant_state(str(options.get("fallback_load_power_entity", "sensor.baiamonte_estate_load")))
+        load_payload = get_home_assistant_state(load_entity)
         battery_payload = get_home_assistant_state(str(options.get("fallback_battery_power_entity", "sensor.baiamonte_can_bank_power")))
         generator_entity = configured_generator_power_entity(options)
         grid_entity = str(options.get("fallback_grid_power_entity", "")).strip()
         generator_payload = get_home_assistant_state(generator_entity) if generator_entity else None
         grid_payload = get_home_assistant_state(grid_entity) if grid_entity else None
-        estate_load = numeric_home_assistant_state(load_payload, max_age)
+        now = datetime.now(timezone.utc)
+        estate_load = numeric_home_assistant_state(load_payload, load_max_age, now)
+        load_is_fresh = numeric_home_assistant_state(load_payload, max_age, now) is not None
         battery_power = numeric_home_assistant_state(battery_payload, max_age)
         generator_power = numeric_home_assistant_state(generator_payload, max_age) if generator_entity else 0.0
         grid_power = numeric_home_assistant_state(grid_payload, max_age) if grid_entity else 0.0
@@ -1654,7 +1672,9 @@ def incoming_continuity_loop() -> None:
             status = dict(STATUS)
             status["readings"] = dict(STATUS.get("readings", {}))
         with INCOMING_STATE_LOCK:
-            sample = calculate_incoming_sample(status, estate_load, battery_power, state, options)
+            sample = calculate_incoming_sample(
+                status, estate_load, battery_power, state, options, load_is_fresh=load_is_fresh,
+            )
             solar_sample = calculate_solar_sample(status, sample, generator_power, grid_power, options)
             update_incoming_energy(state, sample["power_w"], interval)
             update_solar_energy(state, solar_sample["power_w"], interval)

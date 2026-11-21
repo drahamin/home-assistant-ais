@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "growatt_usb.py"
@@ -33,6 +34,44 @@ class GrowattUsbTests(unittest.TestCase):
         self.assertEqual(growatt.numeric_home_assistant_state(fresh, 120, now), 723.5)
         self.assertIsNone(growatt.numeric_home_assistant_state(stale, 120, now))
         self.assertIsNone(growatt.numeric_home_assistant_state({"state": "unavailable"}, 120, now))
+
+    def test_continuity_holds_only_the_measured_load_during_normal_report_gaps(self):
+        now = growatt.datetime.now(growatt.timezone.utc)
+        load = {
+            "state": "250", "last_updated": (now - timedelta(minutes=20)).isoformat(),
+        }
+        fresh_bank = {"state": "-1500", "last_updated": now.isoformat()}
+        stale_bank = {"state": "-1500", "last_updated": load["last_updated"]}
+
+        for bank, expected in ((fresh_bank, 1750.0), (stale_bank, None)):
+            with (
+                self.subTest(expected=expected),
+                patch.object(growatt, "RUNNING", True),
+                patch.object(growatt, "STATUS", {"connected": False}),
+                patch.object(growatt, "load_options", return_value={
+                    "fallback_load_power_entity": growatt.LEGACY_ESTATE_LOAD_ENTITY,
+                }),
+                patch.object(growatt, "load_incoming_energy", return_value={}),
+                patch.object(growatt, "save_incoming_energy"),
+                patch.object(growatt, "get_home_assistant_state", side_effect=[load, bank]) as read,
+                patch.object(growatt, "publish_incoming_sample"),
+                patch.object(growatt, "publish_solar_sample") as publish,
+                patch.object(growatt, "CONTINUITY_WAKE") as wake,
+            ):
+                wake.wait.side_effect = lambda _seconds: setattr(growatt, "RUNNING", False)
+                growatt.incoming_continuity_loop()
+
+            self.assertEqual(read.call_args_list[0].args, (growatt.ESTATE_MAIN_LOAD_ENTITY,))
+            self.assertEqual(publish.call_args.args[0]["power_w"], expected)
+
+    @patch.object(growatt, "direct_growatt_power", return_value=1000.0)
+    def test_held_load_does_not_train_calibration(self, _direct):
+        state = {"calibration_factor": 1.0}
+        growatt.calculate_incoming_sample(
+            {"connected": True, "readings": {}}, 250.0, -500.0, state, {},
+            load_is_fresh=False,
+        )
+        self.assertEqual(state["calibration_factor"], 1.0)
 
     def test_direct_power_is_not_used_when_generator_or_grid_is_active(self):
         status = {

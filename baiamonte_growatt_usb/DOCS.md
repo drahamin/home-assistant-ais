@@ -31,7 +31,7 @@ stale_after_seconds: 45
 publish_to_home_assistant: true
 home_assistant_publish_interval_seconds: 30
 fallback_enabled: true
-fallback_load_power_entity: sensor.baiamonte_estate_load
+fallback_load_power_entity: sensor.wifi_din_rail_40a_main_power
 fallback_battery_power_entity: sensor.baiamonte_can_bank_power
 fallback_generator_power_entity: ""
 fallback_grid_power_entity: ""
@@ -44,6 +44,11 @@ allow_setting_changes: false
 firmware_tools_enabled: true
 firmware_max_package_mb: 32
 ```
+
+The estate main meter reports less often than battery telemetry. Its most recent
+valid measurement can be held for up to 45 minutes for the estimate. The
+configured freshness limit still applies to the battery, other sources, and load
+readings used for calibration.
 
 Configure `fallback_generator_power_entity` only after installing a meter that measures generator production exclusively. The current Baiamonte breaker meters track inverter/output load and are intentionally ignored. While the generator is stopped, the blank default keeps generator contribution at zero and estimates solar from estate load plus battery charging.
 
