@@ -5,8 +5,9 @@ import os
 import tempfile
 import unittest
 import urllib.parse
+from http.client import IncompleteRead
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 TRACKER = Path(__file__).parents[1] / "ais_ship_tracker.py"
@@ -505,6 +506,40 @@ class AisCatcherTests(unittest.TestCase):
         }, "baiamonte", "2026-08-12T10:00:30+00:00")
         self.assertFalse(imported)
         self.assertNotIn("247123459", tracker.dashboard_vessels)
+
+    def test_private_proxy_keeps_polling_after_truncated_response(self):
+        truncated = MagicMock()
+        truncated.__enter__.return_value.read.side_effect = IncompleteRead(b'{"vessels":', 100)
+        recovered = MagicMock()
+        vessel = {"mmsi": "247123460", "latitude": 37.62, "longitude": 15.18}
+        body = {"config": {"area_id": "baiamonte"}, "vessels": [vessel]}
+        recovered.__enter__.return_value.read.return_value = gzip.compress(json.dumps(body).encode())
+        recovered.__enter__.return_value.headers = {"Content-Encoding": "gzip"}
+        status = {"enabled": True, "areas": {}}
+        states = {"baiamonte": {}}
+        area = {**tracker.MAP_AREAS["baiamonte"], "enabled": True}
+        observed_states = []
+
+        def after_poll(_seconds):
+            observed_states.append(status["state"])
+            if len(observed_states) == 2:
+                tracker.shutdown_in_progress = True
+
+        with (
+            patch.object(tracker, "MAP_AREAS", {"baiamonte": area}),
+            patch.object(tracker, "rahamin_proxy_state", status),
+            patch.object(tracker, "aishub_area_states", states),
+            patch.object(tracker, "shutdown_in_progress", False),
+            patch.object(tracker.time, "sleep", side_effect=after_poll),
+            patch.object(tracker.urllib.request, "urlopen", side_effect=[truncated, recovered]) as fetch,
+            patch.object(tracker, "process_rahamin_proxy_record", return_value=True) as import_vessel,
+        ):
+            tracker.rahamin_proxy_worker()
+
+        self.assertEqual(observed_states, ["Connection error", "Connected"])
+        self.assertEqual(status["areas"]["baiamonte"]["records"], 1)
+        self.assertEqual(fetch.call_args.args[0].get_header("Accept-encoding"), "gzip")
+        import_vessel.assert_called_once_with(vessel, "baiamonte", None)
 
     def test_private_proxy_area_url_preserves_existing_query(self):
         previous_url = tracker.RAHAMIN_PROXY_URL

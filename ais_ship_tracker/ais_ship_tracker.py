@@ -7,6 +7,7 @@ import socket
 import re
 from functools import lru_cache
 from collections import deque
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import urllib.request
@@ -33,7 +34,7 @@ except (ImportError, OSError, ValueError, KeyError):
     global_land_globe = None
 
 print("🚀 Starting Baiamonte AIS...", flush=True)
-VERSION = "2.7.35"
+VERSION = "2.7.36"
 receiver_logs = deque(maxlen=80)
 
 def utc_now_iso():
@@ -1785,9 +1786,15 @@ def rahamin_proxy_worker():
             )
             area_proxy_state["last_checked"] = checked_at
             try:
-                request = urllib.request.Request(rahamin_proxy_area_url(area_id), headers={"User-Agent": f"Baiamonte-AIS/{VERSION}"})
+                request = urllib.request.Request(
+                    rahamin_proxy_area_url(area_id),
+                    headers={"User-Agent": f"Baiamonte-AIS/{VERSION}", "Accept-Encoding": "gzip"},
+                )
                 with urllib.request.urlopen(request, timeout=12) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
+                    body = response.read()
+                    if response.headers.get("Content-Encoding", "").strip().lower() in {"gzip", "x-gzip"}:
+                        body = gzip.decompress(body)
+                payload = json.loads(body)
                 records = rahamin_proxy_records(payload)
                 response_area = str(payload.get("config", {}).get("area_id", area_id)).lower() if isinstance(payload, dict) else area_id
                 if response_area != area_id:
@@ -1807,7 +1814,7 @@ def rahamin_proxy_worker():
                     aishub_area_states[area_id].update({"state": "Private proxy", "last_checked": checked_at, "last_success": now, "records": imported, "error": None})
                 total_imported += imported
                 area_counts[area_id] = imported
-            except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            except (OSError, ValueError, HTTPException, EOFError) as exc:
                 area_proxy_state.update({"state": "Connection error", "records": 0, "error": str(exc)})
                 if area_id in aishub_area_states:
                     aishub_area_states[area_id].update({"state": "Proxy error", "last_checked": checked_at, "error": str(exc)})

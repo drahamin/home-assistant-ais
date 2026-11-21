@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.36
+
+- Keep polling the private AIS feed after a truncated response and request gzip to reduce transfer time on the remote connection.
+
 ## 2.7.35
 
 - Negotiates `gzip`, `x-gzip`, and identity independently and deterministically, honoring relative quality values regardless of header order.
