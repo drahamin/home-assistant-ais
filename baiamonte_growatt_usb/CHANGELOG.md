@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.7
+
+- Forecast today and tomorrow from local production, the configured Solcast arrays, and hourly cloud cover.
+
 ## 1.4.6
 
 - Publish a separate local solar forecast from five complete estate power-balance days.
