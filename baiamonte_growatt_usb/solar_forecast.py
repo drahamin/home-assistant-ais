@@ -82,25 +82,22 @@ def weather_hours(rows: list[dict]) -> dict[datetime, float]:
 
 
 
-def local_forecast(
+def hours(day: date) -> list[datetime]:
+    start = midnight(day)
+    count = (midnight(day + timedelta(days=1)) - start) // HOUR
+    return [start + index * HOUR for index in range(count)]
+
+def daylight(observer: Observer, day: date) -> list[datetime]:
+    rise = sunrise(observer, day, ROME)
+    setting = sunset(observer, day, ROME)
+    return [stamp for stamp in hours(day) if stamp < setting and stamp + HOUR > rise]
+
+
+def reconstructed_days(
     statistics: dict, sources: list[str], observer: Observer, today: date,
-    *, battery_discharge_positive: bool = True, target_day: date | None = None,
-    solcast: dict | None = None, cloud_hours: dict[datetime, float] | None = None,
-) -> dict:
-    """Calibrate a weather and panel forecast against five complete local days."""
-    target_day = target_day or today
-    solcast = solcast or {}
-    cloud_hours = cloud_hours or {}
-    def hours(day):
-        start = midnight(day)
-        count = (midnight(day + timedelta(days=1)) - start) // HOUR
-        return [start + index * HOUR for index in range(count)]
-
-    def daylight(day):
-        rise = sunrise(observer, day, ROME)
-        setting = sunset(observer, day, ROME)
-        return [stamp for stamp in hours(day) if stamp < setting and stamp + HOUR > rise]
-
+    *, battery_discharge_positive: bool = True,
+) -> dict[date, dict[int, float]]:
+    """Return only past days with a complete daylight power balance."""
     values = {}
     for entity_id in sources:
         series = {}
@@ -114,12 +111,10 @@ def local_forecast(
                 series[stamp] = mean
         values[entity_id] = series
 
-    samples = []
-    training_dates = []
+    profiles = {}
     for offset in range(1, LOOKBACK_DAYS + 1):
         day = today - timedelta(days=offset)
-        stamps = daylight(day)
-        # Ignore an incomplete daylight day instead of treating missing power as zero.
+        stamps = daylight(observer, day)
         if not stamps or any(
             stamp not in values[entity] for stamp in stamps for entity in sources
         ):
@@ -131,16 +126,28 @@ def local_forecast(
                 battery = -battery
             hour = stamp.astimezone(ROME).hour
             profile[hour] = max(0, load - battery - sum(max(0, power) for power in other))
-        samples.append(profile)
-        training_dates.append(day.isoformat())
-        if len(samples) == TRAINING_DAYS:
-            break
+        profiles[day] = profile
+    return profiles
+
+
+def local_forecast(
+    profiles: dict[date, dict[int, float]], observer: Observer, today: date,
+    *, target_day: date | None = None, solcast: dict | None = None,
+    cloud_hours: dict[datetime, float] | None = None,
+) -> dict:
+    """Calibrate a weather and panel forecast against five complete local days."""
+    target_day = target_day or today
+    solcast = solcast or {}
+    cloud_hours = cloud_hours or {}
+    recent = sorted(day for day in profiles if day < today)[-TRAINING_DAYS:][::-1]
+    samples = [profiles[day] for day in recent]
+    training_dates = [day.isoformat() for day in recent]
     if len(samples) != TRAINING_DAYS:
         return {"days_used": len(samples), "target_day": target_day.isoformat(), "points": []}
 
     baseline_wh = median(sum(profile.values()) for profile in samples)
     target_hours = hours(target_day)
-    daylight_target = set(daylight(target_day))
+    daylight_target = set(daylight(observer, target_day))
     estimates = [
         median(profile.get(stamp.astimezone(ROME).hour, 0) for profile in samples)
         if stamp in daylight_target else 0

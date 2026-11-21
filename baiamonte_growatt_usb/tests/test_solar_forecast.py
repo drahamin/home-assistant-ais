@@ -6,7 +6,7 @@ from pathlib import Path
 from astral import Observer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from solar_forecast import midnight, local_forecast, solcast_forecast, weather_hours
+from solar_forecast import midnight, local_forecast, reconstructed_days, solcast_forecast, weather_hours
 
 
 class LocalForecastTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class LocalForecastTests(unittest.TestCase):
                 stamp = (start + timedelta(hours=hour)).isoformat()
                 data["load"].append({"start": stamp, "mean": 200})
                 data["bank"].append({"start": stamp, "mean": -100 * (offset - 1)})
-        forecast = local_forecast(data, ["load", "bank"], observer, today)
+        forecast = local_forecast(reconstructed_days(data, ["load", "bank"], observer, today), observer, today)
         self.assertEqual(forecast["days_used"], 5)
         self.assertEqual(forecast["training_dates"][0], "2026-11-19")
         powers = [point["power_w"] for point in forecast["points"]]
@@ -32,7 +32,7 @@ class LocalForecastTests(unittest.TestCase):
         self.assertAlmostEqual(sum(powers) / 1000, forecast["total_kwh"], places=2)
 
     def test_missing_coverage_leaves_forecast_unavailable(self):
-        result = local_forecast({}, ["load", "bank"], Observer(37.9, 15.0), date(2026, 11, 21))
+        result = local_forecast({}, Observer(37.9, 15.0), date(2026, 11, 21))
         self.assertEqual(result["points"], [])
         self.assertNotIn("total_kwh", result)
 
@@ -56,9 +56,10 @@ class LocalForecastTests(unittest.TestCase):
         solcast = solcast_forecast({"state": "12", "attributes": {"detailedHourly": forecast_rows}}, day)
         covered = start + timedelta(hours=9)
         cloud = weather_hours([{"datetime": covered.isoformat(), "cloud_coverage": 100}])
-        baseline = local_forecast(data, ["load", "bank"], observer, today, target_day=day)
+        profiles = reconstructed_days(data, ["load", "bank"], observer, today)
+        baseline = local_forecast(profiles, observer, today, target_day=day)
         hybrid = local_forecast(
-            data, ["load", "bank"], observer, today, target_day=day,
+            profiles, observer, today, target_day=day,
             solcast=solcast, cloud_hours=cloud,
         )
         self.assertTrue(hybrid["solcast_used"])

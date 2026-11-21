@@ -13,7 +13,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir mppsolar==0.16.56 pyserial==3.5 pymodbus==3.6.9 astral==3.2
 
-COPY growatt_usb.py solar_forecast.py /
+COPY growatt_usb.py solar_forecast.py solar_learning.py /
 COPY web /web
 
 CMD ["python", "-u", "/growatt_usb.py"]

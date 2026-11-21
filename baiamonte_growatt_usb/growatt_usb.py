@@ -22,12 +22,15 @@ from urllib.parse import urlparse
 
 from astral import Observer
 
-from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight, solcast_forecast, weather_hours
+from solar_forecast import LOOKBACK_DAYS, ROME, local_forecast, midnight, reconstructed_days, solcast_forecast, weather_hours
+
+from solar_learning import apply_learning, archive_forecast, evaluate_forecasts, load_learning, save_learning
 
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 API_BASE = "http://supervisor/core/api/states"
 OPTIONS_PATH = Path(os.environ.get("GROWATT_USB_OPTIONS", "/data/options.json"))
 STATE_PATH = Path(os.environ.get("GROWATT_USB_STATE", "/data/energy-state.json"))
+SOLAR_LEARNING_PATH = Path(os.environ.get("GROWATT_SOLAR_LEARNING_STATE", "/data/local-solar-learning.json"))
 INCOMING_STATE_PATH = Path(os.environ.get("GROWATT_INCOMING_STATE", "/data/incoming-energy-state.json"))
 FIRMWARE_DIR = Path(os.environ.get("GROWATT_FIRMWARE_DIR", "/data/firmware"))
 WEB_ROOT = Path(os.environ.get("GROWATT_USB_WEB", "/web"))
@@ -2094,12 +2097,21 @@ def local_solar_forecast_loop() -> None:
     optional_sources = [configured_generator_power_entity(options), str(options.get("fallback_grid_power_entity", "")).strip()]
     sources = [load, bank, *(entity for entity in optional_sources if entity)]
     training_day = None
-    statistics = {}
+    profiles = {}
     observer = None
     cached_cloud = {}
     entity_id = f"sensor.{ENTITY_PREFIX}_local_solar_forecast"
     prior = get_home_assistant_state(entity_id) or {}
-    cached_cloud.update(weather_hours((prior.get("attributes") or {}).get("cloud_forecast", [])))
+    prior_attributes = prior.get("attributes") or {}
+    cached_cloud.update(weather_hours(prior_attributes.get("cloud_forecast", [])))
+    records = load_learning(SOLAR_LEARNING_PATH)
+    saved_records = json.dumps(records, sort_keys=True)
+    if prior.get("last_updated"):
+        try:
+            archive_forecast(records, prior_attributes.get("tomorrow") or {}, datetime.fromisoformat(prior["last_updated"]))
+        except (TypeError, ValueError):
+            pass
+    battery_discharge_positive = bool(options.get("fallback_battery_power_positive_is_discharge", True))
     while RUNNING:
         today = datetime.now(ROME).date()
         tomorrow = today + timedelta(days=1)
@@ -2116,6 +2128,10 @@ def local_solar_forecast_loop() -> None:
                 })
                 statistics = data["service_response"]["statistics"]
                 observer = Observer(float(config["latitude"]), float(config["longitude"]))
+                profiles = reconstructed_days(
+                    statistics, sources, observer, today,
+                    battery_discharge_positive=battery_discharge_positive,
+                )
                 training_day = today
             except (OSError, KeyError, TypeError, ValueError) as exc:
                 log(f"Local solar forecast could not read Recorder: {exc}", "warning")
@@ -2128,24 +2144,33 @@ def local_solar_forecast_loop() -> None:
         except (OSError, KeyError, TypeError, ValueError) as exc:
             log(f"Local solar forecast could not read hourly weather: {exc}", "warning")
         cached_cloud = {stamp: cover for stamp, cover in cached_cloud.items() if midnight(today) <= stamp < midnight(tomorrow + timedelta(days=1))}
+        learning = evaluate_forecasts(records, profiles, today)
         forecasts = []
         for day, suffix in ((today, "today"), (tomorrow, "tomorrow")):
             solcast = solcast_forecast(get_home_assistant_state(f"sensor.solcast_pv_forecast_forecast_{suffix}"), day)
             if training_day == today and observer is not None:
                 forecast = local_forecast(
-                    statistics, sources, observer, today, target_day=day,
+                    profiles, observer, today, target_day=day,
                     solcast=solcast, cloud_hours=cached_cloud,
-                    battery_discharge_positive=bool(options.get("fallback_battery_power_positive_is_discharge", True)),
                 )
             else:
                 forecast = {"target_day": day.isoformat(), "points": []}
-            forecasts.append(forecast)
+            forecasts.append(apply_learning(forecast, learning))
         forecast, next_day = forecasts
+        archive_forecast(records, next_day, datetime.now(ROME))
+        serialized = json.dumps(records, sort_keys=True)
+        if serialized != saved_records:
+            try:
+                save_learning(SOLAR_LEARNING_PATH, records)
+                saved_records = serialized
+            except OSError as exc:
+                log(f"Local solar forecast could not save learning history: {exc}", "warning")
         if not forecast["points"]:
             training_day = None
         publish_state(entity_id, forecast.get("total_kwh", "unavailable"), {
             **forecast,
             "tomorrow": next_day,
+            "learning": learning,
             "cloud_forecast": [
                 {"datetime": stamp.isoformat(), "cloud_coverage": cover}
                 for stamp, cover in sorted(cached_cloud.items())
